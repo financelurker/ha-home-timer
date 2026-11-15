@@ -1,23 +1,32 @@
-"""Sensor of an area: how many timers there are, and all of them as an attribute."""
+"""Sensors: the area's timers, and per station its timer's state and end."""
 
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity
+from homeassistant.components.sensor import SensorDeviceClass, SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
 
 from . import HomeTimerConfigEntry
-from .const import STATUS_ACTIVE, STATUS_RINGING
-from .entity import AreaEntity
+from .const import STATUS_ACTIVE, STATUS_PAUSED, STATUS_RINGING
+from .entity import AreaEntity, StationEntity
+
+STATE_IDLE = "idle"
 
 
 async def async_setup_entry(
     hass: HomeAssistant, entry: HomeTimerConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
-    async_add_entities([TimersSensor(entry.runtime_data, "timers")])
+    engine = entry.runtime_data
+    async_add_entities([TimersSensor(engine, "timers")])
+    for station in engine.stations.values():
+        async_add_entities(
+            [StationTimerSensor(engine, station, "station"), StationEndSensor(engine, station, "ends")],
+            config_subentry_id=station.id,
+        )
 
 
 class TimersSensor(AreaEntity, SensorEntity):
@@ -41,3 +50,57 @@ class TimersSensor(AreaEntity, SensorEntity):
             "next_name": nxt.name if nxt else None,
             "timers": [t.as_dict(now) for t in timers],
         }
+
+
+class StationTimerSensor(StationEntity, SensorEntity):
+    """The station's timer: idle, active, paused or ringing; details as attributes.
+
+    Named like the station itself (e.g. sensor.kitchen_hob_1).
+    """
+
+    _attr_name = None
+    _attr_device_class = SensorDeviceClass.ENUM
+    _attr_options = [STATE_IDLE, STATUS_ACTIVE, STATUS_PAUSED, STATUS_RINGING]
+    _unrecorded_attributes = frozenset({"source", "remaining", "overtime"})
+
+    def __init__(self, engine, station, key) -> None:
+        super().__init__(engine, station, key)
+        if station.icon:
+            self._attr_icon = station.icon
+
+    @property
+    def native_value(self) -> str:
+        timer = self.timer
+        return timer.status if timer else STATE_IDLE
+
+    @property
+    def extra_state_attributes(self) -> dict[str, Any]:
+        timer = self.timer
+        if timer is None:
+            return {"presets": [p.name for p in self.station.presets]}
+        info = timer.as_dict(dt_util.utcnow())
+        return {
+            "timer_id": info["id"],
+            "timer_name": info["name"],
+            "preset": info["preset"],
+            "duration": info["duration"],
+            "remaining": info["remaining"],
+            "started_at": info["started_at"],
+            "ends_at": info["ends_at"],
+            "finished_at": info["finished_at"],
+            "overtime": info["overtime"],
+            "note": info["note"],
+            "source": info["source"],
+            "presets": [p.name for p in self.station.presets],
+        }
+
+
+class StationEndSensor(StationEntity, SensorEntity):
+    """When the station's timer runs out (while it is active); the frontend shows "in 6 minutes"."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    @property
+    def native_value(self) -> datetime | None:
+        timer = self.timer
+        return timer.ends_at if timer and timer.status == STATUS_ACTIVE else None

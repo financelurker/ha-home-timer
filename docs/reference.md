@@ -2,9 +2,11 @@
 
 [← Back to the overview](../README.md)
 
-Entities of an area, on its *Home Timer* device. `<area>` is the area's part of the entity id, e.g. `kitchen`.
+`<area>` is the area's part of the entity id, e.g. `kitchen`; `<station>` the station's, e.g. `hob_1`.
 
-## Entities
+## Area
+
+On the area's *Home Timer* device.
 
 | Entity | Description |
 |---|---|
@@ -33,6 +35,29 @@ Each entry of `timers`:
 | `started_at` / `ends_at` / `finished_at` | ISO timestamps; `ends_at` while active, `finished_at` while ringing |
 | `overtime` | seconds since it ran out (ringing) |
 | `note`, `source` | as given at the start |
-| `station`, `preset` | empty for now; stations and presets follow in a later release |
+| `station`, `preset` | the station's id and the preset's name, or empty |
 
-Actions and events: see [Automations](automations.md). States and options: see [Timers](timers.md).
+## Station
+
+On the station's device.
+
+| Entity | Description |
+|---|---|
+| `sensor.<area>_<station>` | the station's timer: `idle`, `active`, `paused`, `ringing` |
+| `sensor.<area>_<station>_timer_end` | when the timer runs out (timestamp, while active) |
+| `button.<area>_<station>_start_<preset>` | starts the preset (one per preset) |
+| `button.<area>_<station>_pause_resume` | pauses or resumes the timer |
+| `button.<area>_<station>_1_minute` | +1 minute (a ringing timer starts again) |
+| `button.<area>_<station>_stop_acknowledge` | acknowledges a ringing timer, cancels a running one |
+
+Attributes of `sensor.<area>_<station>`:
+
+| Attribute | Description |
+|---|---|
+| `presets` | the station's preset names (always) |
+| `timer_id`, `timer_name`, `preset` | the timer, while there is one |
+| `duration`, `remaining`, `overtime` | seconds (`remaining` and `overtime` when the state was written; not recorded) |
+| `started_at`, `ends_at`, `finished_at` | ISO timestamps |
+| `note`, `source` | as given at the start (`source` is not recorded) |
+
+Actions, events and device triggers: see [Automations](automations.md). States and options: see [Timers](timers.md).

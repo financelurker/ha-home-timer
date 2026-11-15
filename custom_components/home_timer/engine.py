@@ -11,7 +11,8 @@ started, so automations listen – schedules them and reports what happened mean
 - a ringing timer keeps ringing; reminders and auto-dismiss continue from when it
   started ringing (past auto-dismiss: acknowledged with ``by: timeout``),
 - with "ring until acknowledged" off, ringing timers are acknowledged (``timeout``),
-- a paused timer stays paused.
+- a paused timer stays paused,
+- a timer of a station that no longer exists is cancelled (``station_removed``).
 """
 
 from __future__ import annotations
@@ -30,6 +31,8 @@ from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.util.ulid import ulid_now
+
+from .stations import Station, stations
 
 from .const import (
     BY_TIMEOUT,
@@ -50,6 +53,7 @@ from .const import (
     EVENT_TIME_CHANGED,
     REASON_MANUAL,
     REASON_REPLACED,
+    REASON_STATION_REMOVED,
     STATUS_ACTIVE,
     STATUS_PAUSED,
     STATUS_RINGING,
@@ -195,10 +199,22 @@ class AreaTimers:
 
     @property
     def hub_device_id(self) -> str | None:
-        device = dr.async_get(self.hass).async_get_device_by_identifier(
-            (DOMAIN, self.entry.entry_id), self.entry.entry_id
-        )
+        return self._device_id(self.entry.entry_id)
+
+    @property
+    def stations(self) -> dict[str, Station]:
+        return stations(self.entry)
+
+    def station_device_id(self, station_id: str) -> str | None:
+        return self._device_id(station_id)
+
+    def _device_id(self, identifier: str) -> str | None:
+        device = dr.async_get(self.hass).async_get_device_by_identifier((DOMAIN, identifier), self.entry.entry_id)
         return device.id if device else None
+
+    def timer_at(self, station_id: str) -> Timer | None:
+        """The station's timer, if it has one."""
+        return next((t for t in self.timers.values() if t.station == station_id), None)
 
     # ------------------------------------------------------------ life cycle
 
@@ -221,10 +237,13 @@ class AreaTimers:
             return
         self._running = True
         now = dt_util.utcnow()
+        known = self.stations
         for timer in list(self.timers.values()):
             if timer.id not in self.timers:
                 continue
-            if timer.status == STATUS_ACTIVE and timer.ends_at is not None and timer.ends_at <= now:
+            if timer.station is not None and timer.station not in known:
+                self.cancel(timer.id, reason=REASON_STATION_REMOVED)
+            elif timer.status == STATUS_ACTIVE and timer.ends_at is not None and timer.ends_at <= now:
                 if self.option(CONF_REPORT_MISSED):
                     self._finish(timer, late=True)
                 else:
@@ -258,6 +277,8 @@ class AreaTimers:
     ) -> Timer:
         if duration <= 0:
             raise TimerError("invalid_duration")
+        if station is not None and station not in self.stations:
+            raise TimerError("unknown_station", station=station)
         try:
             source = _copy(source or {})
         except (TypeError, ValueError):
@@ -284,6 +305,19 @@ class AreaTimers:
         self._fire(EVENT_STARTED, timer)
         self._changed()
         return timer
+
+    @callback
+    def start_preset(self, station_id: str, preset_key: str, *, source: dict[str, Any] | None = None) -> Timer:
+        """Start a station's preset (by id or name); replaces the station's timer."""
+        station = self.stations.get(station_id)
+        if station is None:
+            raise TimerError("unknown_station", station=station_id)
+        preset = station.preset(preset_key)
+        if preset is None:
+            raise TimerError("unknown_preset", preset=preset_key, station=station.name)
+        return self.start(
+            preset.name, preset.duration, station=station.id, preset=preset.name, note=preset.note, source=source
+        )
 
     @callback
     def pause(self, timer_id: str) -> Timer:
@@ -476,14 +510,16 @@ class AreaTimers:
         return dismiss
 
     def event_data(self, timer: Timer, **extra: Any) -> dict[str, Any]:
+        station = self.stations.get(timer.station) if timer.station else None
+        device_id = self.station_device_id(timer.station) if timer.station else None
         data: dict[str, Any] = {
             "timer_id": timer.id,
             "name": timer.name,
             "area_id": self.area_id,
             "entry_id": self.entry.entry_id,
             "station": timer.station,
-            "station_name": None,  # stations follow
-            "device_id": self.hub_device_id,
+            "station_name": station.name if station else None,
+            "device_id": device_id or self.hub_device_id,
             "preset": timer.preset,
             "duration": round(timer.duration),
             "note": timer.note,

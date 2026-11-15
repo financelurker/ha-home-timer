@@ -2,7 +2,7 @@
 
 [← Back to the overview](../README.md)
 
-A timer belongs to an area. It has a name ("Let dough rest"), a duration, and optionally a note and source data of whoever started it. An area can have any number of timers at once.
+A timer belongs to an area and, optionally, to one of its [stations](stations.md). It has a name ("Let dough rest"), a duration, and optionally a note and source data of whoever started it. An area can have any number of timers without a station at once; a station has one timer at a time.
 
 ## Life cycle
 
@@ -50,6 +50,7 @@ Timers are stored with their end time, so a restart of Home Assistant loses noth
 
 - an active timer goes on counting; if it ran out during the restart, see *Report missed timers*. Its overtime counts from when it ran out, but reminders and auto-dismiss count from the start, so you get the full time to react,
 - a ringing timer keeps ringing; reminders and auto-dismiss continue from when it started ringing (if the auto-dismiss time has passed, it is acknowledged with `by: timeout`),
-- a paused timer stays paused with its remaining time.
+- a paused timer stays paused with its remaining time,
+- a timer of a station deleted in the meantime is cancelled (`reason: station_removed`).
 
 Missed timers are reported once Home Assistant has started, so automations triggered by the events see them.

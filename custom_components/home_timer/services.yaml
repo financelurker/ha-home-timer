@@ -3,13 +3,15 @@ start:
     entity:
       integration: home_timer
   fields:
+    preset:
+      example: Rice
+      selector:
+        text:
     name:
-      required: true
       example: Let dough rest
       selector:
         text:
     duration:
-      required: true
       example: "00:30:00"
       selector:
         duration:
@@ -23,18 +25,26 @@ start:
         object:
 
 pause:
+  target:
+    entity:
+      integration: home_timer
   fields:
     timer_id: &timer_id
-      required: true
       example: 01JD7Q0000000000000000000
       selector:
         text:
 
 resume:
+  target:
+    entity:
+      integration: home_timer
   fields:
     timer_id: *timer_id
 
 add_time:
+  target:
+    entity:
+      integration: home_timer
   fields:
     timer_id: *timer_id
     duration: &time
@@ -44,11 +54,17 @@ add_time:
         duration:
 
 subtract_time:
+  target:
+    entity:
+      integration: home_timer
   fields:
     timer_id: *timer_id
     duration: *time
 
 cancel:
+  target:
+    entity:
+      integration: home_timer
   fields:
     timer_id: *timer_id
 

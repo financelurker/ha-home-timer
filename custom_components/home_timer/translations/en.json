@@ -56,6 +56,55 @@
             "name": "Timers"
           }
         }
+      },
+      "station": {
+        "state": {
+          "idle": "Idle",
+          "active": "Active",
+          "paused": "Paused",
+          "ringing": "Ringing"
+        },
+        "state_attributes": {
+          "timer_id": {
+            "name": "Timer ID"
+          },
+          "timer_name": {
+            "name": "Timer name"
+          },
+          "preset": {
+            "name": "Preset"
+          },
+          "duration": {
+            "name": "Duration"
+          },
+          "remaining": {
+            "name": "Remaining"
+          },
+          "started_at": {
+            "name": "Started"
+          },
+          "ends_at": {
+            "name": "Ends"
+          },
+          "finished_at": {
+            "name": "Finished"
+          },
+          "overtime": {
+            "name": "Overtime"
+          },
+          "note": {
+            "name": "Note"
+          },
+          "source": {
+            "name": "Source"
+          },
+          "presets": {
+            "name": "Presets"
+          }
+        }
+      },
+      "ends": {
+        "name": "Timer end"
       }
     },
     "binary_sensor": {
@@ -66,21 +115,33 @@
     "button": {
       "acknowledge_all": {
         "name": "Acknowledge all"
+      },
+      "start_preset": {
+        "name": "Start {preset}"
+      },
+      "pause_resume": {
+        "name": "Pause / resume"
+      },
+      "add_minute": {
+        "name": "+1 minute"
+      },
+      "stop": {
+        "name": "Stop / acknowledge"
       }
     }
   },
   "services": {
     "start": {
       "name": "Start",
-      "description": "Starts a timer in an area (target: the area, its Home Timer device or its entities).",
+      "description": "Starts a timer: on a station (target: its device or entities; replaces its timer) or in an area (target: the area or its Home Timer device).",
       "fields": {
         "name": {
           "name": "Name",
-          "description": "What the timer is for, e.g. \"Let dough rest\"."
+          "description": "What the timer is for, e.g. \"Let dough rest\". With a duration, instead of a preset."
         },
         "duration": {
           "name": "Duration",
-          "description": "How long the timer runs."
+          "description": "How long the timer runs. With a name, instead of a preset."
         },
         "note": {
           "name": "Note",
@@ -89,6 +150,10 @@
         "source": {
           "name": "Source",
           "description": "Optional data of the caller (a script, another integration); returned in every event of the timer."
+        },
+        "preset": {
+          "name": "Preset",
+          "description": "A preset of the targeted station (its name). Instead of a name and a duration."
         }
       }
     },
@@ -98,7 +163,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer's id, from the start action's response, an event (timer_id) or the timers sensor's timers attribute."
+          "description": "The timer's id (from the start action's response, an event or a sensor). Without it: the timers of the targeted stations."
         }
       }
     },
@@ -108,7 +173,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer's id, from the start action's response, an event (timer_id) or the timers sensor's timers attribute."
+          "description": "The timer's id (from the start action's response, an event or a sensor). Without it: the timers of the targeted stations."
         }
       }
     },
@@ -118,7 +183,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer's id, from the start action's response, an event (timer_id) or the timers sensor's timers attribute."
+          "description": "The timer's id (from the start action's response, an event or a sensor). Without it: the timers of the targeted stations."
         },
         "duration": {
           "name": "Duration",
@@ -132,7 +197,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer's id, from the start action's response, an event (timer_id) or the timers sensor's timers attribute."
+          "description": "The timer's id (from the start action's response, an event or a sensor). Without it: the timers of the targeted stations."
         },
         "duration": {
           "name": "Duration",
@@ -146,7 +211,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer's id, from the start action's response, an event (timer_id) or the timers sensor's timers attribute."
+          "description": "The timer's id (from the start action's response, an event or a sensor). Without it: the timers of the targeted stations."
         }
       }
     },
@@ -156,7 +221,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer to acknowledge. Without it, all ringing timers of the targeted areas."
+          "description": "The timer's id (from the start action's response, an event or a sensor). Without it: the timers of the targeted stations."
         }
       }
     }
@@ -191,6 +256,94 @@
     },
     "invalid_source": {
       "message": "The source must be data that can be stored as JSON."
+    },
+    "unknown_station": "This station does not exist (anymore).",
+    "unknown_preset": "The station {station} has no preset \"{preset}\".",
+    "one_station": "The target must name exactly one station.",
+    "preset_needs_station": "A preset needs a station as the target.",
+    "name_and_duration": "Give a preset, or a name and a duration.",
+    "timer_or_station": "Give a timer id or choose a station.",
+    "station_idle": "The station {station} has no timer."
+  },
+  "config_subentries": {
+    "station": {
+      "initiate_flow": {
+        "user": "Add station"
+      },
+      "entry_type": "Station",
+      "step": {
+        "settings": {
+          "title": "Station",
+          "description": "Area {area}. A station is anything a timer belongs to: a hob, an appliance, a faucet. It gets its own device with one timer at a time.",
+          "data": {
+            "name": "Name",
+            "icon": "Icon"
+          },
+          "data_description": {
+            "name": "E.g. \"Hob 1\", \"Rice cooker\", \"Bathtub\".",
+            "icon": "Optional; shown on the station's timer."
+          }
+        },
+        "menu": {
+          "title": "{station}",
+          "description": "Presets:\n{presets}",
+          "menu_options": {
+            "settings": "Name and icon",
+            "add_preset": "Add preset",
+            "edit_preset": "Change or delete a preset",
+            "done": "Done"
+          }
+        },
+        "add_preset": {
+          "title": "{station}: add preset",
+          "description": "A preset becomes a button \"Start …\" on the station and can be started by the action home_timer.start.",
+          "data": {
+            "name": "Name",
+            "duration": "Duration",
+            "note": "Note"
+          },
+          "data_description": {
+            "name": "Becomes the timer's name, e.g. \"Rice\".",
+            "note": "Optional; goes with the timer's events, e.g. \"level 6, then 3\"."
+          }
+        },
+        "edit_preset": {
+          "title": "Which preset?",
+          "data": {
+            "preset": "Preset"
+          }
+        },
+        "preset": {
+          "title": "{station}: preset",
+          "data": {
+            "name": "Name",
+            "duration": "Duration",
+            "note": "Note",
+            "delete": "Delete this preset"
+          },
+          "data_description": {
+            "name": "Becomes the timer's name, e.g. \"Rice\".",
+            "note": "Optional; goes with the timer's events."
+          }
+        }
+      },
+      "error": {
+        "name_required": "Enter a name.",
+        "station_exists": "This area already has a station with this name.",
+        "preset_exists": "This station already has a preset with this name.",
+        "invalid_duration": "The duration must be longer than zero."
+      },
+      "abort": {
+        "reconfigure_successful": "The station was saved."
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "started": "Timer started",
+      "finished": "Timer finished",
+      "reminder": "Timer reminds (still ringing)",
+      "acknowledged": "Timer acknowledged"
     }
   }
 }

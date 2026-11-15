@@ -154,11 +154,14 @@ async def test_cancel(hass: HomeAssistant, kitchen, freezer) -> None:
 
 
 async def test_station_has_one_timer(hass: HomeAssistant, kitchen) -> None:
+    from .conftest import add_station
+
+    hob = await add_station(hass, kitchen, "Hob 1")
     ev = events(hass)
     engine = kitchen.runtime_data
-    first = engine.start("Pasta", 540, station="hob_1")
+    first = engine.start("Pasta", 540, station=hob)
     engine.start("Free", 60)
-    second = engine.start("Rice", 600, station="hob_1")
+    second = engine.start("Rice", 600, station=hob)
     await hass.async_block_till_done()
     assert first.id not in engine.timers
     assert second.id in engine.timers

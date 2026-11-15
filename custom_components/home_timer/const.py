@@ -42,6 +42,7 @@ EVENT_ACKNOWLEDGED: Final = f"{DOMAIN}_acknowledged"
 # why a timer was cancelled / who acknowledged it
 REASON_MANUAL: Final = "manual"
 REASON_REPLACED: Final = "replaced"
+REASON_STATION_REMOVED: Final = "station_removed"
 BY_ACTION: Final = "action"
 BY_BUTTON: Final = "button"
 BY_TIMEOUT: Final = "timeout"
@@ -60,5 +61,6 @@ ATTR_NAME: Final = "name"
 ATTR_DURATION: Final = "duration"
 ATTR_NOTE: Final = "note"
 ATTR_SOURCE: Final = "source"
+ATTR_PRESET: Final = "preset"
 
 STORAGE_VERSION: Final = 1
