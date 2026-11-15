@@ -961,7 +961,7 @@ class HomeTimerPanel extends LitElement {
     .cols { display: flex; gap: 20px; align-items: flex-start; }
     .col { flex: 1; min-width: 0; max-width: 760px; }
     .colr { width: 320px; flex: none; position: sticky; top: 0; }
-    :host([narrow]) .cols { flex-direction: column; gap: 0; }
+    :host([narrow]) .cols { flex-direction: column; gap: 0; align-items: stretch; }
     :host([narrow]) .colr { width: 100%; position: static; order: -1; }
     .fieldwrap + .pair { margin-top: 12px; }
     .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 14px; margin: 4px 0; }
@@ -1036,7 +1036,7 @@ class HomeTimerPanel extends LitElement {
     .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     /* last, so it wins over the column rules above: at medium widths form and Now stack */
     @container (max-width: 780px) {
-      .cols { flex-direction: column; gap: 0; }
+      .cols { flex-direction: column; gap: 0; align-items: stretch; }
       .colr { width: 100%; position: static; order: -1; }
       .col { max-width: none; }
     }
