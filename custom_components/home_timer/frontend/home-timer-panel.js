@@ -6,10 +6,20 @@
 
 import { LitElement, html, css, nothing } from "./vendor/lit.js";
 import { clone, formatDuration, looseTimers, parseDuration, parseRoute, same, stationLive, tempId, translator } from "./helpers.js";
+import { chartModel, renderChart, secondsAt, valueAt } from "./runs.js";
 
 const PANEL = "home-timer";
 const WS = "home_timer";
 const DOCS = "https://github.com/financelurker/ha-home-timer/blob/main/docs/panel.md";
+const FOLD = "home_timer.fold"; // what is folded on a phone, remembered per device
+
+function loadFold() {
+  try {
+    return JSON.parse(localStorage.getItem(FOLD) || "{}") || {};
+  } catch {
+    return {};
+  }
+}
 
 class HomeTimerPanel extends LitElement {
   static properties = {
@@ -27,6 +37,12 @@ class HomeTimerPanel extends LitElement {
     _errors: { state: true },
     _menu: { state: true },
     _open: { state: true },
+    _runs: { state: true },
+    _run: { state: true },
+    _hover: { state: true },
+    _chartWidth: { state: true },
+    _confirm: { state: true },
+    _fold: { state: true },
   };
 
   constructor() {
@@ -47,11 +63,21 @@ class HomeTimerPanel extends LitElement {
     this._dragIndex = null;
     this._menu = false; // the ⋮ menu is open
     this._open = {}; // what is unfolded: "more:<id>" help texts, "<draft key>:<preset id>" presets on a phone
+    this._runs = {}; // "<entry>:<station>" → {runs, current, sensor, imported} as runs/list returns it
+    this._run = null; // the run shown: {key, id, data (with its curve), at}
+    this._hover = null; // seconds under the pointer in the chart
+    this._chartWidth = 0;
+    this._confirm = null; // the run whose delete waits for a confirmation
+    this._fold = loadFold();
+    this._running = {}; // "<entry>:<station>" → its appliance ran at the last update
   }
 
   connectedCallback() {
     super.connectedCallback();
-    this._timer = setInterval(() => (this._now = Date.now()), 1000);
+    this._timer = setInterval(() => {
+      this._now = Date.now();
+      this._tickRuns();
+    }, 1000);
     this._beforeUnload = (e) => {
       if (this._dirtyKey()) e.preventDefault();
     };
@@ -62,12 +88,23 @@ class HomeTimerPanel extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     clearInterval(this._timer);
+    this._resize?.disconnect();
+    this._observed = null;
     window.removeEventListener("beforeunload", this._beforeUnload);
   }
 
   updated(changed) {
     if (changed.has("_dialog") && this._dialog) this._focusDialog();
     if (changed.has("_menu") && this._menu) this.shadowRoot?.querySelector(".menu button")?.focus();
+    this._observeChart();
+    if (changed.has("hass") && this._config) this._watchRuns();
+    if (changed.has("route")) {
+      // entering a station's Runs tab: fetch its list again (runs may have come meanwhile)
+      const r = this._route;
+      const key = r.page === "station" && r.tab === "runs" ? this._runsKey(r.entry, r.station) : null;
+      if (key && key !== this._runsShown && this._runs[key]) this._loadRuns(r.entry, r.station);
+      this._runsShown = key;
+    }
     if (changed.has("route")) {
       // left a page by any way (browser back, a link …): its unsaved draft is dropped
       const key = this._key();
@@ -695,9 +732,13 @@ class HomeTimerPanel extends LitElement {
     const presetErrors = Object.keys(this._errors[key] || {}).some((k) => k.startsWith("presets."));
     const showPresets = d.mode === "manual" || d.power.kind === "start_preset" || presetErrors;
     const icon = d.icon || (d.mode === "power" ? "mdi:power-plug-outline" : "mdi:timer-outline");
+    const tabs = station?.mode === "power";
+    const tab = tabs ? this._route.tab : "settings";
     return html`
       <div class="cols">
         <div class="col">
+          ${tabs ? this._renderTabs(area, station, tab) : nothing}
+          ${tab === "runs" ? this._renderRuns(area, station) : html`
           <div class="card"><div class="ch">${t("station.general")}</div><div class="cb">
             <div class="pair">
               ${this._selector(key, "name", t("station.name"), { text: {} }, d.name, (v) => set((x) => (x.name = v ?? "")), t("station.name_placeholder"), true)}
@@ -715,7 +756,7 @@ class HomeTimerPanel extends LitElement {
             ? html`<div class="card"><div class="ch">${t("presets")} <span class="chs">– ${t("presets.hint")}</span></div><div class="cb">
                 ${this._presetTable(key, d.presets, "presets", (fn) => set((x) => fn(x.presets)))}
               </div></div>`
-            : nothing}
+            : nothing}`}
         </div>
         ${station ? html`<div class="colr">${this._renderNow(area, station)}</div>` : nothing}
       </div>
@@ -816,6 +857,271 @@ class HomeTimerPanel extends LitElement {
         return html`<div class="err" role="alert">${t(`error.${code}`)} ${t("allowed", { min: f.min, max: f.max, unit: f.unit })}</div>`;
       })}
       ${this._help(t(`rule.${rule}_hint`), t("rule.all_hint"), "rules")}
+    </div></div>`;
+  }
+
+
+  // ------------------------------------------------------------------ runs of a power station
+
+  _renderTabs(area, station, tab) {
+    const t = this._t;
+    return html`<div class="tabs" role="tablist">
+      ${["settings", "runs"].map(
+        (x) => html`<button role="tab" aria-selected=${tab === x ? "true" : "false"} class=${tab === x ? "on" : ""} @click=${() => this._tab(area, station, x)}>${t(`tab.${x}`)}</button>`
+      )}
+    </div>`;
+  }
+
+  // switching tabs keeps the draft (it is the same station)
+  _tab(area, station, tab) {
+    if (tab === this._route.tab) return;
+    this._notice = null;
+    history.pushState(null, "", `/${PANEL}/station/${area.entry_id}/${station.id}${tab === "runs" ? "/runs" : ""}`);
+    window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
+  }
+
+  _runsKey(entryId, stationId) {
+    return `${entryId}:${stationId}`;
+  }
+
+  // select: the run to show (default: the one shown, else the newest)
+  async _loadRuns(entryId, stationId, select) {
+    const key = this._runsKey(entryId, stationId);
+    try {
+      const res = await this.hass.callWS({ type: `${WS}/runs/list`, entry_id: entryId, station_id: stationId });
+      this._runs = { ...this._runs, [key]: res };
+      if (!this._showing(key)) return; // the user went elsewhere meanwhile
+      const all = [...(res.current ? [res.current] : []), ...res.runs];
+      const shown = this._run?.key === key && all.some((r) => r.id === this._run.id) ? this._run.id : null;
+      const id = select && all.some((r) => r.id === select) ? select : shown ?? all[0]?.id;
+      if (id && (id !== this._run?.id || this._run?.key !== key || id === "current")) await this._loadRun(entryId, stationId, id);
+      else if (!id) this._run = null;
+    } catch (err) {
+      this._runs = { ...this._runs, [key]: { error: err?.message || String(err), runs: [] } };
+    }
+  }
+
+  async _loadRun(entryId, stationId, id) {
+    const key = this._runsKey(entryId, stationId);
+    if (this._run?.id !== id) (this._confirm = null), (this._hover = null);
+    this._fetching = true;
+    try {
+      const data = await this.hass.callWS({ type: `${WS}/runs/get`, entry_id: entryId, station_id: stationId, run_id: id });
+      if (this._showing(key)) this._run = { key, id, data, at: Date.now() };
+    } catch (err) {
+      if (!this._showing(key)) return;
+      if (id === "current") await this._loadRuns(entryId, stationId); // it just ended: show it stored
+      else this._notice = { kind: "warn", text: err?.message || String(err) };
+    } finally {
+      this._fetching = false;
+    }
+  }
+
+  // the Runs tab of this station is the page shown
+  _showing(key) {
+    const r = this._route;
+    return r.page === "station" && r.tab === "runs" && this._runsKey(r.entry, r.station) === key;
+  }
+
+  async _deleteRun(entryId, stationId, id) {
+    if (this._deleting) return;
+    this._deleting = true;
+    try {
+      await this.hass.callWS({ type: `${WS}/runs/delete`, entry_id: entryId, station_id: stationId, run_id: id });
+    } catch (err) {
+      this._notice = { kind: "warn", text: err?.message || String(err) };
+    }
+    this._confirm = null;
+    this._deleting = false;
+    await this._loadRuns(entryId, stationId);
+  }
+
+  // the run going on is fetched again every few seconds while it is shown
+  _tickRuns() {
+    const r = this._route;
+    if (r.page !== "station" || r.tab !== "runs" || this._run?.id !== "current" || this._fetching) return;
+    if (this._run.key !== this._runsKey(r.entry, r.station)) return;
+    if (Date.now() - this._run.at >= 5000) this._loadRun(r.entry, r.station, "current");
+  }
+
+  // the appliance switched on or off: the list changes (a run starts, or is stored)
+  _watchRuns() {
+    const r = this._route;
+    if (r.page !== "station" || r.tab !== "runs") return;
+    const station = this._area(r.entry)?.stations.find((s) => s.id === r.station);
+    const id = station?.entities?.running;
+    if (!id) return;
+    const key = this._runsKey(r.entry, r.station);
+    const on = this.hass.states[id]?.state === "on";
+    const before = this._running[key];
+    this._running[key] = on;
+    if (before !== undefined && before !== on && this._runs[key]) this._loadRuns(r.entry, r.station, on ? "current" : undefined);
+  }
+
+  _observeChart() {
+    const box = this.shadowRoot?.querySelector(".chartbox");
+    if (!box || box === this._observed) return;
+    this._resize?.disconnect();
+    this._resize = new ResizeObserver(([entry]) => {
+      const width = Math.floor(entry.contentRect.width);
+      if (width && Math.abs(width - this._chartWidth) > 1) this._chartWidth = width;
+    });
+    this._resize.observe(box);
+    this._observed = box;
+  }
+
+  _setFold(name, open) {
+    this._fold = { ...this._fold, [name]: open };
+    try {
+      localStorage.setItem(FOLD, JSON.stringify(this._fold));
+    } catch {
+      // private mode and the like: it is only not remembered
+    }
+  }
+
+  _renderRuns(area, station) {
+    const t = this._t;
+    const key = this._runsKey(area.entry_id, station.id);
+    const data = this._runs[key];
+    if (!data) {
+      if (this._pendingRuns !== key) {
+        this._pendingRuns = key;
+        Promise.resolve().then(() => this._loadRuns(area.entry_id, station.id).finally(() => (this._pendingRuns = null)));
+      }
+      return html`<div class="msg">${t("loading")}</div>`;
+    }
+    if (data.error) return html`<div class="msg">${t("load_failed")}: ${data.error}</div>`;
+    const all = [...(data.current ? [data.current] : []), ...(data.runs || [])];
+    if (!all.length) {
+      return html`<div class="emptycard"><ha-icon icon="mdi:chart-bell-curve-cumulative"></ha-icon><b>${t("runs.none")}</b><span>${t("runs.none_hint")}</span></div>
+        ${this._renderSensor(data, station)}`;
+    }
+    const shown = this._run?.key === key ? this._run : null;
+    return html`
+      ${shown ? this._renderRunCard(area, station, shown.data) : html`<div class="card"><div class="cb">${t("loading")}</div></div>`}
+      ${this._renderRunList(area, station, all, shown?.id, data.keep ?? 30)}
+      ${this._renderSensor(data, station)}
+    `;
+  }
+
+  _runWhen(run) {
+    const lang = this.hass.locale?.language || this.hass.language;
+    // Home Assistant's time zone setting: the browser's, or the server's
+    const timeZone = this.hass.locale?.time_zone === "server" ? this.hass.config?.time_zone : undefined;
+    const d = new Date(run.start);
+    const time = d.toLocaleTimeString(lang, { hour: "numeric", minute: "2-digit", timeZone });
+    const day = (x) => x.toLocaleDateString("en-CA", { timeZone });
+    if (day(new Date()) === day(d)) return this._t("runs.today", { time });
+    return `${d.toLocaleDateString(lang, { weekday: "short", day: "numeric", month: "short", timeZone })}, ${time}`;
+  }
+
+  _rangText(run) {
+    const t = this._t;
+    const time = formatDuration(run.rang);
+    if (run.running) return run.rang != null ? t(`runs.rang.${run.trigger || "unknown"}`, { time }) : t("runs.running", { time: formatDuration(run.duration) });
+    if (run.source === "history" && run.rang == null) return t("runs.from_history");
+    if (run.rang == null) return t("runs.no_ring");
+    if (run.simulated) return t(run.trigger === "off" ? "runs.would_ring_off" : "runs.would_ring", { time });
+    return t(`runs.rang.${run.trigger || "unknown"}`, { time });
+  }
+
+  _renderRunCard(area, station, run) {
+    const t = this._t;
+    const p = station.power || {};
+    const ignore = p.kind === "until_off" ? Number(p.done?.ignore || 0) : 0;
+    const onAbove = Number(p.on_above || 0);
+    const unit = this._unit(station);
+    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 240, onAbove, ignore });
+    const hv = this._hover != null ? valueAt(run, this._hover) : null;
+    const labels = {
+      aria: t("runs.chart.aria"),
+      rang: t("runs.chart.rang"),
+      stopped: t("runs.chart.stopped"),
+      unknown: t("runs.chart.unknown"),
+      ignored: t("runs.chart.ignored"),
+    };
+    return html`<div class="card runcard">
+      <div class="ch runh">
+        <span>${run.running ? t("runs.now") : this._runWhen(run)} <span class="chs">· ${formatDuration(run.duration)}</span></span>
+        ${run.running ? html`<span class="tag live">${t("runs.tag.running")}</span>` : this._renderDeleteRun(area, station, run)}
+      </div>
+      <div class="cb">
+        <div class="chartbox" @pointermove=${(e) => this._pointer(m, e)} @pointerleave=${() => (cancelAnimationFrame(this._frame), (this._hover = null))}>
+          ${renderChart(run, m, { labels, hover: this._hover, unit })}
+        </div>
+        <div class="readout">${this._hover != null && hv != null ? `${formatDuration(this._hover)} · ${Math.round(hv * 10) / 10} ${unit}` : html`&nbsp;`}</div>
+        <div class="legend">
+          <span><i class="sw curve"></i>${t("runs.legend.power")}</span>
+          ${onAbove > 0 ? html`<span><i class="sw thr"></i>${t("runs.legend.threshold", { watts: onAbove, unit })}</span>` : nothing}
+          ${ignore > 0 ? html`<span><i class="sw ign"></i>${t("runs.legend.ignored")}</span>` : nothing}
+          ${run.rang != null ? html`<span><i class="sw rang"></i>${t("runs.legend.rang")}</span>` : nothing}
+        </div>
+        <div class="runinfo">
+          <div>${this._rangText(run)}</div>
+          ${run.from > 0 ? html`<div>${t("runs.picked_up", { time: formatDuration(run.from) })}</div>` : nothing}
+          ${run.source === "history" ? html`<div class="help">${t("runs.history_note")}</div>` : nothing}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  // the value under the pointer, at most once a frame
+  _pointer(m, e) {
+    const svgEl = e.currentTarget.querySelector("svg");
+    const x = e.clientX;
+    cancelAnimationFrame(this._frame);
+    this._frame = requestAnimationFrame(() => (this._hover = secondsAt(m, svgEl, x)));
+  }
+
+  _renderDeleteRun(area, station, run) {
+    const t = this._t;
+    if (this._confirm === run.id) {
+      return html`<span class="confirm">${t("runs.delete_confirm")}
+        <button class="btn sm danger filled" @click=${() => this._deleteRun(area.entry_id, station.id, run.id)}>${t("delete")}</button>
+        <button class="btn sm" @click=${() => (this._confirm = null)}>${t("cancel")}</button></span>`;
+    }
+    return html`<button class="icon sm" aria-label=${t("runs.delete")} title=${t("runs.delete")} @click=${() => (this._confirm = run.id)}><ha-icon icon="mdi:delete-outline"></ha-icon></button>`;
+  }
+
+  _renderRunList(area, station, all, selected, keep) {
+    const t = this._t;
+    const open = !this.narrow || this._fold.runs !== false;
+    const stored = all.filter((r) => !r.running).length;
+    const usual = this._usual(station);
+    const closed = `${t("runs.summary", { count: stored })}${usual ? ` · ${t("now.usual", { time: usual })}` : ""}`;
+    return html`<div class="card">
+      <button class="ch fold" ?disabled=${!this.narrow} aria-expanded=${open ? "true" : "false"} @click=${() => this._setFold("runs", !open)}>
+        <span>${t("runs.title")} <span class="chs">– ${open ? t("runs.kept", { count: keep }) : closed}</span></span>
+        ${this.narrow ? html`<ha-icon icon=${open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>` : nothing}
+      </button>
+      ${open
+        ? html`<div class="runs" role="listbox" aria-label=${t("runs.title")}>
+            ${all.map(
+              (r) => html`<button class="runrow ${r.id === selected ? "sel" : ""}" role="option" aria-selected=${r.id === selected ? "true" : "false"} @click=${() => this._loadRun(area.entry_id, station.id, r.id)}>
+                <span class="rw">${r.running ? t("runs.now") : this._runWhen(r)}</span>
+                <span class="rd">${formatDuration(r.duration)}</span>
+                <span class="rr" title=${this._rangText(r)}>${r.rang != null ? html`<ha-icon icon="mdi:bell-ring-outline"></ha-icon>${r.simulated ? "≈ " : ""}${formatDuration(r.rang)}` : "–"}</span>
+                <span class="rt">${r.running ? html`<span class="tag live">${t("runs.tag.running")}</span>` : r.source === "history" ? html`<span class="tag">${t("runs.tag.history")}</span>` : nothing}</span>
+              </button>`
+            )}
+          </div>`
+        : nothing}
+    </div>`;
+  }
+
+  _unit(station) {
+    return this.hass.states[station?.power?.sensor]?.attributes?.unit_of_measurement || "W";
+  }
+
+  _renderSensor(data, station) {
+    const t = this._t;
+    const s = data.sensor || {};
+    const parts = [];
+    if (s.interval != null) parts.push(t("runs.sensor.interval", { time: s.interval < 60 ? `${s.interval} s` : formatDuration(s.interval) }));
+    if (s.noise != null) parts.push(t("runs.sensor.noise", { watts: s.noise, unit: this._unit(station) }));
+    return html`<div class="card"><div class="ch">${t("runs.sensor")}</div><div class="cb">
+      <div>${parts.length ? parts.join(" · ") : t("runs.sensor.unknown")}</div>
+      ${this._help(t("runs.sensor.hint"), t("runs.sensor.more"), "sensor")}
     </div></div>`;
   }
 
@@ -1035,6 +1341,53 @@ class HomeTimerPanel extends LitElement {
     .choices { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow: auto; }
     .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
     /* last, so it wins over the column rules above: at medium widths form and Now stack */
+    .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--ht-d); margin: -4px 0 14px; }
+    .tabs button { padding: 10px 16px; color: var(--ht-s); font-weight: 500; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+    .tabs button.on { color: var(--ht-p); border-bottom-color: var(--ht-p); }
+    .tabs button:hover { background: var(--ht-tint); }
+    .runh { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 44px; padding-top: 8px; }
+    .confirm { display: inline-flex; align-items: center; gap: 6px; font-size: 13.5px; font-weight: 400; }
+    .btn.sm { padding: 4px 12px; font-size: 13px; }
+    .tag { font-size: 11.5px; font-weight: 500; padding: 2px 8px; border-radius: 10px; background: var(--ht-fill); color: var(--ht-s); white-space: nowrap; }
+    .tag.live { background: color-mix(in srgb, var(--ht-run) 16%, transparent); color: var(--ht-run); }
+    .chartbox { width: 100%; touch-action: pan-y; }
+    .chart { display: block; overflow: visible; }
+    .chart .grid { stroke: var(--ht-d); stroke-width: 1; }
+    .chart .axis { stroke: var(--ht-under); stroke-width: 1; }
+    .chart .ax { fill: var(--ht-s); font-size: 11px; }
+    .chart .curve { fill: none; stroke: var(--ht-p); stroke-width: 2; stroke-linejoin: round; }
+    .chart .area { fill: var(--ht-tint); stroke: none; }
+    .chart .thr { stroke: var(--ht-s); stroke-width: 1.2; stroke-dasharray: 5 4; }
+    .chart .ignored { fill: color-mix(in srgb, var(--ht-s) 12%, transparent); }
+    .chart .unknown { fill: color-mix(in srgb, var(--ht-s) 7%, transparent); }
+    .chart .zone { fill: var(--ht-s); font-size: 11px; }
+    .chart .stop { stroke: var(--ht-s); stroke-width: 1; stroke-dasharray: 2 3; }
+    .chart .rang { stroke: var(--ht-err); stroke-width: 2; }
+    .chart .mk { fill: var(--ht-s); font-size: 11.5px; }
+    .chart .mk.ring { fill: var(--ht-err); font-weight: 600; }
+    .chart .hover { stroke: var(--primary-text-color, #212121); stroke-width: 1; opacity: 0.35; }
+    .chart .dot { fill: var(--ht-card); stroke: var(--ht-p); stroke-width: 2; }
+    .readout { font-size: 12.5px; color: var(--ht-s); text-align: right; min-height: 18px; font-variant-numeric: tabular-nums; }
+    .legend { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 12.5px; color: var(--ht-s); margin: 2px 0 10px; }
+    .legend span { display: inline-flex; align-items: center; gap: 6px; }
+    .sw { display: inline-block; width: 18px; height: 0; border-top: 2px solid var(--ht-p); }
+    .sw.thr { border-top: 1.5px dashed var(--ht-s); }
+    .sw.ign { height: 10px; border: none; background: color-mix(in srgb, var(--ht-s) 18%, transparent); }
+    .sw.rang { width: 0; height: 14px; border-top: none; border-left: 2px solid var(--ht-err); }
+    .runinfo { line-height: 1.5; }
+    .ch.fold { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-bottom: 10px; cursor: default; }
+    :host([narrow]) .ch.fold { cursor: pointer; }
+    .runs { border-top: 1px solid var(--ht-d); max-height: 420px; overflow: auto; }
+    .runrow { display: grid; grid-template-columns: minmax(0, 1fr) 64px 84px 104px; align-items: center; gap: 8px; width: 100%; padding: 10px 16px;
+      border-bottom: 1px solid var(--ht-d); font-variant-numeric: tabular-nums; }
+    .runrow:last-child { border-bottom: none; }
+    .runrow:hover { background: rgba(127, 127, 127, 0.06); }
+    .runrow.sel { background: var(--ht-tint); }
+    .runrow .rw { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .runrow .rd, .runrow .rr { color: var(--ht-s); text-align: right; display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; --mdc-icon-size: 15px; }
+    .runrow .rt { text-align: right; }
+    :host([narrow]) .runrow { grid-template-columns: minmax(0, 1fr) 52px 72px; }
+    :host([narrow]) .runrow .rt { display: none; }
     @container (max-width: 780px) {
       .cols { flex-direction: column; gap: 0; align-items: stretch; }
       .colr { width: 100%; position: static; order: -1; }

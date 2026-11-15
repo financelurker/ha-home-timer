@@ -7,7 +7,7 @@
 
 **Timers per room.** Home Timer gives every area its own timers. A timer can belong to a **station** – a hob, the rice cooker, the bathtub – and stations have **presets**: "Rice" is 10 minutes, "Fill the bathtub" 14, one button each. When a timer runs out it rings until you acknowledge it, and your automations decide where to tell you – phone, speaker or light.
 
-![The Home Timer panel: the kitchen's stations with what each does right now – a countdown, a ringing kettle, the moka pot brewing](https://raw.githubusercontent.com/financelurker/ha-home-timer/main/docs/images/panel.png?v=066b33af5f)
+![The Home Timer panel: the kitchen's stations with what each does right now – a countdown, a ringing kettle, the moka pot brewing](https://raw.githubusercontent.com/financelurker/ha-home-timer/main/docs/images/panel.png?v=285948c57f)
 
 ## What it does
 
@@ -20,7 +20,7 @@
 - **[Stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md):** hob 1, rice cooker, bathtub … each a device in the area with one timer at a time, its state and end as sensors, and buttons for pause, +1 minute and stop.
 - **[Presets](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#adding-a-station):** known durations per station, one button each – no card needed; [created while cooking](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#creating-presets-while-cooking) from a custom timer.
 - **[Dashboard controls](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#starting-timers-from-a-dashboard)** for timers without a station: quick timers (one tap), a custom duration, "save as preset".
-- **[Power stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md):** a power sensor starts the timer – it rings when the appliance is done (e.g. a moka pot), starts a preset when switched on, or warns if it runs too long.
+- **[Power stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md):** a power sensor starts the timer – it rings when the appliance is done (e.g. a moka pot), starts a preset when switched on, or warns if it runs too long. Every run is [stored with its power curve](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md#runs).
 - **[Device triggers](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md#device-triggers)** per station and per area: started, finished, reminder, acknowledged.
 - **[Its own panel](https://github.com/financelurker/ha-home-timer/blob/main/docs/panel.md):** areas, stations, presets and options on one page, with what each station does right now – also on the phone.
 

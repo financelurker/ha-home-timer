@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import asyncio
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -78,6 +79,23 @@ def main() -> None:
             go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
             page.screenshot(path=OUT / "panel-power.png")
             page.set_viewport_size({"width": 1366, "height": 860})
+        if want("panel-runs"):
+            page.set_viewport_size({"width": 1366, "height": 1100})
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/runs")
+            rows = page.locator("home-timer-panel .runrow")
+            check("runs tab lists the moka pot's runs", rows.count() >= 8, rows.count())
+            seeded = rows.filter(has_not_text=re.compile("Today|Running"))
+            if seeded.count():
+                seeded.first.click()  # a run of seed_runs.py (today's come from scene.py's test runs)
+                page.wait_for_timeout(1500)
+            chart = page.locator("home-timer-panel svg.chart")
+            check("runs tab draws the curve", chart.count() == 1 and page.locator("home-timer-panel svg.chart path.curve").count() == 1)
+            if chart.count():
+                box = chart.bounding_box()
+                page.mouse.move(box["x"] + box["width"] * 0.42, box["y"] + box["height"] / 2)
+                page.wait_for_timeout(500)
+            page.screenshot(path=OUT / "panel-runs.png")
+            page.set_viewport_size({"width": 1366, "height": 860})
         if want("panel-station"):
             go(page, f"/home-timer/station/{ref['entry']}/{ref['hob']['id']}")
             page.screenshot(path=OUT / "panel-station.png")
@@ -110,6 +128,8 @@ def main() -> None:
             pp.screenshot(path=OUT / "phone-area.png")
             go(pp, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
             pp.screenshot(path=OUT / "phone-power.png")
+            go(pp, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/runs")
+            pp.screenshot(path=OUT / "phone-runs.png")
         browser.close()
     check("no errors of the panel in the browser", not ERRORS, ERRORS)
     sys.exit(1 if FAILED else 0)

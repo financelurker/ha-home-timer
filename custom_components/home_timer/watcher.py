@@ -11,7 +11,8 @@ warn           a countdown "warn after" starts     the countdown → it rings   
 A run starts when the power rises above "runs above" and stops after it stayed
 at or below it for "stopped after" seconds. Unavailable or unknown readings are
 ignored. A run shorter than ``MIN_RUN`` seconds (a blip) is dropped quietly: its
-timer is cancelled and it is not counted.
+timer is cancelled and it is not counted. Every other run is stored with its power
+curve when it stops (``runs.py``).
 
 Timers the watcher starts carry ``source: {"home_timer": "power"}``; only those are
 driven by it. After a restart (or a reload) the first valid reading decides: still
@@ -30,8 +31,9 @@ from homeassistant.core import CALLBACK_TYPE, Event, EventStateChangedData, call
 from homeassistant.helpers.event import async_track_state_change_event, async_track_time_interval
 from homeassistant.util import dt as dt_util
 
-from .const import BY_POWER, EVENT_ACKNOWLEDGED, REASON_POWER_OFF, STATUS_ACTIVE, STATUS_RINGING
+from .const import BY_POWER, EVENT_ACKNOWLEDGED, EVENT_FINISHED, REASON_POWER_OFF, STATUS_ACTIVE, STATUS_RINGING
 from .power import Trace
+from .runs import MAX_POINTS, MIN_RUN, compact, make_run
 from .stations import KIND_START_PRESET, KIND_UNTIL_OFF, KIND_WARN, Station
 
 if TYPE_CHECKING:
@@ -39,8 +41,8 @@ if TYPE_CHECKING:
 
 _LOGGER = logging.getLogger(__name__)
 TICK = timedelta(seconds=5)
-MIN_RUN = 10  # seconds above "runs above"; shorter runs are blips
 POWER_SOURCE = {"home_timer": "power"}
+THIN_ABOVE = 10 * MAX_POINTS  # readings kept of a run whose curve no rule reads
 
 
 class PowerWatcher:
@@ -54,6 +56,8 @@ class PowerWatcher:
         self.trace = Trace()
         self.done = False
         self.timer_id: str | None = None
+        self.rang: float | None = None  # seconds after the start when the run's timer rang
+        self.trigger: str | None = None  # how: rule, off, countdown
         self._below_since: datetime | None = None
         self._resumed = False  # waiting for the first valid reading after a (re)start
         self._rearm = False  # warn: our timer was acknowledged while the appliance runs
@@ -67,6 +71,7 @@ class PowerWatcher:
         self._unsubs.append(async_track_state_change_event(hass, self.config.sensor, self._changed))
         self._unsubs.append(async_track_time_interval(hass, self._tick, TICK))
         self._unsubs.append(hass.bus.async_listen(EVENT_ACKNOWLEDGED, self._acknowledged))
+        self._unsubs.append(hass.bus.async_listen(EVENT_FINISHED, self._finished))
         self._resumed = True
         watts = self._watts(hass.states.get(self.config.sensor))
         if watts is not None:
@@ -95,6 +100,9 @@ class PowerWatcher:
             self.run_start = existing.started_at
             self.timer_id = existing.id
             self.done = existing.status == STATUS_RINGING
+            if existing.finished_at is not None:  # it rang before the restart
+                self.rang = (existing.finished_at - existing.started_at).total_seconds()
+                self.trigger = "rule" if self.config.kind == KIND_UNTIL_OFF else "countdown"
             self.trace = Trace()
             self._add(watts, now)  # earlier samples are gone: rules look only from here
             self.engine.notify_power()
@@ -118,7 +126,10 @@ class PowerWatcher:
 
     @callback
     def _changed(self, event: Event[EventStateChangedData]) -> None:
-        watts = self._watts(event.data["new_state"])
+        old, new = event.data["old_state"], event.data["new_state"]
+        if old is not None and new is not None and old.state == new.state:
+            return  # only its attributes changed: not a new reading
+        watts = self._watts(new)
         if watts is None:
             return
         now = event.data["new_state"].last_updated
@@ -143,10 +154,25 @@ class PowerWatcher:
         if self.timer_id is not None and event.data.get("timer_id") == self.timer_id:
             self._rearm = self.running and self.config.kind == KIND_WARN
 
+    @callback
+    def _finished(self, event: Event) -> None:
+        """Our timer rang: a countdown (start_preset, warn) – the rule and "off" note it themselves."""
+        if (
+            self.running
+            and self.rang is None
+            and self.config.kind in (KIND_START_PRESET, KIND_WARN)
+            and self.timer_id is not None
+            and event.data.get("timer_id") == self.timer_id
+        ):
+            self.rang, self.trigger = self.elapsed(), "countdown"
+
     def _add(self, watts: float, when: datetime) -> None:
-        # only "until it switches off" reads the curve
-        if self.run_start is not None and self.config.kind == KIND_UNTIL_OFF:
+        # the curve of every run is stored; only "until it switches off" has rules reading it
+        if self.run_start is not None:
             self.trace.add(max(0.0, (when - self.run_start).total_seconds()), watts)
+            if self.config.kind != KIND_UNTIL_OFF and len(self.trace.times) > THIN_ABOVE:
+                # no rule reads it: a long run is thinned as it will be stored
+                self.trace.times, self.trace.watts = compact(self.trace.times, self.trace.watts)
 
     def elapsed(self, when: datetime | None = None) -> float:
         if self.run_start is None:
@@ -168,6 +194,7 @@ class PowerWatcher:
         self.done = False
         self._rearm = False
         self._below_since = None
+        self.rang = self.trigger = None
         timer = None
         if self.config.kind == KIND_UNTIL_OFF:
             timer = self.engine.start(
@@ -198,6 +225,7 @@ class PowerWatcher:
                 self.trace, self.elapsed(now)
             ):
                 self.done = True
+                self.rang, self.trigger = self.elapsed(now), "rule"
                 self.engine.record_power_run(self.station.id, self.elapsed(now))
                 self.engine.finish(timer.id, trigger="rule")
         elif self.config.kind == KIND_WARN and self._rearm:
@@ -218,6 +246,7 @@ class PowerWatcher:
             if timer is not None and timer.status == STATUS_ACTIVE and not self.done:
                 if count:
                     self.engine.record_power_run(self.station.id, seconds)
+                self.rang, self.trigger = seconds, "off"
                 self.engine.finish(timer.id, at=when, trigger="off")
         else:
             if count:
@@ -228,10 +257,17 @@ class PowerWatcher:
                 self.config.kind == KIND_WARN or self.config.cancel_on_off
             ):
                 self.engine.cancel(timer.id, reason=REASON_POWER_OFF)
+        if count and not blip and self.run_start is not None:
+            self.engine.record_run(
+                self.station.id,
+                make_run(self.run_start, seconds, self.trace, on_above=self.config.on_above, rang=self.rang, trigger=self.trigger),
+            )
         self.running = False
         self.run_start = None
         self._below_since = None
         self.done = False
         self._rearm = False
         self.timer_id = None
+        self.rang = self.trigger = None
+        self.trace = Trace()
         self.engine.notify_power()
