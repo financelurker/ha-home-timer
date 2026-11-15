@@ -242,3 +242,33 @@ async def test_upgrade_keeps_area_entities(hass: HomeAssistant, kitchen) -> None
     ):
         assert hass.states.get(entity_id) is not None
     assert kitchen.subentries == {}
+
+
+async def test_ringing_sensors_are_red_while_ringing(hass, kitchen, freezer) -> None:
+    """Area and station: device class problem (red while on), states Ringing / Quiet."""
+    from custom_components.home_timer.const import DOMAIN
+
+    from .conftest import add_station, tick
+
+    await add_station(hass, kitchen, "Hob 1", [("Rice", 60)])
+    station = hass.states.get("binary_sensor.kitchen_hob_1_ringing")
+    area = hass.states.get("binary_sensor.kitchen_home_timer_ringing")
+    assert station.state == area.state == "off"
+    assert station.attributes["device_class"] == area.attributes["device_class"] == "problem"
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_hob_1_start_rice"}, blocking=True)
+    assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "off"
+    await tick(hass, freezer, 61)
+    assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "on"
+    assert hass.states.get("binary_sensor.kitchen_home_timer_ringing").state == "on"
+    await hass.services.async_call(DOMAIN, "acknowledge", {"entity_id": "sensor.kitchen_hob_1"}, blocking=True)
+    assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "off"
+
+
+def test_ringing_state_texts() -> None:
+    import json
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent / "custom_components" / "home_timer" / "translations"
+    for lang, (on, off) in (("en", ("Ringing", "Quiet")), ("de", ("Klingelt", "Still"))):
+        states = json.loads((root / f"{lang}.json").read_text(encoding="utf-8"))["entity"]["binary_sensor"]["ringing"]["state"]
+        assert states == {"on": on, "off": off}
