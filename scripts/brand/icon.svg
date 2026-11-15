@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4DD0E1"/>
+      <stop offset="1" stop-color="#00838F"/>
+    </linearGradient>
+  </defs>
+  <!-- Home Timer brand icon. Drawn from scratch for this project (no template or
+       third-party artwork): a house-shaped icon; inside, a house outline that runs
+       down like a timer, and clock hands. See scripts/brand/README.md. -->
+  <!-- house shape -->
+  <path d="M128 16 L240 108 V212 Q240 238 214 238 H42 Q16 238 16 212 V108 Z" fill="url(#g)"/>
+  <!-- inner outline: track, and the part that is still left (70 %, from the roof's peak clockwise) -->
+  <path d="M128 66 L200 124 V190 Q200 200 190 200 H66 Q56 200 56 190 V124 Z" pathLength="100"
+        fill="none" stroke="#ffffff" stroke-opacity="0.35" stroke-width="12" stroke-linejoin="round"/>
+  <path d="M128 66 L200 124 V190 Q200 200 190 200 H66 Q56 200 56 190 V124 Z" pathLength="100"
+        fill="none" stroke="#ffffff" stroke-width="12" stroke-linejoin="round" stroke-linecap="round"
+        stroke-dasharray="70 100"/>
+  <!-- clock hands -->
+  <path d="M128 150 V126 M128 150 L142.7 158.5" stroke="#ffffff" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="128" cy="150" r="8" fill="#ffffff"/>
+</svg>

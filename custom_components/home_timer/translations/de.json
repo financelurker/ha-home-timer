@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Home Timer",
+        "description": "Ein Eintrag je Bereich. Stationen (Kochfeld, Reiskocher, Badewanne …) fügst du danach am Eintrag hinzu.",
+        "data": {
+          "area_id": "Bereich",
+          "name": "Name"
+        },
+        "data_description": {
+          "area_id": "Jeder Bereich kann nur einmal eingerichtet werden.",
+          "name": "Präfix für die Geräte des Bereichs, z. B. „Küche: Kochfeld 1“. Standard: der Name des Bereichs."
+        }
+      }
+    },
+    "error": {
+      "unknown_area": "Diesen Bereich gibt es nicht (mehr)."
+    },
+    "abort": {
+      "already_configured": "Dieser Bereich ist schon eingerichtet."
+    }
+  }
+}
