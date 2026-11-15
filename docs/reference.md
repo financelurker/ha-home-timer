@@ -61,7 +61,7 @@ On the station's device.
 | `button.<area>_<station>_stop_acknowledge` | acknowledges a ringing timer, cancels a running or paused one |
 | `number.<area>_<station>_custom_timer` | custom duration in minutes (1–600) |
 | `button.<area>_<station>_start_custom_timer` | starts a timer "Timer" with the custom duration |
-| `text.<area>_<station>_save_as_preset` | enter a name: saves the custom timer as a preset of the station |
+| `text.<area>_<station>_save_as_preset` | enter a name: saves the custom timer as a preset of the station; attributes `custom_timer`, `duration` |
 
 Attributes of `sensor.<area>_<station>`:
 

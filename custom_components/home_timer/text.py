@@ -1,4 +1,4 @@
-""""Save as preset" of the area and of each station.
+"""The "save as preset" input of the area and of each station.
 
 Entering a name saves the last custom timer's duration (or the custom duration) as a
 preset of that name and renames the running custom timer. The text itself stays
@@ -41,10 +41,7 @@ class _SavePreset(TextEntity):
     @property
     def extra_state_attributes(self) -> dict[str, object]:
         timer = self.engine.last_custom(self._scope)
-        return {
-            "custom_timer": timer.name if timer else None,
-            "duration": round(self.engine.custom_duration(self._scope)) if timer is None else round(timer.duration),
-        }
+        return {"custom_timer": timer.name if timer else None, "duration": round(self.engine.save_duration(self._scope))}
 
     async def async_set_value(self, value: str) -> None:
         if not value.strip():

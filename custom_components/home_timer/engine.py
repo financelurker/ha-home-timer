@@ -246,7 +246,11 @@ class AreaTimers:
                 }
             last = data.get("last_custom")
             if isinstance(last, dict):
-                self._last_custom = {str(k): v for k, v in last.items() if isinstance(v, dict) and v.get("timer_id")}
+                self._last_custom = {
+                    str(k): v
+                    for k, v in last.items()
+                    if isinstance(v, dict) and v.get("timer_id") and isinstance(v.get("duration"), (int, float))
+                }
         raw_timers = data.get("timers", []) if isinstance(data, dict) else []
         for raw in raw_timers if isinstance(raw_timers, list) else []:
             try:
@@ -263,8 +267,11 @@ class AreaTimers:
             return
         self._running = True
         now = dt_util.utcnow()
-        before = self._data()
         known = self.stations
+        for scope in [s for s in (*self.custom_seconds, *self._last_custom) if s != AREA and s not in known]:
+            self.custom_seconds.pop(scope, None)  # a station deleted meanwhile
+            self._last_custom.pop(scope, None)
+        before = self._data()
         for timer in list(self.timers.values()):
             if timer.id not in self.timers:
                 continue
@@ -366,6 +373,8 @@ class AreaTimers:
         ``note`` replaces the preset's note.
         """
         preset = find_preset(self.presets(station_id), preset_key)
+        if preset is None and station_id is None:
+            raise TimerError("unknown_quick_timer", preset=preset_key, area=self.entry.title)
         if preset is None:
             raise TimerError("unknown_preset", preset=preset_key, station=self.scope_name(station_id))
         return self.start(
@@ -399,9 +408,20 @@ class AreaTimers:
         return timer
 
     def last_custom(self, station_id: str | None) -> Timer | None:
-        """The last custom timer started on the station (or in the area), while it is still there."""
+        """The last custom timer started on the station (or in the area), while it is still there.
+
+        A timer that has moved to another station (assign) no longer counts.
+        """
         info = self._last_custom.get(station_id or AREA)
-        return self.timers.get(info["timer_id"]) if info else None
+        timer = self.timers.get(info["timer_id"]) if info else None
+        return timer if timer is not None and timer.station == station_id else None
+
+    def save_duration(self, station_id: str | None) -> float:
+        """What "save as preset" saves: the last custom timer's duration as started, else the custom duration."""
+        info = self._last_custom.get(station_id or AREA)
+        if info and self.last_custom(station_id) is not None:
+            return float(info["duration"])
+        return self.custom_duration(station_id)
 
     @callback
     def save_preset(self, station_id: str | None, name: str) -> None:
@@ -413,9 +433,8 @@ class AreaTimers:
         name = name.strip()
         if not name:
             raise TimerError("name_required")
-        info = self._last_custom.get(station_id or AREA)
         timer = self.last_custom(station_id)
-        seconds = float(info["duration"]) if timer is not None and info else self.custom_duration(station_id)
+        seconds = self.save_duration(station_id)
         presets = [p.to_data() for p in self.presets(station_id)]
         existing = next((p for p in presets if p["name"].casefold() == name.casefold()), None)
         if existing is not None:
@@ -426,6 +445,8 @@ class AreaTimers:
         if timer is not None:
             timer.name = name
             timer.preset = name
+            if existing is not None and not timer.note:
+                timer.note = existing.get("note")
             self._last_custom.pop(station_id or AREA, None)
             self._changed()
         if station_id is None:

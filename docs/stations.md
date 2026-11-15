@@ -38,7 +38,7 @@ Renaming a preset keeps its button (its entity id stays); deleting a preset remo
 
 ## Creating presets while cooking
 
-Presets do not have to be set up beforehand: set *Custom timer* (e.g. 9 minutes), press *Start custom timer*, and while it runs enter "Pasta" in *Save as preset*. The station gets a preset *Pasta* (9 min) with its button *Start Pasta*, and its running timer is renamed "Pasta". A preset of the same name gets the new duration; without a running custom timer the custom duration is saved. Saved presets show up in **Configure station**, where they can be changed or deleted. Saving reloads the area; the timer goes on.
+Presets do not have to be set up beforehand: set *Custom timer* (e.g. 9 minutes), press *Start custom timer*, and while it runs enter "Pasta" in *Save as preset*. The station gets a preset *Pasta* (9 min) with its button *Start Pasta*, and its timer is renamed "Pasta". A preset of the same name gets the new duration; if the custom timer is gone (acknowledged, cancelled, replaced or moved), the custom duration is saved. Saved presets show up in **Configure station**, where they can be changed or deleted. Saving reloads the area; the timer goes on.
 
 ## One timer per station
 

@@ -34,7 +34,7 @@ async def save(hass, entity_id, name):
 
 
 async def test_area_entities(hass: HomeAssistant, kitchen) -> None:
-    assert hass.states.get(MINUTES).state == "5.0"
+    assert hass.states.get(MINUTES).state == "5"
     assert hass.states.get(START) is not None
     assert hass.states.get(SAVE).state == ""
 
@@ -107,8 +107,8 @@ async def test_custom_duration_survives_a_reload(hass: HomeAssistant, kitchen) -
     await set_minutes(hass, HOB_MINUTES, 3)
     assert await hass.config_entries.async_reload(kitchen.entry_id)
     await hass.async_block_till_done()
-    assert hass.states.get(MINUTES).state == "12.0"
-    assert hass.states.get(HOB_MINUTES).state == "3.0"
+    assert hass.states.get(MINUTES).state == "12"
+    assert hass.states.get(HOB_MINUTES).state == "3"
     assert kitchen.runtime_data.custom_duration(hob) == 180
 
 
@@ -124,4 +124,88 @@ async def test_quick_timer_by_action(hass: HomeAssistant, kitchen) -> None:
     assert response["timer"]["station"] is None
     with pytest.raises(ServiceValidationError) as err:
         await hass.services.async_call(DOMAIN, "start", {"area_id": kitchen.data["area_id"], "preset": "Soup"}, blocking=True)
-    assert err.value.translation_key == "unknown_preset"
+    assert err.value.translation_key == "unknown_quick_timer"
+
+
+async def test_moved_custom_timer_is_no_longer_meant(hass: HomeAssistant, kitchen) -> None:
+    await add_station(hass, kitchen, "Hob 1")
+    await set_minutes(hass, MINUTES, 4)
+    await press(hass, START)
+    timer = next(iter(kitchen.runtime_data.timers.values()))
+    await hass.services.async_call(DOMAIN, "assign", {"timer_id": timer.id, "entity_id": "sensor.kitchen_hob_1"}, blocking=True)
+    await save(hass, SAVE, "Tea")
+    assert kitchen.runtime_data.timers[timer.id].name == "Timer"
+    assert [(p["name"], p["duration"]) for p in kitchen.options["presets"]] == [("Tea", 240)]
+
+
+async def test_saved_duration_is_the_started_one(hass: HomeAssistant, kitchen) -> None:
+    await set_minutes(hass, MINUTES, 3)
+    await press(hass, START)
+    timer = next(iter(kitchen.runtime_data.timers.values()))
+    kitchen.runtime_data.add_time(timer.id, 120)
+    await hass.async_block_till_done()
+    assert hass.states.get(SAVE).attributes["duration"] == 180
+    await save(hass, SAVE, "Short")
+    assert kitchen.options["presets"][0]["duration"] == 180
+
+
+async def test_unknown_quick_timer_message(hass: HomeAssistant, kitchen) -> None:
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(DOMAIN, "start", {"area_id": kitchen.data["area_id"], "preset": "Soup"}, blocking=True)
+    assert err.value.translation_key == "unknown_quick_timer"
+    assert "quick timer" in str(err.value)
+
+
+async def test_save_while_ringing_and_onto_a_preset_in_other_case(hass: HomeAssistant, kitchen, freezer) -> None:
+    hob = await add_station(hass, kitchen, "Hob 1", [("Rice", 600, "Lid on")])
+    await set_minutes(hass, HOB_MINUTES, 1)
+    await press(hass, HOB_START)
+    await tick(hass, freezer, 61)
+    assert hass.states.get("sensor.kitchen_hob_1").state == "ringing"
+    await save(hass, HOB_SAVE, "RICE")
+    presets = kitchen.subentries[hob].data["presets"]
+    assert [(p["name"], p["duration"]) for p in presets] == [("Rice", 60)]
+    attrs = hass.states.get("sensor.kitchen_hob_1").attributes
+    assert (attrs["timer_name"], attrs["note"]) == ("Rice", "Lid on")
+
+
+async def test_open_options_flow_keeps_presets_saved_meanwhile(hass: HomeAssistant, kitchen) -> None:
+    from homeassistant.data_entry_flow import FlowResultType
+
+    hass.config_entries.async_update_entry(kitchen, options={"presets": [{"id": "e1", "name": "Eggs", "duration": 360}]})
+    await hass.async_block_till_done()
+    result = await hass.config_entries.options.async_init(kitchen.entry_id)
+    await set_minutes(hass, MINUTES, 4)
+    await save(hass, SAVE, "Tea")  # while the flow is open
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "add_preset"})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"name": "Dough", "duration": {"minutes": 30}})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "edit_preset"})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"preset": "e1"})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"name": "Eggs", "duration": {"minutes": 6}, "delete": True}
+    )
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "done"})
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    assert [p["name"] for p in kitchen.options["presets"]] == ["Tea", "Dough"]
+
+
+async def test_upgrade_without_new_store_keys(hass: HomeAssistant, hass_storage) -> None:
+    from homeassistant.helpers import area_registry as ar
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.home_timer.const import CONF_AREA_ID, STORAGE_VERSION
+    from custom_components.home_timer.engine import storage_key
+
+    area = ar.async_get(hass).async_create("Kitchen")
+    entry = MockConfigEntry(domain=DOMAIN, title="Kitchen", unique_id=area.id, data={CONF_AREA_ID: area.id},
+                            options={"reminder_minutes": 3})
+    hass_storage[storage_key(entry.entry_id)] = {"version": STORAGE_VERSION, "key": storage_key(entry.entry_id),
+                                                 "data": {"timers": [], "last_custom": {"": {"timer_id": "x"}}}}
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(MINUTES).state == "5"
+    await save(hass, SAVE, "Five")  # corrupt last_custom is ignored: the custom duration is saved
+    assert entry.options["presets"][0]["duration"] == 300
+    assert entry.options["reminder_minutes"] == 3

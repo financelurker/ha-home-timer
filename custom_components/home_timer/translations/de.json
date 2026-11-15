@@ -71,7 +71,7 @@
           "name": "Name",
           "duration": "Dauer",
           "note": "Notiz",
-          "delete": "Diese Vorlage löschen"
+          "delete": "Diesen Schnell-Timer löschen"
         },
         "data_description": {
           "name": "Wird zum Namen des Timers, z. B. „Reis“.",
@@ -186,7 +186,7 @@
     },
     "number": {
       "custom_minutes": {
-        "name": "Eigene Dauer"
+        "name": "Eigener Timer"
       }
     },
     "text": {
@@ -372,6 +372,9 @@
     },
     "name_required": {
       "message": "Gib einen Namen ein."
+    },
+    "unknown_quick_timer": {
+      "message": "Der Bereich {area} hat keinen Schnell-Timer „{preset}“."
     }
   },
   "config_subentries": {

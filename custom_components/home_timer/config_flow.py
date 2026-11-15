@@ -208,6 +208,7 @@ class HomeTimerOptionsFlow(PresetSteps, OptionsFlow):
     def __init__(self) -> None:
         self._behaviour: dict[str, Any] = {}
         self._presets: list[dict[str, Any]] = []
+        self._started_with: dict[str, dict[str, Any]] = {}
         self._editing: str | None = None
         self._label = ""
 
@@ -215,6 +216,7 @@ class HomeTimerOptionsFlow(PresetSteps, OptionsFlow):
         options = self.config_entry.options
         self._behaviour = {key: options.get(key, default) for key, default in DEFAULT_OPTIONS.items()}
         self._presets = [dict(p) for p in options.get(CONF_PRESETS, [])]
+        self._started_with = {p["id"]: dict(p) for p in self._presets}
         self._label = self.config_entry.title
         return await self.async_step_menu()
 
@@ -251,7 +253,24 @@ class HomeTimerOptionsFlow(PresetSteps, OptionsFlow):
         )
 
     async def async_step_done(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        return self.async_create_entry(data={**self._behaviour, CONF_PRESETS: self._presets})
+        return self.async_create_entry(data={**self._behaviour, CONF_PRESETS: self._merged_presets()})
+
+    def _merged_presets(self) -> list[dict[str, Any]]:
+        """The flow's changes applied to the presets as they are now.
+
+        Quick timers may have been saved from the dashboard while this flow was open;
+        those are kept. Only what was added, changed or deleted here is applied.
+        """
+        mine = {p["id"]: p for p in self._presets}
+        result: list[dict[str, Any]] = []
+        for preset in self.config_entry.options.get(CONF_PRESETS, []):
+            pid = preset.get("id")
+            if pid in self._started_with and pid not in mine:
+                continue  # deleted here
+            result.append(dict(mine.get(pid, preset)))
+        known = {p.get("id") for p in result}
+        result += [dict(p) for p in self._presets if p["id"] not in self._started_with and p["id"] not in known]
+        return result
 
 
 class StationFlow(PresetSteps, ConfigSubentryFlow):

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.components.number import NumberEntity, NumberMode
+from homeassistant.components.number import NumberDeviceClass, NumberEntity, NumberMode
 from homeassistant.const import UnitOfTime
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
@@ -31,6 +31,7 @@ class _CustomMinutes(NumberEntity):
     _attr_native_max_value = 600
     _attr_native_step = 1
     _attr_mode = NumberMode.BOX
+    _attr_device_class = NumberDeviceClass.DURATION
     _attr_native_unit_of_measurement = UnitOfTime.MINUTES
 
     @property
@@ -39,7 +40,8 @@ class _CustomMinutes(NumberEntity):
 
     @property
     def native_value(self) -> float:
-        return round(self.engine.custom_duration(self._scope) / 60, 2)
+        minutes = self.engine.custom_duration(self._scope) / 60
+        return int(minutes) if minutes == int(minutes) else round(minutes, 2)
 
     async def async_set_native_value(self, value: float) -> None:
         try:

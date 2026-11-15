@@ -71,7 +71,7 @@
           "name": "Name",
           "duration": "Duration",
           "note": "Note",
-          "delete": "Delete this preset"
+          "delete": "Delete this quick timer"
         },
         "data_description": {
           "name": "Becomes the timer's name, e.g. \"Rice\".",
@@ -372,6 +372,9 @@
     },
     "name_required": {
       "message": "Enter a name."
+    },
+    "unknown_quick_timer": {
+      "message": "The area {area} has no quick timer \"{preset}\"."
     }
   },
   "config_subentries": {
