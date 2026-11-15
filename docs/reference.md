@@ -56,7 +56,7 @@ On the station's device.
 | Entity | Description |
 |---|---|
 | `sensor.<area>_<station>` | the station's timer: `idle`, `active`, `paused`, `ringing` |
-| `binary_sensor.<area>_<station>_ringing` | *Ringing* while the station's timer rings, else *Quiet* – shown red while it rings (device class *problem*) |
+| `binary_sensor.<area>_<station>_ringing` | *Ringing* while the station's timer rings, else *Quiet* – shown red while it rings (device class *problem*). With *Ring until acknowledged* off a timer never rings, so it stays *Quiet* |
 | `sensor.<area>_<station>_timer_end` | when the timer runs out (timestamp, while active); for an open timer the expected end |
 | `button.<area>_<station>_start_<preset>` | starts the preset (one per preset) |
 | `button.<area>_<station>_pause_resume` | pauses or resumes the timer |
