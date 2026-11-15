@@ -1,0 +1,49 @@
+{
+  "entity": {
+    "sensor": {
+      "timers": {
+        "default": "mdi:timer-outline",
+        "range": {
+          "0": "mdi:timer-off-outline",
+          "1": "mdi:timer-outline"
+        }
+      }
+    },
+    "binary_sensor": {
+      "ringing": {
+        "default": "mdi:bell-outline",
+        "state": {
+          "on": "mdi:bell-ring"
+        }
+      }
+    },
+    "button": {
+      "acknowledge_all": {
+        "default": "mdi:bell-check-outline"
+      }
+    }
+  },
+  "services": {
+    "start": {
+      "service": "mdi:timer-play-outline"
+    },
+    "pause": {
+      "service": "mdi:timer-pause-outline"
+    },
+    "resume": {
+      "service": "mdi:timer-play-outline"
+    },
+    "add_time": {
+      "service": "mdi:timer-plus-outline"
+    },
+    "subtract_time": {
+      "service": "mdi:timer-minus-outline"
+    },
+    "cancel": {
+      "service": "mdi:timer-cancel-outline"
+    },
+    "acknowledge": {
+      "service": "mdi:bell-check-outline"
+    }
+  }
+}

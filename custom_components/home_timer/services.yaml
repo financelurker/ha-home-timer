@@ -1,0 +1,63 @@
+start:
+  target:
+    entity:
+      integration: home_timer
+  fields:
+    name:
+      required: true
+      example: Let dough rest
+      selector:
+        text:
+    duration:
+      required: true
+      example: "00:30:00"
+      selector:
+        duration:
+    note:
+      example: Cover with a towel
+      selector:
+        text:
+    source:
+      example: '{"my_script": {"step": 2}}'
+      selector:
+        object:
+
+pause:
+  fields:
+    timer_id: &timer_id
+      required: true
+      example: 01JD7Q0000000000000000000
+      selector:
+        text:
+
+resume:
+  fields:
+    timer_id: *timer_id
+
+add_time:
+  fields:
+    timer_id: *timer_id
+    duration: &time
+      required: true
+      example: "00:01:00"
+      selector:
+        duration:
+
+subtract_time:
+  fields:
+    timer_id: *timer_id
+    duration: *time
+
+cancel:
+  fields:
+    timer_id: *timer_id
+
+acknowledge:
+  target:
+    entity:
+      integration: home_timer
+  fields:
+    timer_id:
+      example: 01JD7Q0000000000000000000
+      selector:
+        text:

@@ -1,4 +1,4 @@
-"""Setup: one entry per area, named after the area unless a name is given."""
+"""Setup: one entry per area, named after the area; options per area."""
 
 from __future__ import annotations
 
@@ -25,15 +25,6 @@ async def test_area_named_after_the_area(hass: HomeAssistant) -> None:
     assert result["result"].unique_id == kitchen.id
 
 
-async def test_own_name(hass: HomeAssistant) -> None:
-    kitchen = ar.async_get(hass).async_create("Kitchen")
-    result = await _start(hass)
-    result = await hass.config_entries.flow.async_configure(
-        result["flow_id"], {CONF_AREA_ID: kitchen.id, "name": "  Cooking  "}
-    )
-    assert result["title"] == "Cooking"
-
-
 async def test_area_only_once(hass: HomeAssistant) -> None:
     kitchen = ar.async_get(hass).async_create("Kitchen")
     for expected in (FlowResultType.CREATE_ENTRY, FlowResultType.ABORT):
@@ -48,3 +39,29 @@ async def test_unknown_area(hass: HomeAssistant) -> None:
     result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_AREA_ID: "gone"})
     assert result["type"] is FlowResultType.FORM
     assert result["errors"] == {CONF_AREA_ID: "unknown_area"}
+
+
+async def test_options(hass: HomeAssistant) -> None:
+    from .conftest import setup_area
+
+    entry = await setup_area(hass, "Kitchen")
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.FORM
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"],
+        {
+            "ring_until_acknowledged": False,
+            "reminder_minutes": 5.0,
+            "auto_dismiss_minutes": 0,
+            "report_missed": False,
+        },
+    )
+    await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert entry.options == {
+        "ring_until_acknowledged": False,
+        "reminder_minutes": 5,
+        "auto_dismiss_minutes": 0,
+        "report_missed": False,
+    }
+    assert entry.runtime_data.option("reminder_minutes") == 5

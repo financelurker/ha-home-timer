@@ -23,7 +23,7 @@ async def test_hub_device_in_the_area(hass: HomeAssistant) -> None:
     entry = await _setup(hass, kitchen.id)
     device = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
     assert device is not None
-    assert device.name == "Kitchen: Home Timer"
+    assert device.name == "Home Timer"
     assert device.area_id == kitchen.id
 
 
@@ -78,3 +78,23 @@ async def test_area_gone_before_the_first_setup(hass: HomeAssistant) -> None:
     device = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
     assert device is not None
     assert device.area_id is None
+
+
+async def test_device_of_0_0_1_loses_its_area_prefix(hass: HomeAssistant) -> None:
+    kitchen = ar.async_get(hass).async_create("Kitchen")
+    entry = MockConfigEntry(domain=DOMAIN, title="Kitchen", unique_id=kitchen.id, data={CONF_AREA_ID: kitchen.id})
+    entry.add_to_hass(hass)
+    old = dr.async_get(hass).async_get_or_create(
+        config_entry_id=entry.entry_id, identifiers={(DOMAIN, entry.entry_id)}, name="Kitchen: Home Timer"
+    )
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert dr.async_get(hass).async_get(old.id).name == "Home Timer"
+
+
+async def test_entity_ids_carry_the_area_once(hass: HomeAssistant) -> None:
+    kitchen = ar.async_get(hass).async_create("Kitchen")
+    await _setup(hass, kitchen.id)
+    assert hass.states.get("sensor.kitchen_home_timer_timers") is not None
+    assert hass.states.get("binary_sensor.kitchen_home_timer_ringing") is not None
+    assert hass.states.get("button.kitchen_home_timer_acknowledge_all") is not None
