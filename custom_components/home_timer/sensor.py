@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from homeassistant.components.sensor import SensorEntity, SensorStateClass
+from homeassistant.components.sensor import SensorEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.util import dt as dt_util
@@ -17,13 +17,12 @@ from .entity import AreaEntity
 async def async_setup_entry(
     hass: HomeAssistant, entry: HomeTimerConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
-    async_add_entities([ActiveTimersSensor(entry.runtime_data, "active_timers")])
+    async_add_entities([TimersSensor(entry.runtime_data, "timers")])
 
 
-class ActiveTimersSensor(AreaEntity, SensorEntity):
-    """Timers that are active, paused or ringing; ``timers`` lists them, soonest end first."""
+class TimersSensor(AreaEntity, SensorEntity):
+    """How many timers the area has (active, paused or ringing); ``timers`` lists them."""
 
-    _attr_state_class = SensorStateClass.MEASUREMENT
     _unrecorded_attributes = frozenset({"timers"})
 
     @property

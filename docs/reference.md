@@ -8,15 +8,15 @@ Entities of an area, on its *Home Timer* device. `<area>` is the area's part of 
 
 | Entity | Description |
 |---|---|
-| `sensor.<area>_home_timer_active_timers` | number of timers that are active, paused or ringing |
+| `sensor.<area>_home_timer_timers` | *Timers*: how many timers the area has (active, paused or ringing) |
 | `binary_sensor.<area>_home_timer_ringing` | on while any timer of the area rings |
 | `button.<area>_home_timer_acknowledge_all` | acknowledges all ringing timers of the area (does nothing while none rings) |
 
-## Attributes of *Active timers*
+## Attributes of *Timers*
 
 | Attribute | Description |
 |---|---|
-| `ringing` | how many timers ring |
+| `ringing` | *Ringing timers*: how many timers ring |
 | `next_end` | when the next active timer runs out (ISO timestamp), or empty |
 | `next_name` | that timer's name |
 | `timers` | all timers, ringing first, then by remaining time (not recorded in the history) |

@@ -30,21 +30,21 @@
           "report_missed": "Verpasste Timer melden"
         },
         "data_description": {
-          "ring_until_acknowledged": "Der Timer bleibt nach Ablauf im Zustand „klingelt“, bis er bestätigt wird. Aus: Er ist gleich nach dem Ablauf-Event weg.",
-          "reminder_minutes": "Solange ein Timer klingelt, alle so viele Minuten ein Erinnerungs-Event. 0: keine Erinnerungen.",
-          "auto_dismiss_minutes": "Ein klingelnder Timer wird nach so vielen Minuten von selbst bestätigt. 0: Er klingelt, bis er bestätigt wird.",
-          "report_missed": "Ein Timer, der während eines Neustarts von Home Assistant abgelaufen ist, wird gleich nach dem Start gemeldet (Ablauf-Event mit „late“). Aus: Er wird verworfen."
+          "ring_until_acknowledged": "Der Timer bleibt nach Ablauf im Zustand „klingelt“, bis er bestätigt wird. Aus: Er wird direkt nach dem Ablauf-Ereignis entfernt; Timer, die beim Ausschalten klingeln, werden bestätigt.",
+          "reminder_minutes": "Solange ein Timer klingelt, alle so viele Minuten ein Erinnerungs-Ereignis. 0: keine Erinnerungen.",
+          "auto_dismiss_minutes": "Ein klingelnder Timer wird nach so vielen Minuten von selbst bestätigt (bei einem während eines Neustarts verpassten Timer ab dem Start gezählt). 0: Er klingelt, bis er bestätigt wird.",
+          "report_missed": "Ein Timer, der während eines Neustarts von Home Assistant abgelaufen ist, wird gleich nach dem Start gemeldet (Ablauf-Ereignis mit „late“). Aus: Er wird verworfen."
         }
       }
     }
   },
   "entity": {
     "sensor": {
-      "active_timers": {
-        "name": "Aktive Timer",
+      "timers": {
+        "name": "Timer",
         "state_attributes": {
           "ringing": {
-            "name": "Klingelt"
+            "name": "Klingelnde Timer"
           },
           "next_end": {
             "name": "Nächstes Ende"
@@ -72,7 +72,7 @@
   "services": {
     "start": {
       "name": "Starten",
-      "description": "Startet einen Timer in einem Bereich.",
+      "description": "Startet einen Timer in einem Bereich (Ziel: der Bereich, sein Home-Timer-Gerät oder seine Entitäten).",
       "fields": {
         "name": {
           "name": "Name",
@@ -83,12 +83,12 @@
           "description": "Wie lange der Timer läuft."
         },
         "note": {
-          "name": "Hinweis",
-          "description": "Optionaler Text, der in den Events des Timers mitgeht, z. B. für die Benachrichtigung."
+          "name": "Notiz",
+          "description": "Optionaler Text, der in den Ereignissen des Timers mitgeht, z. B. für die Benachrichtigung."
         },
         "source": {
           "name": "Quelle",
-          "description": "Optionale Daten des Aufrufers (ein Skript, eine andere Integration); kommen in jedem Event des Timers zurück."
+          "description": "Optionale Daten des Aufrufers (ein Skript, eine andere Integration); werden in jedem Ereignis des Timers mitgeliefert."
         }
       }
     },
@@ -98,7 +98,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Event (timer_id) oder dem Attribut timers des Bereichs-Sensors."
+          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Ereignis (timer_id) oder dem Attribut timers des Timer-Sensors."
         }
       }
     },
@@ -108,7 +108,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Event (timer_id) oder dem Attribut timers des Bereichs-Sensors."
+          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Ereignis (timer_id) oder dem Attribut timers des Timer-Sensors."
         }
       }
     },
@@ -118,7 +118,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Event (timer_id) oder dem Attribut timers des Bereichs-Sensors."
+          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Ereignis (timer_id) oder dem Attribut timers des Timer-Sensors."
         },
         "duration": {
           "name": "Dauer",
@@ -128,11 +128,11 @@
     },
     "subtract_time": {
       "name": "Zeit abziehen",
-      "description": "Verkürzt einen Timer. Bei null läuft er ab.",
+      "description": "Verkürzt einen Timer. Erreicht er null, läuft er ab.",
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Event (timer_id) oder dem Attribut timers des Bereichs-Sensors."
+          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Ereignis (timer_id) oder dem Attribut timers des Timer-Sensors."
         },
         "duration": {
           "name": "Dauer",
@@ -146,7 +146,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Event (timer_id) oder dem Attribut timers des Bereichs-Sensors."
+          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Ereignis (timer_id) oder dem Attribut timers des Timer-Sensors."
         }
       }
     },
@@ -180,17 +180,17 @@
     "ringing": {
       "message": "Der Timer „{name}“ klingelt; bestätige ihn oder füge Zeit hinzu."
     },
-    "area_not_set_up": {
-      "message": "Der Bereich {area} ist in Home Timer nicht eingerichtet."
-    },
-    "not_a_home_timer_device": {
-      "message": "Das Gerät {device} gehört nicht zu Home Timer."
-    },
     "one_area": {
-      "message": "Wähle genau einen Bereich (oder sein Home-Timer-Gerät) für den Timer."
+      "message": "Das Ziel muss genau einen in Home Timer eingerichteten Bereich erreichen."
     },
     "timer_or_area": {
       "message": "Gib eine Timer-ID an oder wähle einen Bereich."
+    },
+    "no_area_in_target": {
+      "message": "Das Ziel erreicht keinen in Home Timer eingerichteten Bereich."
+    },
+    "invalid_source": {
+      "message": "Die Quelle muss aus Daten bestehen, die als JSON gespeichert werden können."
     }
   }
 }

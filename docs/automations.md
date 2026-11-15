@@ -4,7 +4,7 @@
 
 ## Actions
 
-Start a timer with `home_timer.start`. The target is the area (or its *Home Timer* device):
+Start a timer with `home_timer.start`. The target is the area – or anything that leads to exactly one area set up in Home Timer: its *Home Timer* device or entities, a floor or a label (resolved like any target in Home Assistant):
 
 ```yaml
 action: home_timer.start
@@ -19,7 +19,7 @@ data:
 response_variable: started         # optional: started.timer.id is the timer's id
 ```
 
-The other actions take the timer's id – from the response above, from an event (`timer_id`) or from the area sensor's `timers` attribute:
+The other actions take the timer's id – from the response above, from an event (`timer_id`) or from the *Timers* sensor's `timers` attribute:
 
 | Action | Data | Description |
 |---|---|---|
@@ -28,9 +28,9 @@ The other actions take the timer's id – from the response above, from an event
 | `home_timer.add_time` | `timer_id`, `duration` | extends a timer; a ringing timer starts again |
 | `home_timer.subtract_time` | `timer_id`, `duration` | shortens a timer; down to zero it runs out |
 | `home_timer.cancel` | `timer_id` | cancels a timer, whatever its state |
-| `home_timer.acknowledge` | `timer_id`, or a target (area / device) | acknowledges one ringing timer, or all ringing timers of the targeted areas |
+| `home_timer.acknowledge` | `timer_id`, or a target (areas, floor, devices …) | acknowledges one ringing timer, or all ringing timers of the targeted areas |
 
-An action that does not fit the timer's state (pause a paused timer, acknowledge one that does not ring) fails with a message saying why.
+Durations must be at least one second. An action that does not fit the timer's state (pause a paused timer, acknowledge one that does not ring) fails with a message saying why.
 
 ## Events
 
@@ -39,7 +39,7 @@ An action that does not fit the timer's state (pause a paused timer, acknowledge
 | `home_timer_started` | a timer starts | |
 | `home_timer_paused` | it is paused | |
 | `home_timer_resumed` | it is resumed | |
-| `home_timer_time_changed` | time is added or subtracted | `change` (seconds, negative when subtracted) |
+| `home_timer_time_changed` | time is added or subtracted | `change` (seconds, negative when subtracted; at most what was left) |
 | `home_timer_finished` | it runs out | `late` (`true`: it ran out during a restart) |
 | `home_timer_reminder` | while it rings, every few minutes | `overtime` (seconds since it ran out) |
 | `home_timer_cancelled` | it is cancelled | `reason`: `manual` or `replaced` |
@@ -74,7 +74,11 @@ actions:
     data:
       title: "⏱ {{ trigger.event.data.name }}"
       message: >-
-        Done{{ ' (during a restart)' if trigger.event.data.late else '' }}.
+        {% if trigger.event.event_type == 'home_timer_reminder' %}
+          Done {{ (trigger.event.data.overtime / 60) | round | int }} min ago.
+        {% else %}
+          Done{{ ' (during a restart)' if trigger.event.data.get('late') else '' }}.
+        {% endif %}
         {{ trigger.event.data.note or '' }}
       data:
         tag: "home_timer_{{ trigger.event.data.timer_id }}"

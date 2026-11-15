@@ -95,6 +95,6 @@ async def test_device_of_0_0_1_loses_its_area_prefix(hass: HomeAssistant) -> Non
 async def test_entity_ids_carry_the_area_once(hass: HomeAssistant) -> None:
     kitchen = ar.async_get(hass).async_create("Kitchen")
     await _setup(hass, kitchen.id)
-    assert hass.states.get("sensor.kitchen_home_timer_active_timers") is not None
+    assert hass.states.get("sensor.kitchen_home_timer_timers") is not None
     assert hass.states.get("binary_sensor.kitchen_home_timer_ringing") is not None
     assert hass.states.get("button.kitchen_home_timer_acknowledge_all") is not None

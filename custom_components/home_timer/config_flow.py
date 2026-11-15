@@ -74,8 +74,8 @@ class HomeTimerOptionsFlow(OptionsFlowWithReload):
         if user_input is not None:
             data = {
                 CONF_RING_UNTIL_ACK: bool(user_input[CONF_RING_UNTIL_ACK]),
-                CONF_REMINDER_MINUTES: int(user_input[CONF_REMINDER_MINUTES]),
-                CONF_AUTO_DISMISS_MINUTES: int(user_input[CONF_AUTO_DISMISS_MINUTES]),
+                CONF_REMINDER_MINUTES: round(user_input[CONF_REMINDER_MINUTES]),
+                CONF_AUTO_DISMISS_MINUTES: round(user_input[CONF_AUTO_DISMISS_MINUTES]),
                 CONF_REPORT_MISSED: bool(user_input[CONF_REPORT_MISSED]),
             }
             return self.async_create_entry(data=data)

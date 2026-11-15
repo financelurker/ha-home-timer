@@ -1,4 +1,4 @@
-"""Setup: one entry per area, named after the area unless a name is given."""
+"""Setup: one entry per area, named after the area; options per area."""
 
 from __future__ import annotations
 

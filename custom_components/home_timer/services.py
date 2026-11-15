@@ -1,11 +1,13 @@
 """Actions of Home Timer.
 
-Targets: an area (``area_id``) or the area's device (``device_id``), as picked in the
-action editor's target selector, or a timer by ``timer_id``.
+Targets: whatever the action editor's target selector picks (area, floor, label,
+device, entity) – it resolves to the Home Timer areas it reaches – or a timer by
+``timer_id``.
 """
 
 from __future__ import annotations
 
+from datetime import timedelta
 from typing import Any
 
 import voluptuous as vol
@@ -13,6 +15,8 @@ from homeassistant.core import HomeAssistant, ServiceCall, ServiceResponse, Supp
 from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers.target import TargetSelection, async_extract_referenced_entity_ids
 
 from .const import (
     ATTR_DURATION,
@@ -21,6 +25,7 @@ from .const import (
     ATTR_SOURCE,
     ATTR_TIMER_ID,
     BY_ACTION,
+    CONF_AREA_ID,
     DOMAIN,
     SERVICE_ACKNOWLEDGE,
     SERVICE_ADD_TIME,
@@ -32,18 +37,11 @@ from .const import (
 )
 from .engine import AreaTimers, TimerError
 
-ATTR_AREA_ID = "area_id"
-ATTR_DEVICE_ID = "device_id"
-
-_TARGET = {
-    vol.Optional(ATTR_AREA_ID): vol.All(cv.ensure_list, [cv.string]),
-    vol.Optional(ATTR_DEVICE_ID): vol.All(cv.ensure_list, [cv.string]),
-}
-_DURATION = vol.All(cv.time_period, cv.positive_timedelta)
+_DURATION = vol.All(cv.time_period, vol.Range(min=timedelta(seconds=1)))
 
 START_SCHEMA = vol.Schema(
     {
-        **_TARGET,
+        **cv.TARGET_SERVICE_FIELDS,
         vol.Required(ATTR_NAME): vol.All(cv.string, vol.Length(min=1)),
         vol.Required(ATTR_DURATION): _DURATION,
         vol.Optional(ATTR_NOTE): cv.string,
@@ -52,11 +50,12 @@ START_SCHEMA = vol.Schema(
 )
 TIMER_SCHEMA = vol.Schema({vol.Required(ATTR_TIMER_ID): cv.string})
 TIME_SCHEMA = vol.Schema({vol.Required(ATTR_TIMER_ID): cv.string, vol.Required(ATTR_DURATION): _DURATION})
-ACKNOWLEDGE_SCHEMA = vol.Schema({**_TARGET, vol.Optional(ATTR_TIMER_ID): cv.string})
+ACKNOWLEDGE_SCHEMA = vol.Schema({**cv.TARGET_SERVICE_FIELDS, vol.Optional(ATTR_TIMER_ID): cv.string})
 
 
 def _engines(hass: HomeAssistant) -> dict[str, AreaTimers]:
-    return hass.data.get(DOMAIN, {})
+    """The loaded areas by config entry id."""
+    return {e.entry_id: e.runtime_data for e in hass.config_entries.async_loaded_entries(DOMAIN)}
 
 
 def _error(key: str, **placeholders: Any) -> ServiceValidationError:
@@ -68,21 +67,32 @@ def _error(key: str, **placeholders: Any) -> ServiceValidationError:
 
 
 def _targeted(hass: HomeAssistant, call: ServiceCall) -> list[AreaTimers]:
-    """The areas named by the call's target (area or Home Timer device)."""
+    """The areas a call's target refers to (empty without a target).
+
+    Any target works – area, floor, label, device, entity: it refers to an area when
+    it reaches that area's Home Timer device or entities, or names the area itself.
+    """
+    selection = TargetSelection(call.data)
+    if not selection.has_any_target:
+        return []
+    selected = async_extract_referenced_entity_ids(hass, selection, primary_entities_only=False)
     engines = _engines(hass)
     found: dict[str, AreaTimers] = {}
-    for area_id in call.data.get(ATTR_AREA_ID, []):
-        matches = [e for e in engines.values() if e.area_id == area_id]
-        if not matches:
-            raise _error("area_not_set_up", area=area_id)
-        found.update({e.entry.entry_id: e for e in matches})
     devices = dr.async_get(hass)
-    for device_id in call.data.get(ATTR_DEVICE_ID, []):
+    for device_id in selected.referenced_devices:
         device = devices.async_get(device_id)
-        engine = next((engines[i] for i in (device.config_entries if device else ()) if i in engines), None)
-        if engine is None:
-            raise _error("not_a_home_timer_device", device=device_id)
-        found[engine.entry.entry_id] = engine
+        if device is not None and device.config_entry_id in engines:
+            found[device.config_entry_id] = engines[device.config_entry_id]
+    entities = er.async_get(hass)
+    for entity_id in selected.referenced | selected.indirectly_referenced:
+        entity = entities.async_get(entity_id)
+        if entity is not None and entity.config_entry_id in engines:
+            found[entity.config_entry_id] = engines[entity.config_entry_id]
+    for entry_id, engine in engines.items():
+        if engine.entry.data[CONF_AREA_ID] in selected.referenced_areas:
+            found[entry_id] = engine
+    if not found:
+        raise _error("no_area_in_target")
     return list(found.values())
 
 

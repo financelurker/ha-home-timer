@@ -30,9 +30,9 @@
           "report_missed": "Report missed timers"
         },
         "data_description": {
-          "ring_until_acknowledged": "The timer stays \"ringing\" after it runs out, until it is acknowledged. Off: it is gone right after the finished event.",
+          "ring_until_acknowledged": "The timer stays \"ringing\" after it runs out, until it is acknowledged. Off: it is gone right after the finished event; timers ringing when you turn it off are acknowledged.",
           "reminder_minutes": "While a timer rings, a reminder event every so many minutes. 0: no reminders.",
-          "auto_dismiss_minutes": "A ringing timer is acknowledged by itself after so many minutes. 0: it rings until acknowledged.",
+          "auto_dismiss_minutes": "A ringing timer is acknowledged by itself after so many minutes (for a timer missed during a restart: counted from the start). 0: it rings until acknowledged.",
           "report_missed": "A timer that ran out while Home Assistant was restarting is reported right after the start (finished event with \"late\"). Off: it is dropped."
         }
       }
@@ -40,11 +40,11 @@
   },
   "entity": {
     "sensor": {
-      "active_timers": {
-        "name": "Active timers",
+      "timers": {
+        "name": "Timers",
         "state_attributes": {
           "ringing": {
-            "name": "Ringing"
+            "name": "Ringing timers"
           },
           "next_end": {
             "name": "Next end"
@@ -72,7 +72,7 @@
   "services": {
     "start": {
       "name": "Start",
-      "description": "Starts a timer in an area.",
+      "description": "Starts a timer in an area (target: the area, its Home Timer device or its entities).",
       "fields": {
         "name": {
           "name": "Name",
@@ -98,7 +98,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer's id, from the start action's response, an event (timer_id) or the area sensor's timers attribute."
+          "description": "The timer's id, from the start action's response, an event (timer_id) or the timers sensor's timers attribute."
         }
       }
     },
@@ -108,7 +108,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer's id, from the start action's response, an event (timer_id) or the area sensor's timers attribute."
+          "description": "The timer's id, from the start action's response, an event (timer_id) or the timers sensor's timers attribute."
         }
       }
     },
@@ -118,7 +118,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer's id, from the start action's response, an event (timer_id) or the area sensor's timers attribute."
+          "description": "The timer's id, from the start action's response, an event (timer_id) or the timers sensor's timers attribute."
         },
         "duration": {
           "name": "Duration",
@@ -132,7 +132,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer's id, from the start action's response, an event (timer_id) or the area sensor's timers attribute."
+          "description": "The timer's id, from the start action's response, an event (timer_id) or the timers sensor's timers attribute."
         },
         "duration": {
           "name": "Duration",
@@ -146,7 +146,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer ID",
-          "description": "The timer's id, from the start action's response, an event (timer_id) or the area sensor's timers attribute."
+          "description": "The timer's id, from the start action's response, an event (timer_id) or the timers sensor's timers attribute."
         }
       }
     },
@@ -180,17 +180,17 @@
     "ringing": {
       "message": "The timer \"{name}\" is ringing; acknowledge it or add time."
     },
-    "area_not_set_up": {
-      "message": "The area {area} is not set up in Home Timer."
-    },
-    "not_a_home_timer_device": {
-      "message": "The device {device} does not belong to Home Timer."
-    },
     "one_area": {
-      "message": "Choose exactly one area (or its Home Timer device) for the timer."
+      "message": "The target must reach exactly one area set up in Home Timer."
     },
     "timer_or_area": {
       "message": "Give a timer id or choose an area."
+    },
+    "no_area_in_target": {
+      "message": "The target does not reach any area set up in Home Timer."
+    },
+    "invalid_source": {
+      "message": "The source must be data that can be stored as JSON."
     }
   }
 }

@@ -3,16 +3,20 @@
 A timer is active (counting down), paused or ringing (ran out, waiting to be
 acknowledged). Cancelled and acknowledged timers are removed – no timer is "idle".
 
-Every change is stored (end time, not remaining time, so a restart loses nothing):
-- an active timer that ran out while Home Assistant was down finishes right after
-  the start, with ``late: true`` (or is dropped, if "report missed timers" is off),
-- a ringing timer keeps ringing; its reminders and auto-dismiss continue from the
-  time it ran out,
+Every change is stored (end time, not remaining time, so a restart loses nothing).
+Loading only restores the timers; ``async_start`` – run once Home Assistant has
+started, so automations listen – schedules them and reports what happened meanwhile:
+- an active timer that ran out finishes with ``late: true`` (or is dropped, if
+  "report missed timers" is off); its reminders and auto-dismiss count from now,
+- a ringing timer keeps ringing; reminders and auto-dismiss continue from when it
+  started ringing (past auto-dismiss: acknowledged with ``by: timeout``),
+- with "ring until acknowledged" off, ringing timers are acknowledged (``timeout``),
 - a paused timer stays paused.
 """
 
 from __future__ import annotations
 
+import json
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -49,6 +53,7 @@ from .const import (
     STATUS_ACTIVE,
     STATUS_PAUSED,
     STATUS_RINGING,
+    STATUSES,
     STORAGE_VERSION,
 )
 
@@ -73,7 +78,8 @@ class Timer:
     started_at: datetime
     ends_at: datetime | None = None  # active
     paused_remaining: float | None = None  # paused
-    finished_at: datetime | None = None  # ringing
+    finished_at: datetime | None = None  # ringing: when it ran out
+    ring_anchor: datetime | None = None  # ringing: reminders and auto-dismiss count from here
     station: str | None = None
     preset: str | None = None
     note: str | None = None
@@ -106,19 +112,23 @@ class Timer:
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
             "overtime": round(self.overtime(now)),
             "note": self.note,
-            "source": self.source,
+            "source": _copy(self.source),
         }
 
     def to_store(self) -> dict[str, Any]:
+        def iso(value: datetime | None) -> str | None:
+            return value.isoformat() if value else None
+
         return {
             "id": self.id,
             "name": self.name,
             "duration": self.duration,
             "status": self.status,
-            "started_at": self.started_at.isoformat(),
-            "ends_at": self.ends_at.isoformat() if self.ends_at else None,
+            "started_at": iso(self.started_at),
+            "ends_at": iso(self.ends_at),
             "paused_remaining": self.paused_remaining,
-            "finished_at": self.finished_at.isoformat() if self.finished_at else None,
+            "finished_at": iso(self.finished_at),
+            "ring_anchor": iso(self.ring_anchor),
             "station": self.station,
             "preset": self.preset,
             "note": self.note,
@@ -127,24 +137,42 @@ class Timer:
 
     @classmethod
     def from_store(cls, data: dict[str, Any]) -> Timer:
+        """Raises ValueError (or KeyError/TypeError) for data that does not make a timer."""
+
         def stamp(key: str) -> datetime | None:
             value = data.get(key)
-            return dt_util.parse_datetime(value) if value else None
+            if not value:
+                return None
+            parsed = dt_util.parse_datetime(value)
+            if parsed is None:
+                raise ValueError(f"{key}: not a timestamp")
+            return dt_util.as_utc(parsed)
 
-        return cls(
-            id=data["id"],
-            name=data["name"],
+        status = data["status"]
+        if status not in STATUSES:
+            raise ValueError(f"unknown status {status}")
+        timer = cls(
+            id=str(data["id"]),
+            name=str(data["name"]),
             duration=float(data["duration"]),
-            status=data["status"],
+            status=status,
             started_at=stamp("started_at") or dt_util.utcnow(),
             ends_at=stamp("ends_at"),
-            paused_remaining=data.get("paused_remaining"),
+            paused_remaining=None if data.get("paused_remaining") is None else float(data["paused_remaining"]),
             finished_at=stamp("finished_at"),
+            ring_anchor=stamp("ring_anchor"),
             station=data.get("station"),
             preset=data.get("preset"),
             note=data.get("note"),
             source=data.get("source") or {},
         )
+        if status == STATUS_ACTIVE and timer.ends_at is None:
+            raise ValueError("active timer without end")
+        if status == STATUS_PAUSED and timer.paused_remaining is None:
+            raise ValueError("paused timer without remaining time")
+        if status == STATUS_RINGING and timer.finished_at is None:
+            raise ValueError("ringing timer without finish time")
+        return timer
 
 
 class AreaTimers:
@@ -158,6 +186,7 @@ class AreaTimers:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, storage_key(entry.entry_id))
         self._scheduled: dict[str, list[CALLBACK_TYPE]] = {}
         self._listeners: list[Callable[[], None]] = []
+        self._running = False
 
     # ------------------------------------------------------------- settings
 
@@ -174,27 +203,41 @@ class AreaTimers:
     # ------------------------------------------------------------ life cycle
 
     async def async_load(self) -> None:
-        data = await self._store.async_load() or {}
-        now = dt_util.utcnow()
-        for raw in data.get("timers", []):
+        """Restore the stored timers; nothing is scheduled or reported yet."""
+        data = await self._store.async_load()
+        raw_timers = data.get("timers", []) if isinstance(data, dict) else []
+        for raw in raw_timers if isinstance(raw_timers, list) else []:
             try:
                 timer = Timer.from_store(raw)
-            except (KeyError, TypeError, ValueError):
-                _LOGGER.warning("%s: skipping an unreadable stored timer: %s", self.entry.title, raw)
+            except (KeyError, TypeError, ValueError, AttributeError) as err:
+                _LOGGER.warning("%s: skipping a stored timer (%s): %s", self.entry.title, err, raw)
                 continue
             self.timers[timer.id] = timer
+
+    @callback
+    def async_start(self, _hass: HomeAssistant | None = None) -> None:
+        """Home Assistant has started (or the area was reloaded): schedule and catch up."""
+        if self._running:
+            return
+        self._running = True
+        now = dt_util.utcnow()
         for timer in list(self.timers.values()):
+            if timer.id not in self.timers:
+                continue
             if timer.status == STATUS_ACTIVE and timer.ends_at is not None and timer.ends_at <= now:
                 if self.option(CONF_REPORT_MISSED):
                     self._finish(timer, late=True)
                 else:
                     _LOGGER.debug("%s: dropping '%s', it ran out during the restart", self.entry.title, timer.name)
                     self._remove(timer)
+            elif timer.status == STATUS_RINGING and not self.option(CONF_RING_UNTIL_ACK):
+                self.acknowledge(timer.id, by=BY_TIMEOUT)
             else:
                 self._schedule(timer)
         self._changed()
 
     async def async_unload(self) -> None:
+        self._running = False
         for timer_id in list(self._scheduled):
             self._unschedule(timer_id)
         self._listeners.clear()
@@ -215,6 +258,10 @@ class AreaTimers:
     ) -> Timer:
         if duration <= 0:
             raise TimerError("invalid_duration")
+        try:
+            source = _copy(source or {})
+        except (TypeError, ValueError):
+            raise TimerError("invalid_source") from None
         if station is not None:
             for other in list(self.timers.values()):
                 if other.station == station:
@@ -230,7 +277,7 @@ class AreaTimers:
             station=station,
             preset=preset,
             note=note,
-            source=dict(source or {}),
+            source=source,
         )
         self.timers[timer.id] = timer
         self._schedule(timer)
@@ -266,30 +313,35 @@ class AreaTimers:
 
     @callback
     def add_time(self, timer_id: str, seconds: float) -> Timer:
-        """Add (or, with a negative value, subtract) time. Down to zero finishes the timer.
+        """Add (or, with a negative value, subtract) time.
 
-        A ringing timer starts again with the added time.
+        Subtracting more than is left takes it down to zero: the timer runs out now.
+        A ringing timer starts again with added time; subtracting from it is refused.
         """
+        if seconds == 0:
+            raise TimerError("invalid_duration")
         timer = self.get(timer_id)
         now = dt_util.utcnow()
         if timer.status == STATUS_RINGING:
-            if seconds <= 0:
+            if seconds < 0:
                 raise TimerError("ringing", name=timer.name)
             self._unschedule(timer.id)
             timer.status = STATUS_ACTIVE
             timer.finished_at = None
+            timer.ring_anchor = None
             timer.ends_at = now + timedelta(seconds=seconds)
-        elif timer.status == STATUS_PAUSED:
-            timer.paused_remaining = max(0.0, (timer.paused_remaining or 0) + seconds)
+            change = seconds
         else:
-            timer.ends_at = (timer.ends_at or now) + timedelta(seconds=seconds)
-        timer.duration = max(0.0, timer.duration + seconds)
-        self._fire(EVENT_TIME_CHANGED, timer, change=round(seconds))
-        if timer.status == STATUS_PAUSED and not timer.paused_remaining:
-            timer.status = STATUS_ACTIVE
+            left = timer.remaining(now)
+            change = max(seconds, -left)
+            if timer.status == STATUS_PAUSED:
+                timer.paused_remaining = left + change
+            else:
+                timer.ends_at = now + timedelta(seconds=left + change)
+        timer.duration = max(0.0, timer.duration + change)
+        self._fire(EVENT_TIME_CHANGED, timer, change=round(change))
+        if timer.remaining(now) <= 0:  # down to zero, also when paused: it runs out now
             timer.ends_at = now
-            timer.paused_remaining = None
-        if timer.status == STATUS_ACTIVE and timer.ends_at is not None and timer.ends_at <= now:
             self._unschedule(timer.id)
             self._finish(timer)
         elif timer.status == STATUS_ACTIVE:
@@ -343,17 +395,16 @@ class AreaTimers:
     # ------------------------------------------------------------- internals
 
     def _finish(self, timer: Timer, *, late: bool = False) -> None:
-        finished_at = timer.ends_at or dt_util.utcnow()
+        now = dt_util.utcnow()
+        timer.finished_at = min(timer.ends_at or now, now)
+        timer.ring_anchor = now if late else timer.finished_at
         timer.ends_at = None
         timer.paused_remaining = None
+        timer.status = STATUS_RINGING
         if not self.option(CONF_RING_UNTIL_ACK):
             self._remove(timer)
-            timer.status = STATUS_RINGING
-            timer.finished_at = finished_at
             self._fire(EVENT_FINISHED, timer, late=late)
             return
-        timer.status = STATUS_RINGING
-        timer.finished_at = finished_at
         self._fire(EVENT_FINISHED, timer, late=late)
         self._schedule(timer)
 
@@ -364,24 +415,26 @@ class AreaTimers:
     def _schedule(self, timer: Timer) -> None:
         """(Re)schedule what comes next for the timer: its end, or reminder and auto-dismiss."""
         self._unschedule(timer.id)
+        if not self._running:
+            return
         now = dt_util.utcnow()
         jobs: list[CALLBACK_TYPE] = []
         if timer.status == STATUS_ACTIVE and timer.ends_at is not None:
             jobs.append(async_track_point_in_utc_time(self.hass, self._ended_cb(timer.id), timer.ends_at))
         elif timer.status == STATUS_RINGING and timer.finished_at is not None:
-            dismiss = self.option(CONF_AUTO_DISMISS_MINUTES)
-            if dismiss:
-                at = timer.finished_at + timedelta(minutes=dismiss)
-                if at <= now:
+            anchor = timer.ring_anchor or timer.finished_at
+            dismiss_at: datetime | None = None
+            if dismiss := self.option(CONF_AUTO_DISMISS_MINUTES):
+                dismiss_at = anchor + timedelta(minutes=dismiss)
+                if dismiss_at <= now:
                     self.acknowledge(timer.id, by=BY_TIMEOUT)
                     return
-                jobs.append(async_track_point_in_utc_time(self.hass, self._dismiss_cb(timer.id), at))
-            interval = self.option(CONF_REMINDER_MINUTES)
-            if interval:
+                jobs.append(async_track_point_in_utc_time(self.hass, self._dismiss_cb(timer.id), dismiss_at))
+            if interval := self.option(CONF_REMINDER_MINUTES):
                 step = timedelta(minutes=interval)
-                count = int((now - timer.finished_at) / step) + 1
-                at = timer.finished_at + step * count
-                jobs.append(async_track_point_in_utc_time(self.hass, self._reminder_cb(timer.id), at))
+                at = anchor + step * (int((now - anchor) / step) + 1)
+                if dismiss_at is None or at < dismiss_at:
+                    jobs.append(async_track_point_in_utc_time(self.hass, self._reminder_cb(timer.id), at))
         if jobs:
             self._scheduled[timer.id] = jobs
 
@@ -395,7 +448,7 @@ class AreaTimers:
             timer = self.timers.get(timer_id)
             if timer is None or timer.status != STATUS_ACTIVE:
                 return
-            self._scheduled.pop(timer_id, None)
+            self._unschedule(timer_id)
             self._finish(timer)
             self._changed()
 
@@ -403,7 +456,7 @@ class AreaTimers:
 
     def _reminder_cb(self, timer_id: str) -> Callable[[datetime], None]:
         @callback
-        def remind(now: datetime) -> None:
+        def remind(_now: datetime) -> None:
             timer = self.timers.get(timer_id)
             if timer is None or timer.status != STATUS_RINGING:
                 return
@@ -416,7 +469,8 @@ class AreaTimers:
     def _dismiss_cb(self, timer_id: str) -> Callable[[datetime], None]:
         @callback
         def dismiss(_now: datetime) -> None:
-            if timer_id in self.timers and self.timers[timer_id].status == STATUS_RINGING:
+            timer = self.timers.get(timer_id)
+            if timer is not None and timer.status == STATUS_RINGING:
                 self.acknowledge(timer_id, by=BY_TIMEOUT)
 
         return dismiss
@@ -428,12 +482,12 @@ class AreaTimers:
             "area_id": self.area_id,
             "entry_id": self.entry.entry_id,
             "station": timer.station,
-            "station_name": timer.station,
+            "station_name": None,  # stations follow
             "device_id": self.hub_device_id,
             "preset": timer.preset,
             "duration": round(timer.duration),
             "note": timer.note,
-            "source": timer.source,
+            "source": _copy(timer.source),
         }
         data.update(extra)
         return data
@@ -451,6 +505,11 @@ class AreaTimers:
     def _notify(self) -> None:
         for listener in list(self._listeners):
             listener()
+
+
+def _copy(value: dict[str, Any]) -> dict[str, Any]:
+    """A deep copy that is also proof the value can be stored (JSON)."""
+    return json.loads(json.dumps(value))
 
 
 def storage_key(entry_id: str) -> str:

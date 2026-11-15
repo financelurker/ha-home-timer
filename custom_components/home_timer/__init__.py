@@ -15,6 +15,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
@@ -31,7 +32,6 @@ type HomeTimerConfigEntry = ConfigEntry[AreaTimers]
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    hass.data.setdefault(DOMAIN, {})
     async_register_services(hass)
     return True
 
@@ -56,8 +56,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) ->
     engine = AreaTimers(hass, entry)
     await engine.async_load()
     entry.runtime_data = engine
-    hass.data.setdefault(DOMAIN, {})[entry.entry_id] = engine
-    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    try:
+        await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    except Exception:
+        await engine.async_unload()
+        raise
+    # timers are scheduled, and missed ones reported, once automations listen
+    entry.async_on_unload(async_at_started(hass, engine.async_start))
     _LOGGER.debug("%s: set up (area %s, %d stored timers)", entry.title, area_id, len(engine.timers))
     return True
 
@@ -66,7 +71,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) -
     if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
     await entry.runtime_data.async_unload()
-    hass.data.get(DOMAIN, {}).pop(entry.entry_id, None)
     return True
 
 
