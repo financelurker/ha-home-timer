@@ -319,6 +319,7 @@ class AreaTimers:
                 watcher = PowerWatcher(self, station)
                 self._watchers.append(watcher)
                 watcher.start()
+                self.runs.fill_sensor(station.id, station.power.sensor)
                 if station.id not in self.runs.imported:
                     self._imports.append(self.entry.async_create_background_task(
                         self.hass,

@@ -34,7 +34,7 @@ T0 = datetime(2026, 11, 15, 13, 5, tzinfo=UTC)
 
 def moka_trace() -> Trace:
     trace = Trace()
-    for t, w in moka.SAMPLES[:-1]:
+    for t, w in moka.SAMPLES:
         trace.add(t - moka.START, w)
     return trace
 
@@ -281,3 +281,133 @@ async def test_deleting_a_station_deletes_its_runs(hass: HomeAssistant, kitchen,
     hass.config_entries.async_remove_subentry(kitchen, station)
     await hass.async_block_till_done()
     assert kitchen.runtime_data.runs.list(station) == []
+
+
+# ------------------------------------------------------------------ the preview
+
+
+def stored_moka() -> dict:
+    return make_run(T0, moka.MARK_OFF - moka.START, moka_trace(), on_above=10, rang=None, trigger=None)
+
+
+def test_simulate_the_done_rule_and_thresholds() -> None:
+    from custom_components.home_timer.runs import simulate
+
+    run = stored_moka()
+    saved = simulate(run, PowerConfig(sensor=SENSOR, done=DoneRule.from_data(DROP)), None)
+    assert saved["trigger"] == "rule" and 0 <= saved["rang"] + moka.START - moka.MARK_DONE <= 70
+    looser = simulate(run, PowerConfig(sensor=SENSOR, done=DoneRule.from_data({**DROP, "percent": 7})), None)
+    assert looser["rang"] < saved["rang"]
+    never = simulate(run, PowerConfig(sensor=SENSOR, done=DoneRule.from_data({"type": "time", "seconds": 5000})), None)
+    assert never["trigger"] == "never" and never["rang"] == never["duration"]
+    off = simulate(run, PowerConfig(sensor=SENSOR, done=DoneRule.from_data({"type": "off"})), None)
+    assert off["trigger"] == "off" and off["rang"] == pytest.approx(970, abs=1)
+    # a higher "runs above" starts the run later and ends it sooner
+    high = simulate(run, PowerConfig(sensor=SENSOR, on_above=150, done=DoneRule.from_data({"type": "off"})), None)
+    assert high["start"] == 0 and high["duration"] < off["duration"]
+    assert simulate(run, PowerConfig(sensor=SENSOR, on_above=500), None)["blip"] is True
+
+
+def test_simulate_presets_and_warnings() -> None:
+    from custom_components.home_timer.runs import simulate
+
+    run = stored_moka()  # off after 970 s
+    cancel = simulate(run, PowerConfig(sensor=SENSOR, kind="start_preset", preset="p"), 1200)
+    assert cancel["trigger"] == "cancelled" and cancel["rang"] == pytest.approx(970, abs=1)
+    keep = simulate(run, PowerConfig(sensor=SENSOR, kind="start_preset", preset="p", cancel_on_off=False), 1200)
+    assert keep["trigger"] == "countdown" and keep["rang"] == 1200
+    assert simulate(run, PowerConfig(sensor=SENSOR, kind="start_preset"), None)["trigger"] == "none"
+    assert simulate(run, PowerConfig(sensor=SENSOR, kind="warn", warn_after=10), None)["rang"] == 600
+    assert simulate(run, PowerConfig(sensor=SENSOR, kind="warn", warn_after=60), None)["trigger"] == "none"
+
+
+async def test_preview_api(hass: HomeAssistant, kitchen, freezer, hass_ws_client) -> None:
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Moka pot", "until_off", done=DROP)
+    last = 0
+    for t, w in moka.SAMPLES:
+        await watts(hass, freezer, w, seconds_after=t - last)
+        last = t
+    await tick(hass, freezer, 31)
+    client = await hass_ws_client(hass)
+    draft = {"sensor": SENSOR, "on_above": 10, "off_after": 30, "kind": "until_off", "done": {**DROP, "percent": 7}}
+    await client.send_json_auto_id({"type": "home_timer/runs/preview", "entry_id": kitchen.entry_id, "station_id": station, "power": draft})
+    res = (await client.receive_json())["result"]
+    (one,) = res["runs"]
+    assert one["saved"]["trigger"] == "rule" and one["draft"]["rang"] < one["saved"]["rang"]
+    assert res["current"] is None
+    # a field being typed (empty) falls back instead of failing
+    await client.send_json_auto_id({"type": "home_timer/runs/preview", "entry_id": kitchen.entry_id, "station_id": station,
+                                    "power": {**draft, "on_above": None}})
+    assert (await client.receive_json())["success"] is True
+    # runs carry their sensor
+    assert kitchen.runtime_data.runs.list(station)[0]["sensor"] == SENSOR
+
+
+def _run(points, duration, start_from=0.0) -> dict:
+    return {"id": "r", "t": [p[0] for p in points], "w": [p[1] for p in points], "duration": duration, "from": start_from}
+
+
+def test_simulate_like_the_watcher_in_the_corners() -> None:
+    from custom_components.home_timer.runs import simulate
+
+    base = PowerConfig(sensor=SENSOR, on_above=10, off_after=30)
+    # a run picked up after a restart: times count from the real start
+    picked = _run([(3600, 500), (3700, 500), (7000, 0)], 7000, 3600)
+    assert simulate(picked, PowerConfig(sensor=SENSOR, done=DoneRule.from_data({"type": "time", "seconds": 3700})), None)["rang"] == pytest.approx(3700, abs=5)
+    preset = simulate(picked, PowerConfig(sensor=SENSOR, kind="start_preset", preset="p"), 1800)
+    assert preset["start"] == 0 and preset["rang"] == 1800
+    # a blip, then the real run
+    blip_then = _run([(0, 500), (5, 0), (60, 600), (760, 0)], 760)
+    res = simulate(blip_then, base, None)
+    assert not res["blip"] and res["start"] == 60 and res["duration"] == 700
+    # a warning due before the stop is noticed still rings (as live)
+    stop590 = _run([(0, 900), (590, 0)], 590)
+    assert simulate(stop590, PowerConfig(sensor=SENSOR, kind="warn", warn_after=10), None)["trigger"] == "countdown"
+    assert simulate(stop590, PowerConfig(sensor=SENSOR, kind="start_preset", preset="p"), 600)["trigger"] == "countdown"
+    assert simulate(stop590, PowerConfig(sensor=SENSOR, kind="start_preset", preset="p"), 900)["trigger"] == "cancelled"
+    # lower "runs above" under the standby: it never switches off within the curve
+    standby = _run([(0, 900), (300, 3)], 300)
+    res = simulate(standby, PowerConfig(sensor=SENSOR, on_above=1, done=DoneRule.from_data({"type": "off"})), None)
+    assert res["open"] and res["rang"] is None
+
+
+def test_thinning_keeps_short_dips_short() -> None:
+    from custom_components.home_timer.runs import simulate
+
+    times = [float(i) for i in range(36000)]
+    values = [5.0 if i % 600 == 300 else 800.0 + (i % 7) for i in range(36000)]  # a 1 s dip every 10 min
+    values[-1] = 0.0
+    run = make_run(T0, 35999, _trace(times, values), on_above=10, rang=None, trigger=None)
+    res = simulate(run, PowerConfig(sensor=SENSOR, on_above=10, off_after=30, done=DoneRule.from_data({"type": "off"})), None)
+    assert not res["split"] and res["duration"] == pytest.approx(35999, abs=1)
+
+
+def _trace(times, values) -> Trace:
+    trace = Trace()
+    for t, w in zip(times, values, strict=True):
+        trace.add(t, w)
+    return trace
+
+
+async def test_preview_api_takes_any_draft(hass: HomeAssistant, kitchen, freezer, hass_ws_client) -> None:
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Rice cooker", "start_preset", presets=[("Rice", 600)], preset="p0")
+    await watts(hass, freezer, 600)
+    await watts(hass, freezer, 0, seconds_after=300)
+    await tick(hass, freezer, 31)
+    client = await hass_ws_client(hass)
+    for draft in ({"off_after": 1e9, "done": "x"}, {"kind": "until_off", "done": {"type": "knee", "window": 0, "baseline": 0}},
+                  {"kind": "warn", "warn_after": -5}, {"on_above": None}):
+        await client.send_json_auto_id({"type": "home_timer/runs/preview", "entry_id": kitchen.entry_id, "station_id": station,
+                                        "power": draft, "presets": ["junk", {"id": "p0"}]})
+        res = await client.receive_json()
+        assert res["success"], (draft, res)
+    # the draft's presets count, also when there are none left
+    await client.send_json_auto_id({"type": "home_timer/runs/preview", "entry_id": kitchen.entry_id, "station_id": station,
+                                    "power": {"kind": "start_preset", "preset": "p0", "cancel_on_off": False}, "presets": []})
+    (one,) = (await client.receive_json())["result"]["runs"]
+    assert one["saved"]["trigger"] == "cancelled" and one["draft"]["trigger"] == "none"
+    await client.send_json_auto_id({"type": "home_timer/runs/preview", "entry_id": kitchen.entry_id, "station_id": station,
+                                    "power": {}, "current_only": True})
+    assert (await client.receive_json())["result"] == {"runs": [], "current": None}

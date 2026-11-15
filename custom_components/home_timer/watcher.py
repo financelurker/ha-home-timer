@@ -260,7 +260,10 @@ class PowerWatcher:
         if count and not blip and self.run_start is not None:
             self.engine.record_run(
                 self.station.id,
-                make_run(self.run_start, seconds, self.trace, on_above=self.config.on_above, rang=self.rang, trigger=self.trigger),
+                make_run(
+                    self.run_start, seconds, self.trace, on_above=self.config.on_above,
+                    rang=self.rang, trigger=self.trigger, sensor=self.config.sensor,
+                ),
             )
         self.running = False
         self.run_start = None

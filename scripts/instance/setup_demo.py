@@ -67,7 +67,7 @@ async def main() -> None:
         await asyncio.sleep(2)
         print("set up:", entry_id, bathroom)
         await ha.close()
-    await seed_runs.main()  # a week of moka pot runs for its Runs tab
+    await seed_runs.main()  # a week of moka pot runs for its page in the panel
 
 
 asyncio.run(main())

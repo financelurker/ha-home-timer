@@ -74,26 +74,28 @@ def main() -> None:
         if want("panel"):
             go(page, f"/home-timer/area/{ref['entry']}")
             page.screenshot(path=OUT / "panel.png")
-        if want("panel-power"):
-            page.set_viewport_size({"width": 1366, "height": 1240})  # the whole form, down to the done rule
-            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
-            page.screenshot(path=OUT / "panel-power.png")
-            page.set_viewport_size({"width": 1366, "height": 860})
         if want("panel-runs"):
-            page.set_viewport_size({"width": 1366, "height": 1100})
-            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/runs")
+            # the moka pot's page with a draft of its done rule: the live preview on the stored runs
+            page.set_viewport_size({"width": 1366, "height": 1500})
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
             rows = page.locator("home-timer-panel .runrow")
-            check("runs tab lists the moka pot's runs", rows.count() >= 8, rows.count())
+            check("the page lists the moka pot's runs", rows.count() >= 8, rows.count())
             seeded = rows.filter(has_not_text=re.compile("Today|Running"))
             if seeded.count():
                 seeded.first.click()  # a run of seed_runs.py (today's come from scene.py's test runs)
                 page.wait_for_timeout(1500)
-            chart = page.locator("home-timer-panel svg.chart")
-            check("runs tab draws the curve", chart.count() == 1 and page.locator("home-timer-panel svg.chart path.curve").count() == 1)
-            if chart.count():
-                box = chart.bounding_box()
-                page.mouse.move(box["x"] + box["width"] * 0.42, box["y"] + box["height"] / 2)
-                page.wait_for_timeout(500)
+            check("the page draws the curve", page.locator("home-timer-panel svg.chart path.curve").count() == 1)
+            fields = page.locator("home-timer-panel .opt.on .sentence input")
+            if fields.count() >= 2:
+                fields.nth(0).fill("8")  # at least 8 % …
+                fields.nth(1).fill("45")  # … within 45 s
+                page.wait_for_timeout(2500)
+            changed = page.locator("home-timer-panel .runrow .dl")
+            check("a draft shows its preview", page.locator("home-timer-panel .preview").count() == 1 and changed.count() >= 1)
+            if changed.count():  # show a run the draft changes
+                changed.first.click()
+                page.wait_for_timeout(1500)
+                check("the curve shows the draft's ring", page.locator("home-timer-panel svg.chart line.mark.dash").count() == 1)
             page.screenshot(path=OUT / "panel-runs.png")
             page.set_viewport_size({"width": 1366, "height": 860})
         if want("panel-station"):
@@ -128,7 +130,9 @@ def main() -> None:
             pp.screenshot(path=OUT / "phone-area.png")
             go(pp, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
             pp.screenshot(path=OUT / "phone-power.png")
-            go(pp, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/runs")
+            pp.mouse.move(195, 600)
+            pp.mouse.wheel(0, 760)  # down to what the timer should do
+            pp.wait_for_timeout(800)
             pp.screenshot(path=OUT / "phone-runs.png")
         browser.close()
     check("no errors of the panel in the browser", not ERRORS, ERRORS)

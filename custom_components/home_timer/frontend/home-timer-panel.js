@@ -4,7 +4,7 @@
 // saving reloads the area. Live state comes from the entities, not from the panel's
 // own data. The checks are the integration's (panel/edit.py); errors show at the field.
 
-import { LitElement, html, css, nothing } from "./vendor/lit.js";
+import { LitElement, html, svg, css, nothing } from "./vendor/lit.js";
 import { clone, formatDuration, looseTimers, parseDuration, parseRoute, same, stationLive, tempId, translator } from "./helpers.js";
 import { chartModel, renderChart, secondsAt, valueAt } from "./runs.js";
 
@@ -43,6 +43,7 @@ class HomeTimerPanel extends LitElement {
     _chartWidth: { state: true },
     _confirm: { state: true },
     _fold: { state: true },
+    _preview: { state: true },
   };
 
   constructor() {
@@ -88,6 +89,7 @@ class HomeTimerPanel extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     clearInterval(this._timer);
+    clearTimeout(this._previewTimer);
     this._resize?.disconnect();
     this._observed = null;
     window.removeEventListener("beforeunload", this._beforeUnload);
@@ -99,9 +101,9 @@ class HomeTimerPanel extends LitElement {
     this._observeChart();
     if (changed.has("hass") && this._config) this._watchRuns();
     if (changed.has("route")) {
-      // entering a station's Runs tab: fetch its list again (runs may have come meanwhile)
+      // entering a station's page: fetch its runs again (runs may have come meanwhile)
       const r = this._route;
-      const key = r.page === "station" && r.tab === "runs" ? this._runsKey(r.entry, r.station) : null;
+      const key = r.page === "station" ? this._runsKey(r.entry, r.station) : null;
       if (key && key !== this._runsShown && this._runs[key]) this._loadRuns(r.entry, r.station);
       this._runsShown = key;
     }
@@ -732,33 +734,28 @@ class HomeTimerPanel extends LitElement {
     const presetErrors = Object.keys(this._errors[key] || {}).some((k) => k.startsWith("presets."));
     const showPresets = d.mode === "manual" || d.power.kind === "start_preset" || presetErrors;
     const icon = d.icon || (d.mode === "power" ? "mdi:power-plug-outline" : "mdi:timer-outline");
-    const tabs = station?.mode === "power";
-    const tab = tabs ? this._route.tab : "settings";
+    const power = d.mode === "power";
     return html`
-      <div class="cols">
+      <div class="cols ${power ? "wide" : ""}">
         <div class="col">
-          ${tabs ? this._renderTabs(area, station, tab) : nothing}
-          ${tab === "runs" ? this._renderRuns(area, station) : html`
-          <div class="card"><div class="ch">${t("station.general")}</div><div class="cb">
-            <div class="pair">
-              ${this._selector(key, "name", t("station.name"), { text: {} }, d.name, (v) => set((x) => (x.name = v ?? "")), t("station.name_placeholder"), true)}
-              ${this._selector(key, "icon", t("station.icon"), { icon: { placeholder: icon } }, d.icon, (v) => set((x) => (x.icon = v || "")))}
-            </div>
+          <div class="card"><div class="cb ident">
+            ${this._selector(key, "name", t("station.name"), { text: {} }, d.name, (v) => set((x) => (x.name = v ?? "")), t("station.name_placeholder"), true)}
+            ${this._selector(key, "icon", t("station.icon"), { icon: { placeholder: icon } }, d.icon, (v) => set((x) => (x.icon = v || "")))}
             <div class="starts"><span class="fl">${t("station.starts")}</span>
               <div class="seg" role="radiogroup" aria-label=${t("station.starts")}>
                 ${["manual", "power"].map((m) => html`<button role="radio" aria-checked=${d.mode === m} class=${d.mode === m ? "on" : ""} @click=${() => set((x) => (x.mode = m))}>${d.mode === m ? html`<ha-icon icon="mdi:check"></ha-icon>` : nothing}${t(`mode.${m}`)}</button>`)}
               </div>
             </div>
-            ${this._help(t(`mode.${d.mode}_hint`))}
+            <div class="identhelp">${this._help(t(`mode.${d.mode}_hint`))}</div>
           </div></div>
-          ${d.mode === "power" ? this._renderPower(key, d, set) : nothing}
+          ${power ? this._renderPowerPage(area, station, key, d, set) : nothing}
           ${showPresets
             ? html`<div class="card"><div class="ch">${t("presets")} <span class="chs">– ${t("presets.hint")}</span></div><div class="cb">
                 ${this._presetTable(key, d.presets, "presets", (fn) => set((x) => fn(x.presets)))}
               </div></div>`
-            : nothing}`}
+            : nothing}
         </div>
-        ${station ? html`<div class="colr">${this._renderNow(area, station)}</div>` : nothing}
+        ${station && !power ? html`<div class="colr">${this._renderNow(area, station)}</div>` : nothing}
       </div>
     `;
   }
@@ -801,39 +798,242 @@ class HomeTimerPanel extends LitElement {
       .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  _renderPower(key, d, set) {
+  // ------------------------------------------------------------------ a station by power
+  // One page: the curve of a stored run with the live preview of the draft, what the
+  // timer should do (with "done" under "ring when it's done"), on and off, the runs.
+
+  _renderPowerPage(area, station, key, d, set) {
+    const t = this._t;
+    const stored = station?.mode === "power"; // saved as a power station: it has runs
+    if (!stored) {
+      return html`
+        <div class="card"><div class="ch">${t("runs.title")}</div><div class="cb">
+          <div class="emptycard"><b>${t("runs.after_save")}</b><span>${t("runs.after_save_hint")}</span></div>
+        </div></div>
+        ${this._renderTodo(key, d, set, null, null)}
+        ${this._renderOnOff(key, d, set, false)}`;
+    }
+    const rkey = this._runsKey(area.entry_id, station.id);
+    const data = this._runs[rkey];
+    if (!data) this._loadRunsSoon(area.entry_id, station.id);
+    const preview = data ? this._previewFor(area, station, d) : null;
+    return html`
+      ${this._renderCurve(area, station, d, data, preview)}
+      ${this._renderTodo(key, d, set, station, preview)}
+      <div class="duo">
+        <div class="duol">${this._renderOnOff(key, d, set, true, station)}${data ? this._renderSensor(data, station) : nothing}</div>
+        <div class="duor">${data && !data.error ? this._renderRunList(area, station, d, data, preview) : nothing}</div>
+      </div>`;
+  }
+
+  _loadRunsSoon(entryId, stationId) {
+    const key = this._runsKey(entryId, stationId);
+    if (this._pendingRuns === key) return;
+    this._pendingRuns = key;
+    Promise.resolve().then(() => this._loadRuns(entryId, stationId).finally(() => (this._pendingRuns = null)));
+  }
+
+  // the power settings as the preview compares them (what decides runs and rings)
+  static powerSig(power, presets) {
+    const { sensor, ...rest } = power || {};
+    return JSON.stringify([rest, (presets || []).map((p) => [p.id, p.duration])]);
+  }
+
+  // the draft differs from the saved settings in anything the preview shows
+  _draftDiffers(station, d) {
+    return HomeTimerPanel.powerSig(d.power, d.presets) !== HomeTimerPanel.powerSig(station.power, station.presets);
+  }
+
+  // the preview of the draft for this station: fetched again (debounced) when the draft changes
+  _previewFor(area, station, d) {
+    const key = this._runsKey(area.entry_id, station.id);
+    const list = this._runs[key];
+    const sig = [key, HomeTimerPanel.powerSig(d.power, d.presets), HomeTimerPanel.powerSig(station.power, station.presets), list?.runs?.length, list?.runs?.[0]?.id, list?.current ? 1 : 0].join("|");
+    const have = this._preview?.key === key ? this._preview : null;
+    if (this._previewSig !== sig) {
+      this._previewSig = sig;
+      clearTimeout(this._previewTimer);
+      const payload = { power: clone(d.power), presets: HomeTimerPanel.presetsPayload(d.presets) };
+      this._previewTimer = setTimeout(() => this._loadPreview(area.entry_id, station.id, sig, payload), have ? 300 : 0);
+    }
+    return have?.data || null;
+  }
+
+  async _loadPreview(entryId, stationId, sig, payload) {
+    const key = this._runsKey(entryId, stationId);
+    try {
+      const data = await this.hass.callWS({ type: `${WS}/runs/preview`, entry_id: entryId, station_id: stationId, ...payload });
+      if (this._previewSig === sig) this._preview = { key, data };
+    } catch (err) {
+      if (this._previewSig === sig) this._preview = { key, data: null, error: err?.message || String(err) };
+    }
+  }
+
+  // the run going on changed: only its preview is fetched again
+  async _refreshCurrentPreview(entryId, stationId) {
+    const key = this._runsKey(entryId, stationId);
+    const area = this._area(entryId);
+    const station = area?.stations.find((s) => s.id === stationId);
+    const d = this._drafts[`station:${entryId}:${stationId}`] || (station && this._stationDraft(area, stationId));
+    if (!d || this._preview?.key !== key || !this._preview.data) return;
+    try {
+      const res = await this.hass.callWS({ type: `${WS}/runs/preview`, entry_id: entryId, station_id: stationId, power: clone(d.power), presets: HomeTimerPanel.presetsPayload(d.presets), current_only: true });
+      if (this._preview?.key === key && this._preview.data) this._preview = { key, data: { ...this._preview.data, current: res.current } };
+    } catch {
+      // the next full preview brings it
+    }
+  }
+
+  // what saved settings or the draft make of a run, in words
+  _outcome(res, kind) {
+    const t = this._t;
+    if (!res) return "";
+    if (res.blip) return t("outcome.blip");
+    if (res.open && res.rang == null) return t("outcome.open");
+    const time = formatDuration((res.start || 0) + res.rang); // on the curve's time, as the marks
+    if (res.trigger === "countdown") return t(kind === "warn" ? "outcome.warns" : "outcome.rings", { time });
+    if (res.trigger === "none") return t(kind === "warn" ? "outcome.no_warning" : kind === "start_preset" ? "outcome.no_ring" : "outcome.not_yet");
+    return t(`outcome.${res.trigger}`, { time });
+  }
+
+  // the label of a mark in the chart
+  _markLabel(res, kind) {
+    const t = this._t;
+    const time = formatDuration((res.start || 0) + res.rang);
+    if (res.trigger === "countdown") return t(kind === "warn" ? "mark.warns" : "mark.rings", { time });
+    return t(`mark.${res.trigger}`, { time });
+  }
+
+  _renderCurve(area, station, d, data, preview) {
+    const t = this._t;
+    const live = stationLive(this.hass, station, this._now);
+    const usual = this._usual(station);
+    const head = html`<div class="ch curveh">
+        <span class="curvet"><b>${this._liveText(live)}</b>
+          <span class="chs">${live.running ? t("live.appliance_on") : t("live.appliance_off")}${live.running && live.watts != null ? ` · ${Math.round(live.watts)} ${live.unit}` : ""}${usual ? ` · ${t("now.usual", { time: usual })}` : ""}</span></span>
+        <span class="links">
+          ${station.device_id ? html`<a href="/config/devices/device/${station.device_id}">${t("link.device")} ↗</a>` : nothing}
+          <a href="/config/entities?historyBack=1&config_entry=${area.entry_id}&sub_entry=${station.id}">${t("link.entities")} ↗</a>
+          ${station.entities.timer ? html`<a href="/history?entity_id=${station.entities.timer}">${t("link.history")} ↗</a>` : nothing}
+        </span>
+      </div>`;
+    const cls = this._liveClass(live);
+    const sensorNote = d.power.sensor && d.power.sensor !== station.power.sensor
+      ? html`<div class="note">${t("runs.sensor_changed", { old: this._name(station.power.sensor), new: this._name(d.power.sensor) })}</div>` : nothing;
+    if (!data) return html`<div class="card curve ${cls}">${head}<div class="cb">${t("loading")}</div></div>`;
+    if (data.error) return html`<div class="card curve ${cls}">${head}<div class="cb">${t("load_failed")}: ${data.error}</div></div>`;
+    const key = this._runsKey(area.entry_id, station.id);
+    const shown = this._run?.key === key ? this._run : null;
+    if (!data.runs.length && !data.current) {
+      return html`<div class="card curve ${cls}">${head}<div class="cb">${sensorNote}<div class="emptycard"><ha-icon icon="mdi:chart-bell-curve-cumulative"></ha-icon><b>${t("runs.none")}</b><span>${t("runs.none_hint")}</span></div></div></div>`;
+    }
+    if (!shown) return html`<div class="card curve ${cls}">${head}<div class="cb">${t("loading")}</div></div>`;
+    const run = shown.data;
+    const pv = shown.id === "current" ? preview?.current : preview?.runs.find((r) => r.id === shown.id);
+    const differs = this._draftDiffers(station, d);
+    const p = d.power;
+    const rule = p.kind === "until_off" ? p.done || { type: "off" } : null;
+    const marks = [];
+    const savedKind = station.power.kind;
+    if (pv?.saved?.rang != null && !pv.saved.blip) {
+      marks.push({ t: pv.saved.start + pv.saved.rang, label: this._markLabel(pv.saved, savedKind) + (differs ? ` ${t("mark.saved")}` : ""), color: pv.saved.trigger === "cancelled" ? "var(--ht-run)" : "" });
+    }
+    const apart = (a, b) => !a || !b || a.rang == null || b.rang == null || Math.abs(a.start + a.rang - (b.start + b.rang)) >= 1 || a.trigger !== b.trigger;
+    if (differs && pv?.draft?.rang != null && !pv.draft.blip && apart(pv.saved, pv.draft)) {
+      marks.push({ t: pv.draft.start + pv.draft.rang, label: `${this._markLabel(pv.draft, p.kind)} ${t("mark.draft")}`, dash: true, color: pv.draft.trigger === "cancelled" ? "var(--ht-run)" : "" });
+    }
+    const ignore = rule && rule.ignore ? Number(rule.ignore) : 0;
+    const winSec = rule && ["drop", "knee", "cycling"].includes(rule.type) ? Number(rule.window || 0) : 0;
+    const ring = pv?.draft?.trigger === "rule" ? pv.draft.start + pv.draft.rang : null;
+    const window = winSec && ring != null ? { from: Math.max(0, ring - winSec), to: ring, label: `${winSec} s` } : null;
+    const levelW = rule?.type === "pause" ? rule.below : rule?.type === "cycling" ? rule.level : null;
+    const unit = this._unit(station);
+    const level = levelW != null ? { w: Number(levelW), label: `${levelW} ${unit}` } : null;
+    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 250, onAbove: Number(p.on_above || 0), ignore: ignore ? ignore + (pv?.draft?.start || 0) : 0, extra: marks.map((k) => k.t) });
+    const hv = this._hover != null ? valueAt(run, this._hover) : null;
+    const labels = { aria: t("runs.chart.aria"), stopped: t("runs.chart.stopped"), unknown: t("runs.chart.unknown"), ignored: t("runs.chart.ignored") };
+    const actual = run.rang != null && !run.running ? t(run.simulated ? "runs.actual_history" : "runs.actual", { time: formatDuration(run.rang) }) : "";
+    return html`<div class="card curve ${cls}">${head}<div class="cb">
+      ${sensorNote}
+      <div class="runh2"><span>${run.running ? t("runs.now") : this._runWhen(run)} <span class="chs">· ${formatDuration(run.duration)}</span>
+        ${run.source === "history" ? html`<span class="tag">${t("runs.tag.history")}</span>` : nothing}
+        ${this._otherSensor(run, station) ? html`<span class="tag">${t("runs.tag.other_sensor")}</span>` : nothing}</span>
+        ${run.running ? html`<span class="tag live">${t("runs.tag.running")}</span>` : this._renderDeleteRun(area, station, run)}
+      </div>
+      <div class="chartbox" @pointermove=${(e) => this._pointer(m, e)} @pointerleave=${() => (cancelAnimationFrame(this._frame), (this._hover = null))}>
+        ${renderChart(run, m, { labels, hover: this._hover, unit, marks, window, level })}
+      </div>
+      <div class="readout">${this._hover != null && hv != null ? `${formatDuration(this._hover)} · ${Math.round(hv * 10) / 10} ${unit}` : html`&nbsp;`}</div>
+      <div class="legend">
+        <span><i class="sw curve"></i>${t("runs.legend.power")}</span>
+        ${p.on_above != null ? html`<span><i class="sw thr"></i>${t("runs.legend.threshold", { watts: p.on_above, unit })}</span>` : nothing}
+        ${ignore > 0 ? html`<span><i class="sw ign"></i>${t("runs.legend.ignored")}</span>` : nothing}
+        ${marks.length ? html`<span><i class="sw rang"></i>${t(differs ? "runs.legend.saved" : "runs.legend.ring")}</span>` : nothing}
+        ${differs && marks.some((k) => k.dash) ? html`<span><i class="sw rang dash"></i>${t("runs.legend.draft")}</span>` : nothing}
+        ${window ? html`<span><i class="sw win"></i>${t("runs.legend.window")}</span>` : nothing}
+      </div>
+      <div class="runinfo">
+        ${pv ? html`<div>${differs
+            ? html`${t("runs.this_run")} <b>${this._outcome(pv.saved, savedKind)}</b> ${t("runs.saved_word")} → <b>${this._outcome(pv.draft, p.kind)}</b> ${t("runs.draft_word")}${this._delta(pv) ? ` (${this._delta(pv)})` : ""}.`
+            : html`${t("runs.this_run")} <b>${this._outcome(pv.saved, savedKind)}</b>.`}
+            ${actual ? html`<span class="chs">${actual}</span>` : nothing}</div>` : html`<div class="chs">${this._preview?.key === key && this._preview.error ? `${t("preview.failed")}: ${this._preview.error}` : t("loading")}</div>`}
+        ${run.from > 0 ? html`<div class="chs">${t("runs.picked_up", { time: formatDuration(run.from) })}</div>` : nothing}
+        ${run.running ? html`<div class="chs">${t("runs.running", { time: formatDuration(run.duration) })}</div>` : nothing}
+      </div>
+    </div></div>`;
+  }
+
+  // "21 s earlier" between saved and draft ring, when both ring by the same way
+  _delta(pv) {
+    const a = pv?.saved;
+    const b = pv?.draft;
+    if (!a || !b || a.rang == null || b.rang == null || a.blip || b.blip) return "";
+    const diff = Math.round(b.start + b.rang - (a.start + a.rang));
+    if (Math.abs(diff) < 1) return this._t("delta.same");
+    return this._t(diff < 0 ? "delta.earlier" : "delta.later", { s: Math.abs(diff) });
+  }
+
+  _name(entityId) {
+    return this.hass.states[entityId]?.attributes?.friendly_name || entityId;
+  }
+
+  _otherSensor(run, station) {
+    return run.sensor && station.power.sensor && run.sensor !== station.power.sensor;
+  }
+
+  // what should the timer do: one question, three answers; each answer's own setting under it
+  _renderTodo(key, d, set, station, preview) {
     const t = this._t;
     const p = d.power;
     const spec = this._config.specs;
     const setP = (k, v) => set((x) => (x.power[k] = v));
-    return html`
-      <div class="card"><div class="ch">${t("power")}</div><div class="cb">
-        ${this._selector(key, "power.sensor", t("power.sensor"), { entity: { filter: { domain: "sensor", device_class: "power" } } }, p.sensor, (v) => setP("sensor", v || ""), t("power.sensor_hint"))}
-        <div class="pair">
-          ${this._number(key, "power.on_above", t("power.on_above"), p.on_above, spec.power.on_above, "W", (v) => setP("on_above", v))}
-          ${this._number(key, "power.off_after", t("power.off_after"), p.off_after, spec.power.off_after, "s", (v) => setP("off_after", v))}
-        </div>
-        ${this._help(t("power.thresholds_short"), t("power.thresholds_hint"), "thresholds")}
-      </div></div>
-      <div class="card"><div class="ch">${t("power.kind")}</div><div class="cb">
-        <div class="radios" role="radiogroup" aria-label=${t("power.kind")}>
-          ${spec.kinds.map((k) => html`<button class="radio" role="radio" aria-checked=${p.kind === k} @click=${() => setP("kind", k)}>
-              <span class="rb ${p.kind === k ? "on" : ""}"></span><span class="lbl"><b>${t(`kind.${k}`)}</b><span>${t(`kind.${k}_long`)}</span></span></button>`)}
-        </div>
-        ${p.kind === "start_preset"
-          ? html`<div class="sub">
-              ${this._selector(key, "power.preset", t("power.preset"), { select: { mode: "dropdown", options: d.presets.filter((x) => x.name).map((x) => ({ value: x.id, label: x.name })) } }, p.preset, (v) => setP("preset", v || null), d.presets.some((x) => x.name) ? "" : t("power.preset_none"))}
-              ${this._toggle(t("power.cancel_on_off"), t("power.cancel_on_off_hint"), p.cancel_on_off, (v) => setP("cancel_on_off", v))}
-            </div>`
-          : nothing}
-        ${p.kind === "warn" ? html`<div class="sub pair">${this._number(key, "power.warn_after", t("power.warn_after"), p.warn_after, spec.power.warn_after, "min", (v) => setP("warn_after", v))}</div>` : nothing}
-      </div></div>
-      ${p.kind === "until_off" ? this._renderRule(key, d, set) : nothing}
-    `;
+    const base = station ? station.power : null;
+    const changed = base && ["kind", "preset", "cancel_on_off", "warn_after", "done"].some((k) => !same(p[k], base[k]));
+    const sub = (k) => {
+      if (k === "until_off") return this._ruleBody(key, d, set, station, preview);
+      if (k === "start_preset") {
+        return html`<div class="pair">
+            ${this._selector(key, "power.preset", t("power.preset"), { select: { mode: "dropdown", options: d.presets.filter((x) => x.name).map((x) => ({ value: x.id, label: `${x.name} · ${x.text}` })) } }, p.preset, (v) => setP("preset", v || null), d.presets.some((x) => x.name) ? t("power.preset_below") : t("power.preset_none"))}
+          </div>
+          ${this._toggle(t("power.cancel_on_off"), t("power.cancel_on_off_hint"), p.cancel_on_off, (v) => setP("cancel_on_off", v))}
+          ${this._previewSummary(station, d, preview)}`;
+      }
+      return html`<div class="pair">${this._number(key, "power.warn_after", t("power.warn_after"), p.warn_after, spec.power.warn_after, "min", (v) => setP("warn_after", v))}</div>
+        ${this._previewSummary(station, d, preview)}`;
+    };
+    return html`<div class="card"><div class="ch">${t("power.kind")} ${changed ? html`<span class="changed">${t("changed")}</span>` : nothing}</div><div class="cb">
+      <div class="opts" role="group" aria-label=${t("power.kind")}>
+        ${spec.kinds.map((k) => html`<div class="opt ${p.kind === k ? "on" : ""}">
+            <button class="radio" aria-pressed=${p.kind === k ? "true" : "false"} @click=${() => setP("kind", k)}>
+              <span class="rb ${p.kind === k ? "on" : ""}"></span><span class="lbl"><b>${t(`kind.${k}`)}</b><span>${t(`kind.${k}_long`)}</span></span></button>
+            ${p.kind === k ? html`<div class="optsub">${sub(k)}</div>` : nothing}
+          </div>`)}
+      </div>
+    </div></div>`;
   }
 
-  // the done rule as a sentence with its values in it
-  _renderRule(key, d, set) {
+  // "it is done when …": the done rule as a sentence with its values in it, and the preview
+  _ruleBody(key, d, set, station, preview) {
     const t = this._t;
     const spec = this._config.specs.rules;
     const rule = d.power.done?.type || "off";
@@ -844,7 +1044,7 @@ class HomeTimerPanel extends LitElement {
       </select>`;
     const parts = t(`rule_sentence.${rule}`).split(/(\{\w+\})/);
     const errors = Object.entries(this._errors[key] || {}).filter(([k]) => k.startsWith("power.done.") && fields[k.split(".").pop()]);
-    return html`<div class="card"><div class="ch">${t("power.done")}</div><div class="cb">
+    return html`<div class="ql">${t("power.done")}</div>
       <div class="sentence">${parts.map((part) => {
         const m = part.match(/^\{(\w+)\}$/);
         if (!m) return part;
@@ -856,29 +1056,89 @@ class HomeTimerPanel extends LitElement {
         const f = fields[k.split(".").pop()];
         return html`<div class="err" role="alert">${t(`error.${code}`)} ${t("allowed", { min: f.min, max: f.max, unit: f.unit })}</div>`;
       })}
-      ${this._help(t(`rule.${rule}_hint`), t("rule.all_hint"), "rules")}
-    </div></div>`;
+      ${rule === "off" ? nothing : this._previewSummary(station, d, preview)}
+      ${this._help(`${t(`rule.${rule}_hint`)} ${t("power.done_hint")}`, t("rule.all_hint"), "rules")}`;
   }
 
-
-  // ------------------------------------------------------------------ runs of a power station
-
-  _renderTabs(area, station, tab) {
+  // the draft on all stored runs, counted
+  _previewSummary(station, d, preview) {
     const t = this._t;
-    return html`<div class="tabs" role="tablist">
-      ${["settings", "runs"].map(
-        (x) => html`<button role="tab" aria-selected=${tab === x ? "true" : "false"} class=${tab === x ? "on" : ""} @click=${() => this._tab(area, station, x)}>${t(`tab.${x}`)}</button>`
-      )}
+    if (!station || station.mode !== "power" || !preview || !this._draftDiffers(station, d)) return nothing;
+    const runs = preview.runs.filter((r) => r.saved && r.draft);
+    if (!runs.length) return nothing;
+    const kind = d.power.kind;
+    const parts = [];
+    if (kind === "until_off" && (d.power.done?.type || "off") !== "off") {
+      const earlier = [];
+      const later = [];
+      let same = 0;
+      let never = 0;
+      let blips = 0;
+      for (const r of runs) {
+        if (r.draft.blip) blips++;
+        else if (r.draft.trigger === "never") never++;
+        else if (r.saved.rang != null && r.draft.rang != null) {
+          const diff = r.draft.start + r.draft.rang - (r.saved.start + r.saved.rang);
+          if (diff < -0.5) earlier.push(-diff);
+          else if (diff > 0.5) later.push(diff);
+          else same++;
+        }
+      }
+      const med = (a) => Math.round([...a].sort((x, y) => x - y)[Math.floor(a.length / 2)]);
+      if (earlier.length) parts.push(t("preview.earlier", { count: earlier.length, s: med(earlier) }));
+      if (later.length) parts.push(t("preview.later", { count: later.length, s: med(later) }));
+      if (same) parts.push(t("preview.same", { count: same }));
+      if (never) parts.push(html`<span class="warn">${t("preview.never", { count: never })}</span>`);
+      if (blips) parts.push(t("preview.blips", { count: blips }));
+    } else {
+      const count = (which, k) => {
+        const c = {};
+        for (const r of runs) {
+          const res = r[which];
+          const key = res.blip ? "blip" : res.trigger === "countdown" ? (k === "warn" ? "warns" : "rings") : res.trigger === "none" ? (k === "warn" ? "no_warning" : "no_ring") : res.trigger;
+          c[key] = (c[key] || 0) + 1;
+        }
+        return Object.entries(c).map(([k, n]) => t(`preview.n.${k}`, { count: n })).join(", ");
+      };
+      parts.push(count("draft", kind));
+      parts.push(t("preview.saved_was", { list: count("saved", station.power.kind) }));
+    }
+    return html`<div class="preview"><b>${t("preview.title", { count: runs.length })}</b> ${parts.map((x, i) => html`${i ? " · " : ""}${x}`)}
+      <div class="chs">${t("preview.marks_later")}</div></div>`;
+  }
+
+  // on and off: the sensor, and when the appliance runs and counts as off (a sentence)
+  _renderOnOff(key, d, set, foldable, station) {
+    const t = this._t;
+    const p = d.power;
+    const spec = this._config.specs.power;
+    const setP = (k, v) => set((x) => (x.power[k] = v));
+    const errs = Object.entries(this._errors[key] || {}).filter(([k]) => ["power.sensor", "power.on_above", "power.off_after"].includes(k));
+    const open = !foldable || !this.narrow || this._fold.onoff === true || errs.length > 0;
+    const unit = station ? this._unit(station) : "W";
+    const parts = t("onoff.sentence").split(/(\{\w+\})/);
+    const inl = { on_above: () => this._inline(key, "power.on_above", p.on_above, spec.on_above, "W", (v) => setP("on_above", v)), off_after: () => this._inline(key, "power.off_after", p.off_after, spec.off_after, "s", (v) => setP("off_after", v)) };
+    const summary = `${p.sensor ? this._name(p.sensor) : t("onoff.no_sensor")} · ${t("onoff.short", { watts: p.on_above, unit })}`;
+    return html`<div class="card">
+      ${foldable && this.narrow
+        ? html`<button class="ch fold" aria-expanded=${open ? "true" : "false"} @click=${() => this._setFold("onoff", !open)}>
+            <span>${t("onoff.title")} ${open ? nothing : html`<span class="chs">– ${summary}</span>`}</span><ha-icon icon=${open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon></button>`
+        : html`<div class="ch">${t("onoff.title")}</div>`}
+      ${open
+        ? html`<div class="cb">
+            ${this._selector(key, "power.sensor", t("power.sensor"), { entity: { filter: { domain: "sensor", device_class: "power" } } }, p.sensor, (v) => setP("sensor", v || ""), t("power.sensor_hint"))}
+            <div class="sentence">${parts.map((part) => {
+              const m = part.match(/^\{(\w+)\}$/);
+              return m && inl[m[1]] ? inl[m[1]]() : part;
+            })}</div>
+            ${errs.filter(([k]) => k !== "power.sensor").map(([k, code]) => html`<div class="err" role="alert">${t(`error.${code}`)} ${t("allowed", { ...spec[k.split(".").pop()], unit: k.endsWith("on_above") ? "W" : "s" })}</div>`)}
+            ${this._help(t("power.thresholds_short"), t("power.thresholds_hint"), "thresholds")}
+          </div>`
+        : nothing}
     </div>`;
   }
 
-  // switching tabs keeps the draft (it is the same station)
-  _tab(area, station, tab) {
-    if (tab === this._route.tab) return;
-    this._notice = null;
-    history.pushState(null, "", `/${PANEL}/station/${area.entry_id}/${station.id}${tab === "runs" ? "/runs" : ""}`);
-    window.dispatchEvent(new CustomEvent("location-changed", { detail: { replace: false } }));
-  }
+  // ------------------------------------------------------------------ runs of a power station
 
   _runsKey(entryId, stationId) {
     return `${entryId}:${stationId}`;
@@ -917,10 +1177,10 @@ class HomeTimerPanel extends LitElement {
     }
   }
 
-  // the Runs tab of this station is the page shown
+  // this station's page is the page shown
   _showing(key) {
     const r = this._route;
-    return r.page === "station" && r.tab === "runs" && this._runsKey(r.entry, r.station) === key;
+    return r.page === "station" && this._runsKey(r.entry, r.station) === key;
   }
 
   async _deleteRun(entryId, stationId, id) {
@@ -939,15 +1199,15 @@ class HomeTimerPanel extends LitElement {
   // the run going on is fetched again every few seconds while it is shown
   _tickRuns() {
     const r = this._route;
-    if (r.page !== "station" || r.tab !== "runs" || this._run?.id !== "current" || this._fetching) return;
+    if (r.page !== "station" || this._run?.id !== "current" || this._fetching) return;
     if (this._run.key !== this._runsKey(r.entry, r.station)) return;
-    if (Date.now() - this._run.at >= 5000) this._loadRun(r.entry, r.station, "current");
+    if (Date.now() - this._run.at >= 5000) this._loadRun(r.entry, r.station, "current").then(() => this._refreshCurrentPreview(r.entry, r.station));
   }
 
   // the appliance switched on or off: the list changes (a run starts, or is stored)
   _watchRuns() {
     const r = this._route;
-    if (r.page !== "station" || r.tab !== "runs") return;
+    if (r.page !== "station") return;
     const station = this._area(r.entry)?.stations.find((s) => s.id === r.station);
     const id = station?.entities?.running;
     if (!id) return;
@@ -979,32 +1239,7 @@ class HomeTimerPanel extends LitElement {
     }
   }
 
-  _renderRuns(area, station) {
-    const t = this._t;
-    const key = this._runsKey(area.entry_id, station.id);
-    const data = this._runs[key];
-    if (!data) {
-      if (this._pendingRuns !== key) {
-        this._pendingRuns = key;
-        Promise.resolve().then(() => this._loadRuns(area.entry_id, station.id).finally(() => (this._pendingRuns = null)));
-      }
-      return html`<div class="msg">${t("loading")}</div>`;
-    }
-    if (data.error) return html`<div class="msg">${t("load_failed")}: ${data.error}</div>`;
-    const all = [...(data.current ? [data.current] : []), ...(data.runs || [])];
-    if (!all.length) {
-      return html`<div class="emptycard"><ha-icon icon="mdi:chart-bell-curve-cumulative"></ha-icon><b>${t("runs.none")}</b><span>${t("runs.none_hint")}</span></div>
-        ${this._renderSensor(data, station)}`;
-    }
-    const shown = this._run?.key === key ? this._run : null;
-    return html`
-      ${shown ? this._renderRunCard(area, station, shown.data) : html`<div class="card"><div class="cb">${t("loading")}</div></div>`}
-      ${this._renderRunList(area, station, all, shown?.id, data.keep ?? 30)}
-      ${this._renderSensor(data, station)}
-    `;
-  }
-
-  _runWhen(run) {
+  _runWhen(run, short = false) {
     const lang = this.hass.locale?.language || this.hass.language;
     // Home Assistant's time zone setting: the browser's, or the server's
     const timeZone = this.hass.locale?.time_zone === "server" ? this.hass.config?.time_zone : undefined;
@@ -1012,57 +1247,7 @@ class HomeTimerPanel extends LitElement {
     const time = d.toLocaleTimeString(lang, { hour: "numeric", minute: "2-digit", timeZone });
     const day = (x) => x.toLocaleDateString("en-CA", { timeZone });
     if (day(new Date()) === day(d)) return this._t("runs.today", { time });
-    return `${d.toLocaleDateString(lang, { weekday: "short", day: "numeric", month: "short", timeZone })}, ${time}`;
-  }
-
-  _rangText(run) {
-    const t = this._t;
-    const time = formatDuration(run.rang);
-    if (run.running) return run.rang != null ? t(`runs.rang.${run.trigger || "unknown"}`, { time }) : t("runs.running", { time: formatDuration(run.duration) });
-    if (run.source === "history" && run.rang == null) return t("runs.from_history");
-    if (run.rang == null) return t("runs.no_ring");
-    if (run.simulated) return t(run.trigger === "off" ? "runs.would_ring_off" : "runs.would_ring", { time });
-    return t(`runs.rang.${run.trigger || "unknown"}`, { time });
-  }
-
-  _renderRunCard(area, station, run) {
-    const t = this._t;
-    const p = station.power || {};
-    const ignore = p.kind === "until_off" ? Number(p.done?.ignore || 0) : 0;
-    const onAbove = Number(p.on_above || 0);
-    const unit = this._unit(station);
-    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 240, onAbove, ignore });
-    const hv = this._hover != null ? valueAt(run, this._hover) : null;
-    const labels = {
-      aria: t("runs.chart.aria"),
-      rang: t("runs.chart.rang"),
-      stopped: t("runs.chart.stopped"),
-      unknown: t("runs.chart.unknown"),
-      ignored: t("runs.chart.ignored"),
-    };
-    return html`<div class="card runcard">
-      <div class="ch runh">
-        <span>${run.running ? t("runs.now") : this._runWhen(run)} <span class="chs">· ${formatDuration(run.duration)}</span></span>
-        ${run.running ? html`<span class="tag live">${t("runs.tag.running")}</span>` : this._renderDeleteRun(area, station, run)}
-      </div>
-      <div class="cb">
-        <div class="chartbox" @pointermove=${(e) => this._pointer(m, e)} @pointerleave=${() => (cancelAnimationFrame(this._frame), (this._hover = null))}>
-          ${renderChart(run, m, { labels, hover: this._hover, unit })}
-        </div>
-        <div class="readout">${this._hover != null && hv != null ? `${formatDuration(this._hover)} · ${Math.round(hv * 10) / 10} ${unit}` : html`&nbsp;`}</div>
-        <div class="legend">
-          <span><i class="sw curve"></i>${t("runs.legend.power")}</span>
-          ${onAbove > 0 ? html`<span><i class="sw thr"></i>${t("runs.legend.threshold", { watts: onAbove, unit })}</span>` : nothing}
-          ${ignore > 0 ? html`<span><i class="sw ign"></i>${t("runs.legend.ignored")}</span>` : nothing}
-          ${run.rang != null ? html`<span><i class="sw rang"></i>${t("runs.legend.rang")}</span>` : nothing}
-        </div>
-        <div class="runinfo">
-          <div>${this._rangText(run)}</div>
-          ${run.from > 0 ? html`<div>${t("runs.picked_up", { time: formatDuration(run.from) })}</div>` : nothing}
-          ${run.source === "history" ? html`<div class="help">${t("runs.history_note")}</div>` : nothing}
-        </div>
-      </div>
-    </div>`;
+    return `${d.toLocaleDateString(lang, { ...(short ? {} : { weekday: "short" }), day: "numeric", month: "short", timeZone })}, ${time}`;
   }
 
   // the value under the pointer, at most once a frame
@@ -1077,33 +1262,69 @@ class HomeTimerPanel extends LitElement {
     const t = this._t;
     if (this._confirm === run.id) {
       return html`<span class="confirm">${t("runs.delete_confirm")}
-        <button class="btn sm danger filled" @click=${() => this._deleteRun(area.entry_id, station.id, run.id)}>${t("delete")}</button>
+        <button class="btn sm danger filled" ?disabled=${this._deleting} @click=${() => this._deleteRun(area.entry_id, station.id, run.id)}>${t("delete")}</button>
         <button class="btn sm" @click=${() => (this._confirm = null)}>${t("cancel")}</button></span>`;
     }
     return html`<button class="icon sm" aria-label=${t("runs.delete")} title=${t("runs.delete")} @click=${() => (this._confirm = run.id)}><ha-icon icon="mdi:delete-outline"></ha-icon></button>`;
   }
 
-  _renderRunList(area, station, all, selected, keep) {
+  // a small bar per run: its length, the saved and the draft ring
+  _strip(run, pv, differs) {
+    const end = Math.max(run.duration || 0, ...(pv ? [pv.saved, pv.draft].filter((x) => x && x.rang != null).map((x) => x.start + x.rang) : []), 1);
+    const x = (s) => Math.min(100, (s / end) * 100);
+    const line = (res, dash) => res && res.rang != null && !res.blip
+      ? svg`<line x1="${x(res.start + res.rang)}%" x2="${x(res.start + res.rang)}%" y1="1" y2="13" class="${res.trigger === "cancelled" ? "cx" : ""} ${dash ? "dash" : ""}"></line>` : nothing;
+    return html`<svg class="strip" width="100%" height="14" aria-hidden="true"><rect x="0" y="5" width="${x(run.duration || 0)}%" height="4" rx="2"></rect>
+      ${pv ? line(pv.saved, false) : nothing}${pv && differs ? line(pv.draft, true) : nothing}</svg>`;
+  }
+
+  _renderRunList(area, station, d, data, preview) {
     const t = this._t;
+    const all = [...(data.current ? [data.current] : []), ...(data.runs || [])];
+    if (!all.length) return nothing;
+    const key = this._runsKey(area.entry_id, station.id);
+    const selected = this._run?.key === key ? this._run.id : null;
+    const differs = this._draftDiffers(station, d);
     const open = !this.narrow || this._fold.runs !== false;
     const stored = all.filter((r) => !r.running).length;
     const usual = this._usual(station);
     const closed = `${t("runs.summary", { count: stored })}${usual ? ` · ${t("now.usual", { time: usual })}` : ""}`;
+    const pvOf = (r) => (r.running ? preview?.current : preview?.runs.find((x) => x.id === r.id));
+    const text = (pv) => {
+      if (!pv) return "";
+      const one = (res) => (res.blip ? "–" : res.rang != null ? formatDuration(res.start + res.rang) : "–");
+      return differs ? `${one(pv.saved)} → ${one(pv.draft)}` : one(pv.saved);
+    };
+    const tagOf = (r, pv) => {
+      if (r.running) return html`<span class="tag live">${t("runs.tag.running")}</span>`;
+      if (pv && differs) {
+        if (pv.draft.blip) return html`<span class="tag warn">${t("runs.tag.blip")}</span>`;
+        if (pv.draft.trigger === "never") return html`<span class="tag warn">${t("runs.tag.never")}</span>`;
+        if (pv.draft.trigger === "cancelled") return html`<span class="tag">${t("runs.tag.cancelled")}</span>`;
+        const delta = this._delta(pv);
+        if (delta && delta !== t("delta.same")) return html`<span class="dl">${delta}</span>`;
+      }
+      if (this._otherSensor(r, station)) return html`<span class="tag">${t("runs.tag.other_sensor")}</span>`;
+      if (r.source === "history") return html`<span class="tag">${t("runs.tag.history")}</span>`;
+      return nothing;
+    };
     return html`<div class="card">
       <button class="ch fold" ?disabled=${!this.narrow} aria-expanded=${open ? "true" : "false"} @click=${() => this._setFold("runs", !open)}>
-        <span>${t("runs.title")} <span class="chs">– ${open ? t("runs.kept", { count: keep }) : closed}</span></span>
+        <span>${t("runs.title")} <span class="chs">– ${open ? (differs ? t("runs.saved_draft") : t("runs.kept", { count: data.keep ?? 30 })) : closed}</span></span>
         ${this.narrow ? html`<ha-icon icon=${open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>` : nothing}
       </button>
       ${open
         ? html`<div class="runs" role="listbox" aria-label=${t("runs.title")}>
-            ${all.map(
-              (r) => html`<button class="runrow ${r.id === selected ? "sel" : ""}" role="option" aria-selected=${r.id === selected ? "true" : "false"} @click=${() => this._loadRun(area.entry_id, station.id, r.id)}>
-                <span class="rw">${r.running ? t("runs.now") : this._runWhen(r)}</span>
+            ${all.map((r) => {
+              const pv = pvOf(r);
+              return html`<button class="runrow ${r.id === selected ? "sel" : ""}" role="option" aria-selected=${r.id === selected ? "true" : "false"} @click=${() => this._loadRun(area.entry_id, station.id, r.id)}>
+                <span class="rw">${r.running ? t("runs.now") : this._runWhen(r, !this.narrow)}</span>
                 <span class="rd">${formatDuration(r.duration)}</span>
-                <span class="rr" title=${this._rangText(r)}>${r.rang != null ? html`<ha-icon icon="mdi:bell-ring-outline"></ha-icon>${r.simulated ? "≈ " : ""}${formatDuration(r.rang)}` : "–"}</span>
-                <span class="rt">${r.running ? html`<span class="tag live">${t("runs.tag.running")}</span>` : r.source === "history" ? html`<span class="tag">${t("runs.tag.history")}</span>` : nothing}</span>
-              </button>`
-            )}
+                <span class="rs">${this._strip(r, pv, differs)}</span>
+                <span class="rr">${text(pv)}</span>
+                <span class="rt">${tagOf(r, pv)}</span>
+              </button>`;
+            })}
           </div>`
         : nothing}
     </div>`;
@@ -1378,16 +1599,69 @@ class HomeTimerPanel extends LitElement {
     .ch.fold { display: flex; align-items: center; justify-content: space-between; width: 100%; padding-bottom: 10px; cursor: default; }
     :host([narrow]) .ch.fold { cursor: pointer; }
     .runs { border-top: 1px solid var(--ht-d); max-height: 420px; overflow: auto; }
-    .runrow { display: grid; grid-template-columns: minmax(0, 1fr) 64px 84px 104px; align-items: center; gap: 8px; width: 100%; padding: 10px 16px;
+    .runrow { display: grid; grid-template-columns: minmax(118px, 1fr) 44px minmax(40px, 80px) 86px 92px; align-items: center; gap: 8px; width: 100%; padding: 10px 16px;
       border-bottom: 1px solid var(--ht-d); font-variant-numeric: tabular-nums; }
     .runrow:last-child { border-bottom: none; }
     .runrow:hover { background: rgba(127, 127, 127, 0.06); }
     .runrow.sel { background: var(--ht-tint); }
     .runrow .rw { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .runrow .rs { min-width: 0; }
     .runrow .rd, .runrow .rr { color: var(--ht-s); text-align: right; display: inline-flex; align-items: center; justify-content: flex-end; gap: 3px; --mdc-icon-size: 15px; }
     .runrow .rt { text-align: right; }
-    :host([narrow]) .runrow { grid-template-columns: minmax(0, 1fr) 52px 72px; }
-    :host([narrow]) .runrow .rt { display: none; }
+    :host([narrow]) .runrow { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "w d" "s r" "t t"; row-gap: 4px; }
+    :host([narrow]) .runrow .rw { grid-area: w; } :host([narrow]) .runrow .rd { grid-area: d; }
+    :host([narrow]) .runrow .rs { grid-area: s; } :host([narrow]) .runrow .rr { grid-area: r; }
+    :host([narrow]) .runrow .rt { grid-area: t; text-align: left; }
+    :host([narrow]) .runrow .rt:empty { display: none; }
+    .cols.wide .col { max-width: 1120px; }
+    .ident { display: grid; grid-template-columns: minmax(180px, 1.2fr) minmax(170px, 1fr) auto; gap: 10px 16px; align-items: start; }
+    .ident .starts { margin-top: 6px; }
+    .identhelp { grid-column: 1 / -1; margin-top: -6px; }
+    :host([narrow]) .ident { grid-template-columns: 1fr; gap: 4px; }
+    :host([narrow]) .ident .starts { margin-top: 2px; }
+    .curveh { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding-bottom: 6px; }
+    .curvet { display: flex; flex-direction: column; gap: 2px; }
+    .curvet b { font-weight: 500; }
+    .curveh .links { display: flex; gap: 4px; font-size: 13.5px; font-weight: 500; }
+    .curveh .links a { padding: 2px 6px; border-radius: 6px; }
+    .curveh .links a:hover { background: var(--ht-tint); }
+    .card.curve.run { border: 2px solid color-mix(in srgb, var(--ht-run) 60%, transparent); }
+    .card.curve.ring { border: 2px solid var(--ht-err); }
+    .runh2 { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-height: 36px; font-weight: 500; }
+    .runh2 .tag { margin-left: 6px; }
+    .note { background: color-mix(in srgb, var(--ht-warn) 14%, transparent); border-radius: 8px; padding: 9px 12px; margin-bottom: 10px; font-size: 13px; line-height: 1.45; }
+    .changed { font-size: 12px; font-weight: 500; color: color-mix(in srgb, var(--ht-warn) 80%, #000); background: color-mix(in srgb, var(--ht-warn) 15%, transparent); border-radius: 10px; padding: 2px 8px; margin-left: 6px; }
+    .opts { display: flex; flex-direction: column; gap: 8px; }
+    .opt { border: 1px solid var(--ht-d); border-radius: 10px; padding: 0 12px; }
+    .opt.on { border: 2px solid var(--ht-p); background: color-mix(in srgb, var(--ht-p) 4%, transparent); }
+    .opt .radio { border: none; }
+    .optsub { margin: 0 0 12px 34px; padding-top: 10px; border-top: 1px dashed var(--ht-d); }
+    :host([narrow]) .optsub { margin-left: 4px; }
+    .ql { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ht-s); margin-bottom: 2px; }
+    .preview { background: var(--ht-fill); border-radius: 8px; padding: 10px 12px; margin: 8px 0 4px; line-height: 1.6; }
+    .preview .warn { color: color-mix(in srgb, var(--ht-run) 85%, #000); }
+    .duo { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr); gap: 0 16px; align-items: start; }
+    :host([narrow]) .duo { grid-template-columns: 1fr; }
+    :host([narrow]) .duor { order: -1; }
+    .chart .win { fill: color-mix(in srgb, var(--ht-err) 8%, transparent); }
+    .chart .zone.win, .chart .zone.lvl { fill: var(--ht-err); }
+    .chart .level { stroke: var(--ht-err); stroke-width: 1.2; stroke-dasharray: 2 3; }
+    .chart .mark { stroke: var(--ht-err); stroke-width: 2; }
+    .chart .mark.dash { stroke-dasharray: 4 3; }
+    .chart .mk.it { font-style: italic; }
+    .sw.rang.dash { border-left-style: dashed; }
+    .sw.win { height: 10px; border: none; background: color-mix(in srgb, var(--ht-err) 14%, transparent); }
+    .strip { display: block; overflow: visible; }
+    .strip rect { fill: var(--ht-d); }
+    .strip line { stroke: var(--ht-err); stroke-width: 2; }
+    .strip line.dash { stroke-dasharray: 3 2; }
+    .strip line.cx { stroke: var(--ht-run); }
+    .dl { font-size: 12.5px; font-weight: 500; color: var(--ht-ok); white-space: nowrap; }
+    .tag.warn { background: color-mix(in srgb, var(--ht-run) 16%, transparent); color: color-mix(in srgb, var(--ht-run) 85%, #000); }
+    @container (max-width: 920px) {
+      .duo { grid-template-columns: 1fr; }
+      .duor { order: -1; }
+    }
     @container (max-width: 780px) {
       .cols { flex-direction: column; gap: 0; align-items: stretch; }
       .colr { width: 100%; position: static; order: -1; }

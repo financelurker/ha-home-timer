@@ -39,33 +39,31 @@ The ⋮ menu at the top right holds the panel settings, a link to this documenta
 
 **+ Add station** on an area, or a station's card, opens the station:
 
-- **General:** name, icon (Home Assistant's icon picker) and how it **starts**: *By hand* – presets and buttons, see [Stations and presets](stations.md) – or *By power* – a power sensor drives the timer, see [Power stations](power.md). Names are unique within the area.
-- **Power** (by power): the power sensor – Home Assistant's entity picker, offering sensors with the device class *power* – and when it counts as running and stopped.
-- **When it runs** (by power): until it switches off, starts a preset, or only warn.
-- **Done when** (until it switches off): the done rule as a sentence, e.g. *The power falls by at least 10 % within 60 s – ignore the first 120 s.* Change the rule in the sentence; ⓘ explains all rules.
+- **At the top:** name, icon (Home Assistant's icon picker) and how it **starts**: *By hand* – presets and buttons, see [Stations and presets](stations.md) – or *By power* – a power sensor drives the timer, see [Power stations](power.md) and [below](#a-station-by-power). Names are unique within the area.
 - **Presets:** name, duration (`9` = 9 minutes, `9:30`, `1:05:00`), optional note. Sort them by dragging or with the arrows (on a phone, note and delete are behind ⋯); the buttons follow. Renaming a preset keeps its button.
 - **⋮ → Delete station:** a timer running on it is cancelled (`reason: station_removed`).
 
-The card **Now** (on a phone at the top) shows what the station does right now, with links to its device, its entities and its history.
+The card **Now** (on a phone at the top) shows what a station by hand does right now, with links to its device, its entities and its history; a station by power shows it at the top of its curve.
 
 ![A station by hand: name, icon and its presets, sortable](images/panel-station.png)
 
-![A station by power: sensor, thresholds, kind and done rule; on the right the appliance's state](images/panel-power.png)
-
 On a phone:
 
-<img src="images/phone-area.png" alt="The kitchen on a phone" width="300"> <img src="images/phone-power.png" alt="The moka pot on a phone" width="300">
+<img src="images/phone-area.png" alt="The kitchen on a phone" width="300">
 
-## Runs
+## A station by power
 
-A station by power has two tabs: **Settings** (above) and **Runs**. *Runs* shows the station's stored runs – see [Power stations › Runs](power.md#runs):
+Everything is on one page, so a change shows at once what it does with the station's real runs:
 
-- **The curve** of the chosen run: the power as the sensor reported it, the *runs above* threshold (dashed), the start the done rule ignores (grey), where the run stopped (*off*) and when it rang (red). Point at the curve to read a value. A run going on right now is shown live and updates every few seconds.
-- Below it, what happened: which way it rang – the done rule, switching off, or the preset's or warning's countdown. For runs read from the history: when the done rule, as set when they were read, would ring.
-- **Runs:** the list, newest first, with duration and ring time; click one to see its curve. The bin icon deletes a run (it asks first). On a phone the list folds in and out; the panel remembers it per device.
+- **The curve** of the chosen run, with what the station does right now and links to its device, entities and history. Marked in it: the *runs above* threshold (dashed), the start the done rule ignores (grey), where the run stopped (*off*), and when it rings – a solid line for the saved settings, a dashed one for your changes while they are not saved (the **preview**). For *the power falls by* and *falls faster*, the rule's window is shaded; for *pauses* and *stops cycling*, its level is drawn. Point at the curve to read a value. A run going on right now is shown live.
+- **What should the timer do?** – *Ring when it's done*, *Start a preset* or *Warn if it runs too long*; the chosen answer's own setting opens under it. Under *Ring when it's done*: **It is done when …**, the done rule as a sentence, e.g. *the power falls by at least 10 % within 60 s – ignore the first 120 s*; ⓘ explains all rules. While you change it, a summary says what your draft does on all stored runs – e.g. *3 done earlier (median 12 s) · 5 unchanged* – and which runs it would never call done.
+- **On and off:** the power sensor and, as a sentence, when the appliance runs and counts as off. The preview follows these too, within each stored run.
+- **Runs:** newest first, with duration and when it rings – saved → draft while you change something; click one to see its curve. The bin icon deletes a run (it asks first). Runs read from the history, or recorded with another sensor, are marked.
 - **Sensor:** how often it reports and how much its readings scatter.
 
-<img src="images/phone-runs.png" alt="The moka pot's runs on a phone" width="300">
+The preview compares; it cannot tell *too early* or *too late* yet – that needs to know when runs were really done (learning, next). A new station shows its runs once it is saved. On a phone, the page goes curve, what the timer should do, runs, then *On and off* (folded) – the panel remembers what is folded per device.
+
+<img src="images/phone-power.png" alt="The moka pot on a phone: its curve" width="300"> <img src="images/phone-runs.png" alt="What the timer should do and the runs on a phone" width="300">
 
 ## Saving
 

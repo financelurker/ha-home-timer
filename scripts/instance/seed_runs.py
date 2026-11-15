@@ -1,4 +1,4 @@
-"""Give the demo's moka pot a week of runs, so its Runs tab has something to show.
+"""Give the demo's moka pot a week of runs, so its page in the panel has runs to show.
 
 The runs are made from the real moka pot run in the tests (tests/fixtures/moka.py):
 more or less water stretches it, the sensor reports every ~10 s with a little
@@ -56,7 +56,8 @@ def one_run(rng: random.Random, start: datetime, rule: DoneRule) -> dict:
         t += rng.uniform(8, 12)
     trace.add(round(off, 1), 0.0)
     rang = first_fire(rule, trace, off)
-    return make_run(start, off, trace, on_above=10, rang=rang if rang is not None else off, trigger="rule" if rang is not None else "off")
+    return make_run(start, off, trace, on_above=10, rang=rang if rang is not None else off,
+                    trigger="rule" if rang is not None else "off", sensor="sensor.moka_pot_plug_power")
 
 
 async def main() -> None:
