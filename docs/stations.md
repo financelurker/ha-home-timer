@@ -37,6 +37,20 @@ Renaming a preset keeps its button (its entity id stays); deleting a preset remo
 
 Starting a timer on a station that already has one replaces it: the old timer fires `home_timer_cancelled` with `reason: replaced`. Timers without a station (started on the area) are not affected; an area can have any number of those.
 
+## Attaching a timer later
+
+A timer started without a station – by a script, another integration, or a recipe – can be attached to a station afterwards, e.g. when the dough goes into the oven:
+
+```yaml
+action: home_timer.assign
+target:
+  entity_id: sensor.kitchen_oven
+data:
+  timer_id: "{{ timer_id }}"
+```
+
+It keeps its state and remaining time and from then on shows on the station's entities; a timer the station had is replaced. The station must be in the timer's area. Event: `home_timer_assigned`.
+
 ## From automations and scripts
 
 Target the station's device or one of its entities:

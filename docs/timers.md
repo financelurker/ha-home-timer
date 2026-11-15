@@ -21,6 +21,7 @@ Cancelled and acknowledged timers are gone; an area without timers has nothing t
 
 - **Add time** to an active or paused timer extends it; to a ringing timer, it starts it again with that time ("two more minutes").
 - **Subtract time** shortens it; down to zero (also when paused) it runs out right away.
+- **Assign** attaches a timer to a [station](stations.md#attaching-a-timer-later) of its area, keeping its time.
 - Every change fires an [event](automations.md#events).
 
 ## Ringing

@@ -224,6 +224,16 @@
           "description": "The timer's id (from the start action's response, an event or a sensor). Without it: the timers of the targeted stations."
         }
       }
+    },
+    "assign": {
+      "name": "Assign to a station",
+      "description": "Attaches a timer to a station (target: its device or entities) of the same area. It keeps its state and time; a timer the station has is replaced.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer ID",
+          "description": "The timer to attach, e.g. one started without a station."
+        }
+      }
     }
   },
   "exceptions": {
@@ -283,6 +293,9 @@
     },
     "preset_with_duration": {
       "message": "A preset brings its own duration; leave the duration out."
+    },
+    "other_area": {
+      "message": "The timer and the station belong to different areas."
     }
   },
   "config_subentries": {

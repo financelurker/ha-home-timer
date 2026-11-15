@@ -42,6 +42,7 @@ from .const import (
     DEFAULT_OPTIONS,
     DOMAIN,
     EVENT_ACKNOWLEDGED,
+    EVENT_ASSIGNED,
     EVENT_CANCELLED,
     EVENT_FINISHED,
     EVENT_PAUSED,
@@ -394,6 +395,28 @@ class AreaTimers:
             self._finish(timer)
         elif timer.status == STATUS_ACTIVE:
             self._schedule(timer)
+        self._changed()
+        return timer
+
+    @callback
+    def assign(self, timer_id: str, station_id: str) -> Timer:
+        """Attach a timer to a station of the area; it keeps its state and time.
+
+        A timer the station already has is replaced (``reason: replaced``). A timer of
+        another station moves; assigning it to its own station does nothing.
+        """
+        timer = self.get(timer_id)
+        station = self.stations.get(station_id)
+        if station is None:
+            raise TimerError("unknown_station", station=station_id)
+        if timer.station == station_id:
+            return timer
+        if (other := self.timer_at(station_id)) is not None:
+            self.cancel(other.id, reason=REASON_REPLACED)
+        previous = timer.station_name if timer.station else None
+        timer.station = station_id
+        timer.station_name = station.name
+        self._fire(EVENT_ASSIGNED, timer, previous_station_name=previous)
         self._changed()
         return timer
 

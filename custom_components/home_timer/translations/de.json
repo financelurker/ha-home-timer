@@ -224,6 +224,16 @@
           "description": "Die ID des Timers (aus der Antwort der Start-Aktion, einem Ereignis oder einem Sensor). Ohne: die Timer der gewählten Stationen."
         }
       }
+    },
+    "assign": {
+      "name": "Einer Station zuordnen",
+      "description": "Hängt einen Timer an eine Station (Ziel: ihr Gerät oder ihre Entitäten) desselben Bereichs. Er behält Zustand und Zeit; einen Timer, den die Station hat, ersetzt er.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer-ID",
+          "description": "Der zuzuordnende Timer, z. B. einer, der ohne Station gestartet wurde."
+        }
+      }
     }
   },
   "exceptions": {
@@ -283,6 +293,9 @@
     },
     "preset_with_duration": {
       "message": "Eine Vorlage bringt ihre eigene Dauer mit; lass die Dauer weg."
+    },
+    "other_area": {
+      "message": "Timer und Station gehören zu verschiedenen Bereichen."
     }
   },
   "config_subentries": {

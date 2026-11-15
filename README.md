@@ -10,7 +10,7 @@
 ## What it does
 
 - **[One entry per area](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md):** kitchen, bathroom, laundry – each area gets its own timers and a *Home Timer* device.
-- **[Timers without a station](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md):** any number per area – start, pause, resume, add or subtract time, cancel – by action, from a script or from another integration.
+- **[Timers without a station](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md):** any number per area – start, pause, resume, add or subtract time, cancel – by action, from a script or from another integration; [attach one to a station](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#attaching-a-timer-later) later.
 - **[Rings until acknowledged](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#ringing):** overtime is counted, reminders repeat, and it stops by itself after a while.
 - **[Survives restarts](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#restarts):** a timer that ran out while Home Assistant restarted is reported right after the start.
 - **[For your own automations](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md):** events for every step, with the area, a note and your own data – e.g. a phone notification with "Got it" and "+2 min".

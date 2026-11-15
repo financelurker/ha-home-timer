@@ -40,6 +40,7 @@ The other actions take the timer's id – from the response above, from an event
 | `home_timer.subtract_time` | `timer_id` or stations, `duration` | shortens a timer; down to zero it runs out |
 | `home_timer.cancel` | `timer_id` or stations | cancels a timer, whatever its state |
 | `home_timer.acknowledge` | `timer_id`, stations, or areas (area, floor, …) | acknowledges one ringing timer, the ringing timers of the stations, or all ringing timers of the areas |
+| `home_timer.assign` | `timer_id`, one station of the timer's area | attaches the timer to the station: it keeps its state and time; a timer the station has is replaced; a timer of another station moves (response: the timer) |
 
 A target names either stations or areas, not both (only `acknowledge` takes both). With a `timer_id`, the target is not used. Durations must be at least one second. An action that does not fit the timer's state (pause a paused timer, acknowledge one that does not ring) fails with a message saying why.
 
@@ -55,6 +56,7 @@ A target names either stations or areas, not both (only `acknowledge` takes both
 | `home_timer_reminder` | while it rings, every few minutes | `overtime` (seconds since it ran out) |
 | `home_timer_cancelled` | it is cancelled | `reason`: `manual`, `replaced` (a new timer on the station) or `station_removed` (then `device_id` is the area's device; `station_name` is still the station's) |
 | `home_timer_acknowledged` | a ringing timer is acknowledged | `by`: `button`, `action` or `timeout`; `overtime` |
+| `home_timer_assigned` | it is attached to a station (`home_timer.assign`) | `previous_station_name` (when it moved from another station) |
 
 Every event carries:
 

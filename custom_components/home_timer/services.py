@@ -25,6 +25,7 @@ from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.target import TargetSelection, async_extract_referenced_entity_ids
+from homeassistant.util import dt as dt_util
 
 from .const import (
     ATTR_DURATION,
@@ -38,6 +39,7 @@ from .const import (
     DOMAIN,
     SERVICE_ACKNOWLEDGE,
     SERVICE_ADD_TIME,
+    SERVICE_ASSIGN,
     SERVICE_CANCEL,
     SERVICE_PAUSE,
     SERVICE_RESUME,
@@ -63,6 +65,7 @@ TIMER_SCHEMA = vol.Schema({**cv.TARGET_SERVICE_FIELDS, vol.Optional(ATTR_TIMER_I
 TIME_SCHEMA = vol.Schema(
     {**cv.TARGET_SERVICE_FIELDS, vol.Optional(ATTR_TIMER_ID): cv.string, vol.Required(ATTR_DURATION): _DURATION}
 )
+ASSIGN_SCHEMA = vol.Schema({**cv.TARGET_SERVICE_FIELDS, vol.Required(ATTR_TIMER_ID): cv.string})
 ACKNOWLEDGE_SCHEMA = vol.Schema({**cv.TARGET_SERVICE_FIELDS, vol.Optional(ATTR_TIMER_ID): cv.string})
 
 
@@ -253,7 +256,22 @@ def async_register_services(hass: HomeAssistant) -> None:
         for engine in areas:
             engine.acknowledge_all(by=BY_ACTION)
 
+    async def assign(call: ServiceCall) -> ServiceResponse:
+        timer_id = call.data[ATTR_TIMER_ID]
+        engine = _find(hass, timer_id)
+        stations, rest = _split(hass, call)
+        if rest:
+            raise _error("mixed_target") if stations else _error("one_station")
+        if len(stations) != 1:
+            raise _error("one_station")
+        station_engine, station_id = stations[0]
+        if station_engine is not engine:
+            raise _error("other_area")
+        timer = _run(engine.assign, timer_id, station_id)
+        return {"timer": timer.as_dict(dt_util.utcnow())}
+
     hass.services.async_register(DOMAIN, SERVICE_START, start, START_SCHEMA, SupportsResponse.OPTIONAL)
+    hass.services.async_register(DOMAIN, SERVICE_ASSIGN, assign, ASSIGN_SCHEMA, SupportsResponse.OPTIONAL)
     hass.services.async_register(DOMAIN, SERVICE_PAUSE, pause, TIMER_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_RESUME, resume, TIMER_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_ADD_TIME, add_time, TIME_SCHEMA)

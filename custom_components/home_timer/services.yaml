@@ -77,3 +77,14 @@ acknowledge:
       example: 01JD7Q0000000000000000000
       selector:
         text:
+
+assign:
+  target:
+    entity:
+      integration: home_timer
+  fields:
+    timer_id:
+      required: true
+      example: 01JD7Q0000000000000000000
+      selector:
+        text:
