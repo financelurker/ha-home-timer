@@ -53,6 +53,7 @@ Every rule except *when it switches off* **ignores the first seconds** of a run 
 | `sensor.<area>_<station>` | the timer: idle, active, ringing; attributes `running`, `done_rule`, `elapsed` … |
 | `sensor.<area>_<station>_timer_end` | the expected end: the usual duration after the start (once it has run), or the warning time |
 | `binary_sensor.<area>_<station>_running` | the appliance runs |
+| `binary_sensor.<area>_<station>_ringing` | *Ringing* while its timer rings (done, or the warning), else *Quiet* – shown red while it rings |
 | `sensor.<area>_<station>_runs` | how often it ran |
 | `sensor.<area>_<station>_usual_duration` | median of the last 20 runs (until done, or until it stopped) |
 | `button.<area>_<station>_stop_acknowledge` | acknowledges the ringing timer, or cancels the running one (the run itself goes on) |

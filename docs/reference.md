@@ -11,7 +11,7 @@ On the area's *Home Timer* device.
 | Entity | Description |
 |---|---|
 | `sensor.<area>_home_timer_timers` | *Timers*: how many timers the area has (active, paused or ringing) |
-| `binary_sensor.<area>_home_timer_ringing` | on while any timer of the area rings |
+| `binary_sensor.<area>_home_timer_ringing` | *Ringing* while any timer of the area rings, else *Quiet* – device class *problem*, so Home Assistant shows it red while it rings |
 | `button.<area>_home_timer_acknowledge_all` | acknowledges all ringing timers of the area (does nothing while none rings) |
 | `button.<area>_home_timer_start_<quick timer>` | starts the quick timer (one per quick timer of the area) |
 | `number.<area>_home_timer_custom_timer` | custom duration in minutes (1–600) |
@@ -56,6 +56,7 @@ On the station's device.
 | Entity | Description |
 |---|---|
 | `sensor.<area>_<station>` | the station's timer: `idle`, `active`, `paused`, `ringing` |
+| `binary_sensor.<area>_<station>_ringing` | *Ringing* while the station's timer rings, else *Quiet* – shown red while it rings (device class *problem*). With *Ring until acknowledged* off a timer never rings, so it stays *Quiet* |
 | `sensor.<area>_<station>_timer_end` | when the timer runs out (timestamp, while active); for an open timer the expected end |
 | `button.<area>_<station>_start_<preset>` | starts the preset (one per preset) |
 | `button.<area>_<station>_pause_resume` | pauses or resumes the timer |

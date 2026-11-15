@@ -132,7 +132,11 @@
     },
     "binary_sensor": {
       "ringing": {
-        "name": "Ringing"
+        "name": "Ringing",
+        "state": {
+          "on": "Ringing",
+          "off": "Quiet"
+        }
       },
       "appliance_running": {
         "name": "Running"

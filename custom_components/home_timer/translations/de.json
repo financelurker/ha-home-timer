@@ -132,7 +132,11 @@
     },
     "binary_sensor": {
       "ringing": {
-        "name": "Klingelt"
+        "name": "Klingelt",
+        "state": {
+          "on": "Klingelt",
+          "off": "Still"
+        }
       },
       "appliance_running": {
         "name": "Läuft"
