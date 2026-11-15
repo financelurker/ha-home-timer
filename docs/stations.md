@@ -8,7 +8,7 @@ A **station** is anything a timer belongs to: a hob, the rice cooker, the oven, 
 
 Settings → Devices & services → Home Timer → the area's entry → **Add station**.
 
-1. **Name and icon:** e.g. *Hob 1* with `mdi:stove`. The name must be unique within the area.
+1. **Name and icon:** e.g. *Hob 1* with `mdi:stove`. The dialog keeps names unique within the area (renaming a station with ⋮ → *Rename* does not check this; Home Timer logs a warning if two stations share a name). With an icon, the station's timer shows it in every state instead of the state icons.
 2. **Presets** (a menu, as often as you like):
    - **Add preset:** name (*Rice*), duration (10 min), optional note (*level 6, then 3*). The note goes with the timer's events, e.g. into a notification.
    - **Change or delete a preset.**
@@ -20,7 +20,7 @@ How you set up your stations is up to you – by place (*Hob 1*, *Hob 2*) with d
 
 ## The station's device
 
-The station's device carries its name and lies in the area (move it if you like). Its entities, e.g. for *Hob 1* in the kitchen:
+The station's device carries its name and lies in the area (move it if you like). Its entities, e.g. for *Hob 1* in the kitchen (entity ids come from the names in your system language when the entities are created; the examples are for an English system – on a German one e.g. `button.kuche_kochfeld_1_reis_starten`):
 
 | Entity | Description |
 |---|---|
@@ -29,7 +29,7 @@ The station's device carries its name and lies in the area (move it if you like)
 | `button.kitchen_hob_1_start_rice` | one button per preset: starts it (replacing the station's timer) |
 | `button.kitchen_hob_1_pause_resume` | pauses or resumes the timer |
 | `button.kitchen_hob_1_1_minute` | +1 minute; a ringing timer starts again with one minute |
-| `button.kitchen_hob_1_stop_acknowledge` | acknowledges a ringing timer, cancels a running one |
+| `button.kitchen_hob_1_stop_acknowledge` | acknowledges a ringing timer, cancels a running or paused one |
 
 Renaming a preset keeps its button (its entity id stays); deleting a preset removes it.
 
@@ -49,4 +49,4 @@ data:
   preset: Rice            # or: name + duration
 ```
 
-Every event of a station's timer carries `station`, `station_name` and the station's `device_id`; device triggers on the station's device fire for its timer only. See [Automations](automations.md).
+`note` replaces the preset's note; a preset brings its own duration, so `duration` is refused with a preset. Every event of a station's timer carries `station`, `station_name` and the station's `device_id`; device triggers on the station's device fire for its timer only. See [Automations](automations.md).

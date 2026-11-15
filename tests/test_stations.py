@@ -185,3 +185,60 @@ async def test_button_error_is_translated(hass: HomeAssistant, kitchen, hob) -> 
 
     with pytest.raises(HomeAssistantError):
         _run(boom)
+
+
+async def test_mixed_targets(hass: HomeAssistant, kitchen, hob, freezer) -> None:
+    from .conftest import setup_area
+
+    bathroom = await setup_area(hass, "Bathroom")
+    ev = events(hass)
+    device_id = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, hob), kitchen.entry_id).id
+    await press(hass, RICE)
+    bathroom.runtime_data.start("Bath", 60)
+    await tick(hass, freezer, 601)
+    await hass.services.async_call(
+        DOMAIN, "acknowledge", {"device_id": device_id, "area_id": bathroom.data["area_id"]}, blocking=True
+    )
+    await hass.async_block_till_done()
+    assert len(ev["acknowledged"]) == 2
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN, "start", {"device_id": device_id, "area_id": bathroom.data["area_id"], "preset": "Rice"}, blocking=True
+        )
+    await press(hass, RICE)
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN, "pause", {"device_id": device_id, "area_id": bathroom.data["area_id"]}, blocking=True
+        )
+
+
+async def test_preset_note_override_and_no_duration(hass: HomeAssistant, kitchen, hob) -> None:
+    response = await hass.services.async_call(
+        DOMAIN, "start", {"entity_id": HOB, "preset": "Rice", "note": "Lid on"}, blocking=True, return_response=True
+    )
+    assert response["timer"]["note"] == "Lid on"
+    with pytest.raises(ServiceValidationError):
+        await hass.services.async_call(
+            DOMAIN, "start", {"entity_id": HOB, "preset": "Rice", "duration": "00:01:00"}, blocking=True
+        )
+
+
+async def test_station_removed_event_keeps_the_name(hass: HomeAssistant, kitchen, hob) -> None:
+    ev = events(hass)
+    await press(hass, RICE)
+    hass.config_entries.async_remove_subentry(kitchen, hob)
+    await hass.async_block_till_done()
+    cancelled = ev["cancelled"][-1].data
+    assert cancelled["reason"] == "station_removed"
+    assert cancelled["station_name"] == "Hob 1"
+
+
+async def test_upgrade_keeps_area_entities(hass: HomeAssistant, kitchen) -> None:
+    """An area of the previous release: no stations, the same three entities."""
+    for entity_id in (
+        "sensor.kitchen_home_timer_timers",
+        "binary_sensor.kitchen_home_timer_ringing",
+        "button.kitchen_home_timer_acknowledge_all",
+    ):
+        assert hass.states.get(entity_id) is not None
+    assert kitchen.subentries == {}

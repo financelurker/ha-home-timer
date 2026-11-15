@@ -145,7 +145,7 @@
         },
         "note": {
           "name": "Note",
-          "description": "Optional text that goes with the timer's events, e.g. for the notification."
+          "description": "Optional text that goes with the timer's events, e.g. for the notification. With a preset: instead of the preset's note."
         },
         "source": {
           "name": "Source",
@@ -257,18 +257,39 @@
     "invalid_source": {
       "message": "The source must be data that can be stored as JSON."
     },
-    "unknown_station": "This station does not exist (anymore).",
-    "unknown_preset": "The station {station} has no preset \"{preset}\".",
-    "one_station": "The target must name exactly one station.",
-    "preset_needs_station": "A preset needs a station as the target.",
-    "name_and_duration": "Give a preset, or a name and a duration.",
-    "timer_or_station": "Give a timer id or choose a station.",
-    "station_idle": "The station {station} has no timer."
+    "unknown_station": {
+      "message": "This station does not exist (anymore)."
+    },
+    "unknown_preset": {
+      "message": "The station {station} has no preset \"{preset}\"."
+    },
+    "one_station": {
+      "message": "The target must name exactly one station."
+    },
+    "preset_needs_station": {
+      "message": "A preset needs a station as the target."
+    },
+    "name_and_duration": {
+      "message": "Give a preset, or a name and a duration."
+    },
+    "timer_or_station": {
+      "message": "Give a timer id or choose a station."
+    },
+    "station_idle": {
+      "message": "The station {station} has no timer."
+    },
+    "mixed_target": {
+      "message": "Target either stations or areas, not both."
+    },
+    "preset_with_duration": {
+      "message": "A preset brings its own duration; leave the duration out."
+    }
   },
   "config_subentries": {
     "station": {
       "initiate_flow": {
-        "user": "Add station"
+        "user": "Add station",
+        "reconfigure": "Configure station"
       },
       "entry_type": "Station",
       "step": {
@@ -332,9 +353,6 @@
         "station_exists": "This area already has a station with this name.",
         "preset_exists": "This station already has a preset with this name.",
         "invalid_duration": "The duration must be longer than zero."
-      },
-      "abort": {
-        "reconfigure_successful": "The station was saved."
       }
     }
   },

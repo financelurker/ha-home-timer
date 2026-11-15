@@ -2,7 +2,7 @@
 
 [← Back to the overview](../README.md)
 
-`<area>` is the area's part of the entity id, e.g. `kitchen`; `<station>` the station's, e.g. `hob_1`.
+`<area>` is the area's part of the entity id, e.g. `kitchen`; `<station>` the station's, e.g. `hob_1`. Entity ids come from the names in the system language when the entities are created; the suffixes below are those of an English system.
 
 ## Area
 
@@ -48,7 +48,7 @@ On the station's device.
 | `button.<area>_<station>_start_<preset>` | starts the preset (one per preset) |
 | `button.<area>_<station>_pause_resume` | pauses or resumes the timer |
 | `button.<area>_<station>_1_minute` | +1 minute (a ringing timer starts again) |
-| `button.<area>_<station>_stop_acknowledge` | acknowledges a ringing timer, cancels a running one |
+| `button.<area>_<station>_stop_acknowledge` | acknowledges a ringing timer, cancels a running or paused one |
 
 Attributes of `sensor.<area>_<station>`:
 

@@ -36,3 +36,23 @@ async def test_station_and_area_triggers_fire(hass: HomeAssistant, kitchen, free
     kitchen.runtime_data.start("Free", 60)
     await tick(hass, freezer, 61)
     assert sorted(c.data["who"] for c in calls) == ["area", "area", "station"]
+
+
+async def test_all_trigger_types_and_other_areas(hass: HomeAssistant, kitchen, freezer) -> None:
+    from .conftest import setup_area
+
+    bathroom = await setup_area(hass, "Bathroom")
+    hub_device = kitchen.runtime_data.hub_device_id
+    calls = async_mock_service(hass, "test", "automation")
+    assert await async_setup_component(hass, "automation", {"automation": [
+        {"triggers": {"trigger": "device", "domain": DOMAIN, "device_id": hub_device, "type": kind},
+         "actions": {"action": "test.automation", "data": {"kind": kind}}}
+        for kind in ("started", "finished", "reminder", "acknowledged")
+    ]})
+    bathroom.runtime_data.start("Bath", 60)
+    timer = kitchen.runtime_data.start("Tea", 60)
+    await tick(hass, freezer, 61)
+    await tick(hass, freezer, 120)
+    kitchen.runtime_data.acknowledge(timer.id, by="action")
+    await hass.async_block_till_done()
+    assert [c.data["kind"] for c in calls] == ["started", "finished", "reminder", "acknowledged"]

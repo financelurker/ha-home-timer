@@ -6,7 +6,7 @@
 
 Start a timer with `home_timer.start`:
 
-- **On a station:** target the station's device or one of its entities, and give a `preset` – or a `name` and a `duration`. It replaces the station's timer.
+- **On a station:** target the station's device or one of its entities, and give a `preset` (its own duration; `note` replaces the preset's note) – or a `name` and a `duration`. It replaces the station's timer.
 - **On an area, without a station:** target the area – or anything that leads to exactly one area set up in Home Timer (its *Home Timer* device, a floor, a label) – with a `name` and a `duration`.
 
 ```yaml
@@ -16,7 +16,6 @@ target:
 data:
   preset: Rice
 ```
-
 
 ```yaml
 action: home_timer.start
@@ -42,7 +41,7 @@ The other actions take the timer's id – from the response above, from an event
 | `home_timer.cancel` | `timer_id` or stations | cancels a timer, whatever its state |
 | `home_timer.acknowledge` | `timer_id`, stations, or areas (area, floor, …) | acknowledges one ringing timer, the ringing timers of the stations, or all ringing timers of the areas |
 
-Durations must be at least one second. An action that does not fit the timer's state (pause a paused timer, acknowledge one that does not ring) fails with a message saying why.
+A target names either stations or areas, not both (only `acknowledge` takes both). With a `timer_id`, the target is not used. Durations must be at least one second. An action that does not fit the timer's state (pause a paused timer, acknowledge one that does not ring) fails with a message saying why.
 
 ## Events
 
@@ -54,7 +53,7 @@ Durations must be at least one second. An action that does not fit the timer's s
 | `home_timer_time_changed` | time is added or subtracted | `change` (seconds, negative when subtracted; at most what was left) |
 | `home_timer_finished` | it runs out | `late` (`true`: it ran out during a restart) |
 | `home_timer_reminder` | while it rings, every few minutes | `overtime` (seconds since it ran out) |
-| `home_timer_cancelled` | it is cancelled | `reason`: `manual`, `replaced` (a new timer on the station) or `station_removed` |
+| `home_timer_cancelled` | it is cancelled | `reason`: `manual`, `replaced` (a new timer on the station) or `station_removed` (then `device_id` is the area's device; `station_name` is still the station's) |
 | `home_timer_acknowledged` | a ringing timer is acknowledged | `by`: `button`, `action` or `timeout`; `overtime` |
 
 Every event carries:

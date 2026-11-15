@@ -57,6 +57,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) ->
     )
     if is_new:
         place_in_area(hass, device, area_id)
+    names = [s.name.casefold() for s in stations(entry).values()]
+    if len(names) != len(set(names)):
+        _LOGGER.warning("%s: several stations have the same name; rename one to tell them apart", entry.title)
     for station in stations(entry).values():
         is_new = registry.async_get_device_by_identifier((DOMAIN, station.id), entry.entry_id) is None
         station_device = registry.async_get_or_create(

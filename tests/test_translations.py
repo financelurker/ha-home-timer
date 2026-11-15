@@ -42,3 +42,26 @@ def _values(node):
             yield from _values(value)
     else:
         yield node
+
+
+def test_exceptions_have_messages():
+    for lang in ("en", "de"):
+        strings = json.loads((TRANSLATIONS / f"{lang}.json").read_text(encoding="utf-8"))
+        for key, value in strings["exceptions"].items():
+            assert isinstance(value, dict) and value.get("message"), f"{lang}: exceptions.{key}"
+
+
+async def test_error_text_reaches_the_user(hass, kitchen) -> None:
+    import pytest
+    from homeassistant.exceptions import ServiceValidationError
+    from homeassistant.helpers import device_registry as dr
+
+    from custom_components.home_timer.const import DOMAIN
+
+    from .conftest import add_station
+
+    hob = await add_station(hass, kitchen, "Hob 1", [("Rice", 600)])
+    device = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, hob), kitchen.entry_id)
+    with pytest.raises(ServiceValidationError) as err:
+        await hass.services.async_call(DOMAIN, "start", {"device_id": device.id, "preset": "Soup"}, blocking=True)
+    assert str(err.value).startswith('The station Hob 1 has no preset "Soup"')

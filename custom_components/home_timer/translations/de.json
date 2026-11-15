@@ -59,7 +59,7 @@
       },
       "station": {
         "state": {
-          "idle": "Leerlauf",
+          "idle": "Inaktiv",
           "active": "Aktiv",
           "paused": "Pausiert",
           "ringing": "Klingelt"
@@ -145,7 +145,7 @@
         },
         "note": {
           "name": "Notiz",
-          "description": "Optionaler Text, der in den Ereignissen des Timers mitgeht, z. B. für die Benachrichtigung."
+          "description": "Optionaler Text, der in den Ereignissen des Timers mitgeht, z. B. für die Benachrichtigung. Mit einer Vorlage: statt der Notiz der Vorlage."
         },
         "source": {
           "name": "Quelle",
@@ -257,18 +257,39 @@
     "invalid_source": {
       "message": "Die Quelle muss aus Daten bestehen, die als JSON gespeichert werden können."
     },
-    "unknown_station": "Diese Station gibt es nicht (mehr).",
-    "unknown_preset": "Die Station {station} hat keine Vorlage „{preset}“.",
-    "one_station": "Das Ziel muss genau eine Station nennen.",
-    "preset_needs_station": "Eine Vorlage braucht eine Station als Ziel.",
-    "name_and_duration": "Gib eine Vorlage an, oder einen Namen und eine Dauer.",
-    "timer_or_station": "Gib eine Timer-ID an oder wähle eine Station.",
-    "station_idle": "Die Station {station} hat keinen Timer."
+    "unknown_station": {
+      "message": "Diese Station gibt es nicht (mehr)."
+    },
+    "unknown_preset": {
+      "message": "Die Station {station} hat keine Vorlage „{preset}“."
+    },
+    "one_station": {
+      "message": "Das Ziel muss genau eine Station nennen."
+    },
+    "preset_needs_station": {
+      "message": "Eine Vorlage braucht eine Station als Ziel."
+    },
+    "name_and_duration": {
+      "message": "Gib eine Vorlage an oder einen Namen und eine Dauer."
+    },
+    "timer_or_station": {
+      "message": "Gib eine Timer-ID an oder wähle eine Station."
+    },
+    "station_idle": {
+      "message": "Die Station {station} hat keinen Timer."
+    },
+    "mixed_target": {
+      "message": "Wähle entweder Stationen oder Bereiche als Ziel, nicht beides."
+    },
+    "preset_with_duration": {
+      "message": "Eine Vorlage bringt ihre eigene Dauer mit; lass die Dauer weg."
+    }
   },
   "config_subentries": {
     "station": {
       "initiate_flow": {
-        "user": "Station hinzufügen"
+        "user": "Station hinzufügen",
+        "reconfigure": "Station konfigurieren"
       },
       "entry_type": "Station",
       "step": {
@@ -332,9 +353,6 @@
         "station_exists": "Dieser Bereich hat bereits eine Station mit diesem Namen.",
         "preset_exists": "Diese Station hat bereits eine Vorlage mit diesem Namen.",
         "invalid_duration": "Die Dauer muss größer als null sein."
-      },
-      "abort": {
-        "reconfigure_successful": "Die Station wurde gespeichert."
       }
     }
   },

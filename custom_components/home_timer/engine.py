@@ -32,8 +32,6 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.util.ulid import ulid_now
 
-from .stations import Station, stations
-
 from .const import (
     BY_TIMEOUT,
     CONF_AREA_ID,
@@ -60,6 +58,7 @@ from .const import (
     STATUSES,
     STORAGE_VERSION,
 )
+from .stations import Station, stations
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -85,6 +84,7 @@ class Timer:
     finished_at: datetime | None = None  # ringing: when it ran out
     ring_anchor: datetime | None = None  # ringing: reminders and auto-dismiss count from here
     station: str | None = None
+    station_name: str | None = None  # at the start; kept for events after the station is gone
     preset: str | None = None
     note: str | None = None
     source: dict[str, Any] = field(default_factory=dict)
@@ -134,6 +134,7 @@ class Timer:
             "finished_at": iso(self.finished_at),
             "ring_anchor": iso(self.ring_anchor),
             "station": self.station,
+            "station_name": self.station_name,
             "preset": self.preset,
             "note": self.note,
             "source": self.source,
@@ -166,6 +167,7 @@ class Timer:
             finished_at=stamp("finished_at"),
             ring_anchor=stamp("ring_anchor"),
             station=data.get("station"),
+            station_name=data.get("station_name"),
             preset=data.get("preset"),
             note=data.get("note"),
             source=data.get("source") or {},
@@ -277,7 +279,8 @@ class AreaTimers:
     ) -> Timer:
         if duration <= 0:
             raise TimerError("invalid_duration")
-        if station is not None and station not in self.stations:
+        known = self.stations
+        if station is not None and station not in known:
             raise TimerError("unknown_station", station=station)
         try:
             source = _copy(source or {})
@@ -296,6 +299,7 @@ class AreaTimers:
             started_at=now,
             ends_at=now + timedelta(seconds=duration),
             station=station,
+            station_name=known[station].name if station is not None else None,
             preset=preset,
             note=note,
             source=source,
@@ -307,8 +311,13 @@ class AreaTimers:
         return timer
 
     @callback
-    def start_preset(self, station_id: str, preset_key: str, *, source: dict[str, Any] | None = None) -> Timer:
-        """Start a station's preset (by id or name); replaces the station's timer."""
+    def start_preset(
+        self, station_id: str, preset_key: str, *, note: str | None = None, source: dict[str, Any] | None = None
+    ) -> Timer:
+        """Start a station's preset (by id or name); replaces the station's timer.
+
+        ``note`` replaces the preset's note.
+        """
         station = self.stations.get(station_id)
         if station is None:
             raise TimerError("unknown_station", station=station_id)
@@ -316,7 +325,12 @@ class AreaTimers:
         if preset is None:
             raise TimerError("unknown_preset", preset=preset_key, station=station.name)
         return self.start(
-            preset.name, preset.duration, station=station.id, preset=preset.name, note=preset.note, source=source
+            preset.name,
+            preset.duration,
+            station=station.id,
+            preset=preset.name,
+            note=note if note is not None else preset.note,
+            source=source,
         )
 
     @callback
@@ -518,7 +532,7 @@ class AreaTimers:
             "area_id": self.area_id,
             "entry_id": self.entry.entry_id,
             "station": timer.station,
-            "station_name": station.name if station else None,
+            "station_name": station.name if station else timer.station_name,
             "device_id": device_id or self.hub_device_id,
             "preset": timer.preset,
             "duration": round(timer.duration),
