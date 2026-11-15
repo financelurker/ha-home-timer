@@ -47,6 +47,7 @@ REASON_STATION_REMOVED: Final = "station_removed"
 BY_ACTION: Final = "action"
 BY_BUTTON: Final = "button"
 BY_TIMEOUT: Final = "timeout"
+BY_TODO: Final = "todo"
 
 # actions
 SERVICE_START: Final = "start"

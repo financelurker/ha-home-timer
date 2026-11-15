@@ -13,6 +13,7 @@ On the area's *Home Timer* device.
 | `sensor.<area>_home_timer_timers` | *Timers*: how many timers the area has (active, paused or ringing) |
 | `binary_sensor.<area>_home_timer_ringing` | on while any timer of the area rings |
 | `button.<area>_home_timer_acknowledge_all` | acknowledges all ringing timers of the area (does nothing while none rings) |
+| `todo.<area>_home_timer_ringing_timers` | to-do list of the ringing timers; checking one off acknowledges it (see [Timers](timers.md#to-do-list)) |
 
 ## Attributes of *Timers*
 
