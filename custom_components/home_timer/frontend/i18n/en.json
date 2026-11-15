@@ -11,7 +11,7 @@
   "empty": "No area is set up yet. Add one to give it timers, stations and presets.",
   "area.add": "Add area",
   "area.add_hint": "Home Assistant's areas without Home Timer:",
-  "area.none_free": "Every area already has Home Timer. Create more areas in Settings › Areas.",
+  "area.none_free": "Every area already has Home Timer. Create more areas in Settings › Areas, labels & zones.",
   "area.stations": "{count} stations",
   "area.not_loaded": "not loaded",
   "area.disabled": "disabled",
@@ -136,7 +136,7 @@
   "settings.title": "Home Timer settings",
   "settings.hint": "For all areas.",
   "settings.sidebar": "Show in the sidebar",
-  "settings.sidebar_hint": "Off: open it with the cog of an area or “Open” on a device.",
+  "settings.sidebar_hint": "Off: open it with the cog of an area or the configuration link on a device's page.",
   "error.name_required": "Enter a name.",
   "error.preset_exists": "Another preset has this name.",
   "error.invalid_duration": "Enter a duration between 0:01 and 23:59:59.",
@@ -150,5 +150,6 @@
   "error.unknown_area": "This area does not exist (anymore).",
   "area.stations_one": "1 station",
   "station.summary_manual_one": "By hand · 1 preset",
-  "quote": "“{name}”"
+  "quote": "“{name}”",
+  "notice.discarded": "Unsaved changes of the page you left were discarded."
 }

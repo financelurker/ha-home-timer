@@ -7,11 +7,13 @@ Areas, stations, presets and options are set up in Home Timer's own panel – no
 ## Opening it
 
 - **The cog of an area:** Settings → Devices & services → Home Timer → the cog next to an area opens the panel at that area.
-- **A device's link:** on the page of an area's *Home Timer* device or of a station's device, the link to its configuration opens the panel there.
+- **A device's link:** on the page of an area's *Home Timer* device or of a station's device, the configuration link (*Visit*) opens the panel there.
 - **After adding an area:** the confirmation links to the panel.
 - **The sidebar (optional):** the panel is hidden from the sidebar by default. Turn it on in the panel: cog at the top right → *Show in the sidebar* (for all areas and users with admin rights).
 
-Stations have no cog and no "Add station" on the integration page: they are added and changed in the panel only. They are still subentries of the area's entry, with their own devices and entities.
+Stations have no cog and no "Add station" on the integration page: they are added and changed in the panel. They are still subentries of the area's entry, with their own devices and entities; their ⋮ menu there still offers *Rename* (without the panel's check for unique names) and *Delete*.
+
+The panel exists while Home Timer is loaded, i.e. while at least one area is set up. After removing the last area and restarting, add the first area again with Settings → Devices & services → Add integration → **Home Timer**.
 
 ## Layout
 
@@ -42,6 +44,6 @@ On the right (on a phone below) you see what the station does now and links to i
 
 ## Saving
 
-Changes collect in a bar at the bottom: **Save** or **Discard**. Saving reloads the area once; running timers go on. Leaving the page with unsaved changes asks first.
+Changes collect in a bar at the bottom: **Save** or **Discard**. Saving reloads the area once; running timers go on. Leaving the page within the panel, reloading or closing the tab with unsaved changes asks first; leaving it otherwise (browser back, the sidebar, a link) discards them.
 
 Errors are shown next to their field, and nothing is saved until they are fixed. If the area or station was changed elsewhere in the meantime – e.g. *Save as preset* on a dashboard – the save is refused and the current state is loaded, so nothing is overwritten.

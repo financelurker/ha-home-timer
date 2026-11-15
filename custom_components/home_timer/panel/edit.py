@@ -75,7 +75,8 @@ def check_presets(raw: Any, prefix: str = "presets") -> tuple[list[dict[str, Any
         duration = _in_range(item.get("duration"), 1, MAX_PRESET_SECONDS)
         if duration is None:
             errors[f"{prefix}.{i}.duration"] = "invalid_duration"
-        preset_id = item.get("id") if isinstance(item.get("id"), str) and item.get("id") not in ids else ulid_now()
+        raw_id = item.get("id")
+        preset_id = raw_id if isinstance(raw_id, str) and raw_id.strip() and raw_id not in ids else ulid_now()
         ids.add(preset_id)
         preset: dict[str, Any] = {"id": preset_id, "name": name, "duration": round(duration or 0)}
         if note := _text(item.get("note"), NOTE_LENGTH):
@@ -142,7 +143,7 @@ def check_station(raw: Any, other_names: list[str], sensor_exists: Any = None) -
     if mode == MODE_POWER or power_raw:
         power, power_errors = _check_power(power_raw, presets, sensor_exists)
         data[CONF_POWER] = power
-        if mode == MODE_POWER:  # the settings of a manual station are kept, not checked
+        if mode == MODE_POWER:  # a manual station keeps its power settings (invalid values reset), unchecked
             errors.update(power_errors)
     return name, data, errors
 

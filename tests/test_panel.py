@@ -273,3 +273,50 @@ def test_panel_texts_complete() -> None:
     built |= {f"error.{code}" for code in re.findall(r'= "([a-z_]+)"$', edit, re.M) if code not in ("panel",)}
     built |= {"error.already_configured", "error.unknown_area"}
     assert sorted(built - set(en)) == []
+
+
+async def test_save_as_preset_meanwhile_is_not_overwritten(hass: HomeAssistant, kitchen, hass_ws_client) -> None:
+    """A preset saved from a dashboard while the panel is open: the panel's older save is refused."""
+    hob = await add_station(hass, kitchen, "Hob 1", [("Rice", 600)])
+    client = await hass_ws_client(hass)
+    area = (await config(client))["areas"][0]
+    station = area["stations"][0]
+    engine = kitchen.runtime_data
+    engine.set_custom_duration(hob, 240)
+    engine.save_preset(hob, "Tea")
+    engine.set_custom_duration(None, 300)
+    engine.save_preset(None, "Eggs")
+    await hass.async_block_till_done()
+    msg = await call(client, "station/save", entry_id=kitchen.entry_id, station_id=hob, version=station["version"],
+                     station={"name": "Hob 1", "mode": "manual", "presets": station["presets"]})
+    assert msg["result"] == {"changed": True}
+    msg = await call(client, "area/save", entry_id=kitchen.entry_id, version=area["version"], options=area["options"], quick_timers=[])
+    assert msg["result"] == {"changed": True}
+    assert [p["name"] for p in kitchen.subentries[hob].data["presets"]] == ["Rice", "Tea"]
+    assert [p["name"] for p in kitchen.options["presets"]] == ["Eggs"]
+
+
+async def test_registered_sensor_without_state_is_accepted(hass: HomeAssistant, kitchen, hass_ws_client) -> None:
+    from homeassistant.helpers import entity_registry as er
+
+    entry = er.async_get(hass).async_get_or_create("sensor", "shelly", "plug-1", suggested_object_id="plug_later_power")
+    client = await hass_ws_client(hass)
+    msg = await call(client, "station/save", entry_id=kitchen.entry_id,
+                     station={"name": "Toaster", "mode": "power", "power": {"sensor": entry.entity_id}})
+    assert msg["result"]["saved"]
+
+
+def test_defaults_are_within_their_ranges() -> None:
+    from custom_components.home_timer.panel.edit import POWER_RANGES, check_rule
+    from custom_components.home_timer.power import RULE_TYPES
+    from custom_components.home_timer.stations import POWER_DEFAULTS
+
+    for key, (lo, hi) in POWER_RANGES.items():
+        assert lo <= POWER_DEFAULTS[key] <= hi, key
+    for rule_type in RULE_TYPES:
+        assert check_rule({"type": rule_type})[1] == {}, rule_type
+
+
+def test_empty_preset_id_gets_a_new_one() -> None:
+    presets, _ = check_presets([{"id": " ", "name": "Rice", "duration": 600}])
+    assert presets[0]["id"].strip()

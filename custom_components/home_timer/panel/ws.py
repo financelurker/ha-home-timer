@@ -22,6 +22,7 @@ import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry, ConfigSubentry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_AREA_ID, DOMAIN
 from ..stations import CONF_PRESETS, SUBENTRY_STATION
@@ -127,7 +128,10 @@ def ws_station_save(hass: HomeAssistant, connection: websocket_api.ActiveConnect
         connection.send_result(msg["id"], {"changed": True})
         return
     others = [s.title for s in entry.subentries.values() if s.subentry_type == SUBENTRY_STATION and s.subentry_id != station_id]
-    title, data, errors = check_station(msg["station"], others, lambda e: hass.states.get(e) is not None)
+    registry = er.async_get(hass)
+    title, data, errors = check_station(
+        msg["station"], others, lambda e: hass.states.get(e) is not None or registry.async_get(e) is not None
+    )
     if errors:
         connection.send_result(msg["id"], {"errors": errors})
         return

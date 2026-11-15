@@ -36,6 +36,8 @@ class HomeTimerPanel extends LitElement {
     this._now = Date.now();
     this._drafts = {}; // key → draft; key: "options:<entry>" | "station:<entry>:<id|new>"
     this._base = {}; // key → the draft as loaded (what "unsaved" is measured against)
+    this._versions = {}; // key → the stored version the draft started from (sent with the save)
+    this._lastKey = null;
     this._errors = {}; // key → {field: error}
     this._t = (k) => k;
     this._lang = null;
@@ -59,6 +61,17 @@ class HomeTimerPanel extends LitElement {
   }
 
   updated(changed) {
+    if (changed.has("_dialog") && this._dialog) this._focusDialog();
+    if (changed.has("route")) {
+      // left a page by any way (browser back, a link …): its unsaved draft is dropped
+      const key = this._key();
+      if (this._lastKey && this._lastKey !== key && this._drafts[this._lastKey]) {
+        const dirty = !same(this._drafts[this._lastKey], this._base[this._lastKey]);
+        this._drop(this._lastKey);
+        if (dirty) this._notice = { kind: "warn", text: this._t("notice.discarded") };
+      }
+      this._lastKey = key;
+    }
     if (changed.has("hass") && this.hass) {
       if (this._lang !== this.hass.language) {
         this._lang = this.hass.language;
@@ -76,6 +89,14 @@ class HomeTimerPanel extends LitElement {
     try {
       this._config = await this.hass.callWS({ type: `${WS}/config/get` });
       this._error = null;
+      // a draft whose data changed elsewhere meanwhile is dropped (it would overwrite that)
+      for (const key of Object.keys(this._drafts)) {
+        if (this._versions[key] !== this._currentVersion(key)) {
+          const dirty = !same(this._drafts[key], this._base[key]);
+          this._drop(key);
+          if (dirty) this._notice = { kind: "warn", text: this._t("notice.changed") };
+        }
+      }
     } catch (err) {
       this._error = err?.message || String(err);
     } finally {
@@ -122,11 +143,22 @@ class HomeTimerPanel extends LitElement {
     return key && this._drafts[key] && !same(this._drafts[key], this._base[key]) ? key : null;
   }
 
+  // the stored version of what a draft key edits (null: a new station)
+  _currentVersion(key) {
+    const [kind, entry, id] = key.split(":");
+    const area = this._area(entry);
+    if (!area) return undefined;
+    if (kind === "options") return area.version;
+    if (id === "new") return null;
+    return area.stations.find((s) => s.id === id)?.version;
+  }
+
   _draft(key, make) {
     if (!this._drafts[key]) {
       const base = make();
       if (!base) return null;
       this._base[key] = base;
+      this._versions[key] = this._currentVersion(key);
       this._drafts = { ...this._drafts, [key]: clone(base) };
     }
     return this._drafts[key];
@@ -142,6 +174,7 @@ class HomeTimerPanel extends LitElement {
     const drafts = { ...this._drafts };
     delete drafts[key];
     delete this._base[key];
+    delete this._versions[key];
     this._drafts = drafts;
     this._errors = { ...this._errors, [key]: {} };
   }
@@ -152,6 +185,11 @@ class HomeTimerPanel extends LitElement {
 
   static presetPayload(p) {
     return { id: p.id, name: p.name, duration: p.duration, ...(p.note ? { note: p.note } : {}) };
+  }
+
+  // rows left completely empty are not presets
+  static presetsPayload(list) {
+    return list.filter((p) => p.name.trim() || p.text.trim() || p.note.trim()).map(HomeTimerPanel.presetPayload);
   }
 
   _optionsDraft(area) {
@@ -186,9 +224,9 @@ class HomeTimerPanel extends LitElement {
         result = await this.hass.callWS({
           type: `${WS}/area/save`,
           entry_id: area.entry_id,
-          version: area.version,
+          version: this._versions[key],
           options: draft.options,
-          quick_timers: draft.quick_timers.map(HomeTimerPanel.presetPayload),
+          quick_timers: HomeTimerPanel.presetsPayload(draft.quick_timers),
         });
       } else {
         const station = area.stations.find((s) => s.id === r.station);
@@ -196,12 +234,12 @@ class HomeTimerPanel extends LitElement {
           type: `${WS}/station/save`,
           entry_id: area.entry_id,
           station_id: station ? station.id : null,
-          version: station ? station.version : null,
+          version: station ? this._versions[key] : null,
           station: {
             name: draft.name,
             icon: draft.icon,
             mode: draft.mode,
-            presets: draft.presets.map(HomeTimerPanel.presetPayload),
+            presets: HomeTimerPanel.presetsPayload(draft.presets),
             power: draft.power,
           },
         });
@@ -219,8 +257,8 @@ class HomeTimerPanel extends LitElement {
       }
       this._drop(key);
       await this._load();
-      this._notice = { kind: "ok", text: this._t("notice.saved") };
       if (r.page === "station" && r.station === "new") this._go(`station/${area.entry_id}/${result.station_id}`, { replace: true, force: true });
+      this._notice = { kind: "ok", text: this._t("notice.saved") };
     } catch (err) {
       this._notice = { kind: "error", text: err?.message || String(err) };
     } finally {
@@ -235,7 +273,7 @@ class HomeTimerPanel extends LitElement {
 
   _err(key, field) {
     const code = this._errors[key]?.[field];
-    return code ? html`<div class="err">${this._t(`error.${code}`)}</div>` : nothing;
+    return code ? html`<div class="err" role="alert">${this._t(`error.${code}`)}</div>` : nothing;
   }
 
   // ------------------------------------------------------------------ actions
@@ -257,7 +295,12 @@ class HomeTimerPanel extends LitElement {
 
   async _deleteArea(entryId) {
     this._dialog = null;
-    await this.hass.callWS({ type: `${WS}/area/delete`, entry_id: entryId });
+    try {
+      await this.hass.callWS({ type: `${WS}/area/delete`, entry_id: entryId });
+    } catch (err) {
+      this._notice = { kind: "error", text: err?.message || String(err) };
+      return;
+    }
     this._drop(`options:${entryId}`);
     await this._load();
     this._go("", { force: true });
@@ -265,15 +308,25 @@ class HomeTimerPanel extends LitElement {
 
   async _deleteStation(entryId, stationId) {
     this._dialog = null;
-    await this.hass.callWS({ type: `${WS}/station/delete`, entry_id: entryId, station_id: stationId });
+    try {
+      await this.hass.callWS({ type: `${WS}/station/delete`, entry_id: entryId, station_id: stationId });
+    } catch (err) {
+      this._notice = { kind: "error", text: err?.message || String(err) };
+      return;
+    }
     this._drop(`station:${entryId}:${stationId}`);
     await this._load();
     this._go(`area/${entryId}`, { force: true });
   }
 
   async _saveSettings(settings) {
-    const result = await this.hass.callWS({ type: `${WS}/settings/save`, ...settings });
-    this._config = { ...this._config, settings: result.settings };
+    try {
+      const result = await this.hass.callWS({ type: `${WS}/settings/save`, ...settings });
+      this._config = { ...this._config, settings: result.settings };
+    } catch (err) {
+      this._notice = { kind: "error", text: err?.message || String(err) };
+      this._config = { ...this._config }; // the switch shows the stored setting again
+    }
   }
 
   // ------------------------------------------------------------------ render
@@ -314,7 +367,7 @@ class HomeTimerPanel extends LitElement {
         ${back !== null
           ? html`<button class="icon" aria-label=${t("back")} @click=${() => this._go(back)}><ha-icon icon="mdi:arrow-left"></ha-icon></button>`
           : html`<ha-menu-button .hass=${this.hass} .narrow=${this.narrow}></ha-menu-button>`}
-        <div class="title">${crumb ? html`<span class="crumb" @click=${() => this._go(`area/${area.entry_id}`)}>${crumb}</span> › ` : nothing}${title}</div>
+        <div class="title">${crumb ? html`<button class="crumb" @click=${() => this._go(`area/${area.entry_id}`)}>${crumb}</button> › ` : nothing}${title}</div>
         <button class="icon" aria-label=${t("settings.title")} @click=${() => (this._dialog = { type: "settings" })}><ha-icon icon="mdi:cog-outline"></ha-icon></button>
       </div>
       <div class="body">
@@ -466,12 +519,13 @@ class HomeTimerPanel extends LitElement {
   // a sortable list of presets (a station's or the area's quick timers)
   _presetTable(key, presets, prefix, change) {
     const t = this._t;
+    const clear = () => (this._errors = { ...this._errors, [key]: {} });
     const move = (from, to) =>
-      change((list) => {
+      (clear(), change((list) => {
         if (to < 0 || to >= list.length) return;
         const [p] = list.splice(from, 1);
         list.splice(to, 0, p);
-      });
+      }));
     return html`<div class="presets">
       ${presets.map(
         (p, i) => html`<div class="preset" draggable="true"
@@ -490,7 +544,7 @@ class HomeTimerPanel extends LitElement {
           <span class="acts">
             <button class="icon sm" aria-label=${t("preset.up")} ?disabled=${i === 0} @click=${() => move(i, i - 1)}><ha-icon icon="mdi:chevron-up"></ha-icon></button>
             <button class="icon sm" aria-label=${t("preset.down")} ?disabled=${i === presets.length - 1} @click=${() => move(i, i + 1)}><ha-icon icon="mdi:chevron-down"></ha-icon></button>
-            <button class="icon sm" aria-label=${t("preset.delete")} @click=${() => change((l) => l.splice(i, 1))}><ha-icon icon="mdi:delete-outline"></ha-icon></button>
+            <button class="icon sm" aria-label=${t("preset.delete")} @click=${() => (clear(), change((l) => l.splice(i, 1)))}><ha-icon icon="mdi:delete-outline"></ha-icon></button>
           </span>
         </div>`
       )}
@@ -508,7 +562,8 @@ class HomeTimerPanel extends LitElement {
     if (!d) return html`<div class="msg">${t("missing")}</div>`;
     const station = area.stations.find((s) => s.id === stationId);
     const set = (fn) => this._change(key, fn);
-    const manualControls = d.mode === "manual" || d.power.kind === "start_preset";
+    const presetErrors = Object.keys(this._errors[key] || {}).some((k) => k.startsWith("presets."));
+    const manualControls = d.mode === "manual" || d.power.kind === "start_preset" || presetErrors;
     return html`
       <div class="cols">
         <div class="col">
@@ -554,7 +609,7 @@ class HomeTimerPanel extends LitElement {
       <div class="card links">
         <div class="sec top">${t("in_ha")}</div>
         ${station.device_id ? html`<a href="/config/devices/device/${station.device_id}">${t("link.device")} ↗</a>` : nothing}
-        ${station.entities.timer ? html`<a href="/config/entities?search=${encodeURIComponent(station.name)}">${t("link.entities")} ↗</a>` : nothing}
+        ${station.entities.timer ? html`<a href="/config/entities?historyBack=1&config_entry=${area.entry_id}&sub_entry=${station.id}">${t("link.entities")} ↗</a>` : nothing}
       </div>
     `;
   }
@@ -627,9 +682,14 @@ class HomeTimerPanel extends LitElement {
     const t = this._t;
     return html`<div class="savebar">
       <span>${t("unsaved")}</span><span class="sp"></span>
-      <button class="btn light" ?disabled=${this._saving} @click=${() => this._discard()}>${t("discard")}</button>
+      <button class="btn" ?disabled=${this._saving} @click=${() => this._discard()}>${t("discard")}</button>
       <button class="btn filled" ?disabled=${this._saving} @click=${() => this._save()}>${this._saving ? t("saving") : t("save")}</button>
     </div>`;
+  }
+
+  // a dialog takes the focus, so Escape and the keyboard work in it
+  _focusDialog() {
+    requestAnimationFrame(() => this.shadowRoot?.querySelector(".dialog")?.focus());
   }
 
   _renderDialog() {
@@ -640,40 +700,43 @@ class HomeTimerPanel extends LitElement {
     let actions = html`<button class="btn" @click=${close}>${t("cancel")}</button>`;
     if (d.type === "add_area") {
       const free = this._config.free_areas;
-      body = html`<h2>${t("area.add")}</h2>
+      body = html`<h2 id="ht-dialog-title">${t("area.add")}</h2>
         ${free.length
           ? html`<div class="sub">${t("area.add_hint")}</div>
               <div class="choices">${free.map((a) => html`<button class="ai" @click=${() => this._createArea(a.area_id)}><span class="ic"><ha-icon icon=${a.icon || "mdi:texture-box"}></ha-icon></span><span class="txt"><b>${a.name}</b></span></button>`)}</div>`
           : html`<div class="sub">${t("area.none_free")}</div>`}`;
     } else if (d.type === "delete_area") {
-      body = html`<h2>${t("area.delete")}</h2><div class="sub">${t("area.delete_confirm", { area: d.area.name })}</div>`;
+      body = html`<h2 id="ht-dialog-title">${t("area.delete")}</h2><div class="sub">${t("area.delete_confirm", { area: d.area.name })}</div>`;
       actions = html`${actions}<button class="btn danger filled" @click=${() => this._deleteArea(d.area.entry_id)}>${t("delete")}</button>`;
     } else if (d.type === "delete_station") {
-      body = html`<h2>${t("station.delete")}</h2><div class="sub">${t("station.delete_confirm", { station: d.station.name })}</div>`;
+      body = html`<h2 id="ht-dialog-title">${t("station.delete")}</h2><div class="sub">${t("station.delete_confirm", { station: d.station.name })}</div>`;
       actions = html`${actions}<button class="btn danger filled" @click=${() => this._deleteStation(d.area.entry_id, d.station.id)}>${t("delete")}</button>`;
     } else if (d.type === "discard") {
-      body = html`<h2>${t("discard_title")}</h2><div class="sub">${t("discard_confirm")}</div>`;
+      body = html`<h2 id="ht-dialog-title">${t("discard_title")}</h2><div class="sub">${t("discard_confirm")}</div>`;
       actions = html`${actions}<button class="btn filled" @click=${() => ((this._dialog = null), this._go(d.path, { replace: d.replace, force: true }))}>${t("discard")}</button>`;
     } else if (d.type === "settings") {
-      body = html`<h2>${t("settings.title")}</h2><div class="sub">${t("settings.hint")}</div>
+      body = html`<h2 id="ht-dialog-title">${t("settings.title")}</h2><div class="sub">${t("settings.hint")}</div>
         ${this._toggle(t("settings.sidebar"), t("settings.sidebar_hint"), this._config.settings.sidebar, (v) => this._saveSettings({ sidebar: v }))}`;
       actions = html`<button class="btn filled" @click=${close}>${t("close")}</button>`;
     }
-    return html`<div class="scrim" @click=${(e) => e.target === e.currentTarget && close()}>
-      <div class="dialog" role="dialog" aria-modal="true">${body}<div class="actions">${actions}</div></div></div>`;
+    return html`<div class="scrim" @click=${(e) => e.target === e.currentTarget && close()} @keydown=${(e) => e.key === "Escape" && close()}>
+      <div class="dialog" role="dialog" aria-modal="true" aria-labelledby="ht-dialog-title" tabindex="-1">${body}<div class="actions">${actions}</div></div></div>`;
   }
 
   static styles = css`
     :host { display: block; height: 100%; background: var(--primary-background-color, #fafafa); color: var(--primary-text-color, #212121);
-      font-family: var(--paper-font-body1_-_font-family, Roboto, sans-serif); --ht-p: var(--primary-color, #03a9f4); --ht-d: var(--divider-color, #e0e0e0);
-      --ht-s: var(--secondary-text-color, #727272); --ht-card: var(--card-background-color, #fff); --ht-err: var(--error-color, #db4437); }
+      font-family: var(--ha-font-family-body, var(--primary-font-family, Roboto, sans-serif)); --ht-p: var(--primary-color, #03a9f4); --ht-d: var(--divider-color, #e0e0e0);
+      --ht-s: var(--secondary-text-color, #727272); --ht-card: var(--card-background-color, #fff); --ht-err: var(--error-color, #db4437);
+      --ht-tint: color-mix(in srgb, var(--ht-p) 13%, transparent); --ht-line: color-mix(in srgb, var(--ht-p) 45%, transparent);
+      --ht-ok: var(--success-color, #43a047); --ht-warn: var(--warning-color, #ffa600); }
     * { box-sizing: border-box; }
     button { font: inherit; color: inherit; background: none; border: none; cursor: pointer; text-align: left; }
     input, select { font: inherit; color: inherit; }
     .toolbar { height: var(--header-height, 56px); display: flex; align-items: center; gap: 8px; padding: 0 8px 0 4px; background: var(--app-header-background-color, var(--ht-card));
       color: var(--app-header-text-color, inherit); border-bottom: 1px solid var(--app-header-border-bottom, var(--ht-d)); }
     .toolbar .title { flex: 1; font-size: 20px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; padding-left: 8px; }
-    .crumb { color: var(--ht-s); cursor: pointer; }
+    .crumb { color: var(--ht-s); font-size: inherit; padding: 0; }
+    .crumb:hover { text-decoration: underline; }
     .icon { width: 40px; height: 40px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; color: inherit; }
     .icon:hover { background: rgba(127, 127, 127, 0.12); }
     .icon.sm { width: 32px; height: 32px; }
@@ -684,13 +747,13 @@ class HomeTimerPanel extends LitElement {
     .h { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--ht-s); text-transform: uppercase; margin: 6px 10px 8px; }
     .ai { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; width: 100%; margin-bottom: 2px; }
     :host([narrow]) .areas .ai { background: var(--ht-card); border: 1px solid var(--ht-d); margin-bottom: 8px; }
-    .ai.sel { background: rgba(3, 169, 244, 0.12); }
+    .ai.sel { background: var(--ht-tint); }
     .ai:hover { background: rgba(127, 127, 127, 0.08); }
     .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
     .txt b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .txt span { font-size: 12.5px; color: var(--ht-s); }
     .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ht-err); flex: none; }
-    .ic { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; background: rgba(3, 169, 244, 0.12); color: var(--ht-p); --mdc-icon-size: 20px; }
+    .ic { width: 38px; height: 38px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex: none; background: var(--ht-tint); color: var(--ht-p); --mdc-icon-size: 20px; }
     .ic.run { background: rgba(255, 152, 0, 0.15); color: #ef6c00; }
     .ic.ring { background: rgba(219, 68, 55, 0.15); color: var(--ht-err); }
     .add { color: var(--ht-p); font-weight: 500; padding: 10px 12px; }
@@ -700,7 +763,7 @@ class HomeTimerPanel extends LitElement {
     .sub { color: var(--ht-s); margin-bottom: 12px; line-height: 1.45; }
     .chips { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 8px; }
     .chip { background: rgba(127, 127, 127, 0.12); border-radius: 8px; padding: 3px 10px; font-size: 12.5px; }
-    .btn { color: var(--ht-p); font-weight: 500; padding: 8px 16px; border-radius: 18px; border: 1px solid rgba(3, 169, 244, 0.4); font-size: 14px; }
+    .btn { color: var(--ht-p); font-weight: 500; padding: 8px 16px; border-radius: 18px; border: 1px solid var(--ht-line); font-size: 14px; }
     .chips .btn { margin-left: auto; }
     .btn.filled { background: var(--ht-p); color: #fff; border-color: var(--ht-p); }
     .btn.danger { color: var(--ht-err); border-color: rgba(219, 68, 55, 0.4); }
@@ -740,10 +803,10 @@ class HomeTimerPanel extends LitElement {
     .num input { width: 96px; }
     .unit { color: var(--ht-s); font-size: 13px; min-width: 22px; }
     input, select { border: 1px solid var(--ht-d); border-radius: 6px; padding: 9px 10px; background: var(--ht-card); width: 100%; min-width: 0; }
-    input:focus, select:focus { outline: 2px solid rgba(3, 169, 244, 0.5); border-color: var(--ht-p); }
+    input:focus, select:focus { outline: 2px solid var(--ht-line); border-color: var(--ht-p); }
     .f { display: flex; flex-direction: column; gap: 4px; position: relative; }
     .fl { font-size: 12px; color: var(--ht-s); }
-    .liveval { font-size: 12.5px; color: #2e7d32; }
+    .liveval { font-size: 12.5px; color: var(--ht-ok); }
     .withicon { display: flex; align-items: center; gap: 8px; }
     .pair { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px 16px; margin: 8px 0; }
     .err { color: var(--ht-err); font-size: 12px; }
@@ -755,9 +818,9 @@ class HomeTimerPanel extends LitElement {
     :host([narrow]) .preset .note { grid-column: 1 / 3; grid-row: 2; }
     .handle { color: var(--ht-s); cursor: grab; padding-top: 9px; }
     .acts { display: flex; }
-    .seg { display: inline-flex; border: 1px solid rgba(3, 169, 244, 0.5); border-radius: 18px; overflow: hidden; }
+    .seg { display: inline-flex; border: 1px solid var(--ht-line); border-radius: 18px; overflow: hidden; }
     .seg button { padding: 8px 18px; color: var(--ht-p); }
-    .seg .on { background: rgba(3, 169, 244, 0.14); font-weight: 600; }
+    .seg .on { background: var(--ht-tint); font-weight: 600; }
     .kinds { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-bottom: 8px; }
     .kind { background: var(--ht-card); border: 1px solid var(--ht-d); border-radius: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 3px; }
     .kind b { font-weight: 500; }
@@ -771,13 +834,14 @@ class HomeTimerPanel extends LitElement {
     .now .big { font-size: 18px; font-variant-numeric: tabular-nums; margin-bottom: 4px; }
     .links { display: flex; flex-direction: column; gap: 6px; font-size: 14px; }
     .links a { color: var(--ht-p); text-decoration: none; }
-    .savebar { position: fixed; left: 0; right: 0; bottom: 0; height: 60px; background: #263238; color: #fff; display: flex; align-items: center; gap: 10px; padding: 0 20px; z-index: 5; }
-    :host(:not([narrow])) .savebar { left: var(--mdc-drawer-width, 0); }
+    .savebar { position: fixed; left: 0; right: 0; bottom: 0; min-height: 60px; background: var(--ht-card); border-top: 1px solid var(--ht-d); box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.12);
+      display: flex; align-items: center; gap: 10px; padding: 8px 20px calc(8px + env(safe-area-inset-bottom, 0px)); z-index: 5; }
+    :host(:not([narrow])) .savebar { left: var(--ha-sidebar-width, 0px); }
     .savebar .sp { flex: 1; }
-    .btn.light { color: #b3e5fc; border-color: #546e7a; }
+    
     .notice { border-radius: 10px; padding: 10px 14px; margin-bottom: 14px; }
-    .notice.ok { background: rgba(46, 125, 50, 0.12); color: #1b5e20; }
-    .notice.warn { background: rgba(255, 193, 7, 0.18); color: #6d4c00; }
+    .notice.ok { background: color-mix(in srgb, var(--ht-ok) 14%, transparent); }
+    .notice.warn { background: color-mix(in srgb, var(--ht-warn) 18%, transparent); }
     .notice.error { background: rgba(219, 68, 55, 0.12); color: var(--ht-err); }
     .msg { padding: 40px; color: var(--ht-s); }
     .empty { text-align: center; padding: 60px 20px; color: var(--ht-s); --mdc-icon-size: 48px; }
@@ -789,4 +853,5 @@ class HomeTimerPanel extends LitElement {
   `;
 }
 
-customElements.define("home-timer-panel", HomeTimerPanel);
+// a newer version loaded into an open tab must not define the element twice
+if (!customElements.get("home-timer-panel")) customElements.define("home-timer-panel", HomeTimerPanel);
