@@ -5,12 +5,10 @@
         "title": "Home Timer",
         "description": "One entry per area.",
         "data": {
-          "area_id": "Area",
-          "name": "Name"
+          "area_id": "Area"
         },
         "data_description": {
-          "area_id": "Each area can be set up only once.",
-          "name": "Prefix for the area's devices, e.g. \"Kitchen: Hob 1\". Default: the area's name at setup time; rename the entry to change it."
+          "area_id": "Each area can be set up only once."
         }
       }
     },
@@ -19,6 +17,180 @@
     },
     "abort": {
       "already_configured": "This area is already set up."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "When a timer runs out",
+        "data": {
+          "ring_until_acknowledged": "Ring until acknowledged",
+          "reminder_minutes": "Reminder every",
+          "auto_dismiss_minutes": "Stop ringing after",
+          "report_missed": "Report missed timers"
+        },
+        "data_description": {
+          "ring_until_acknowledged": "The timer stays \"ringing\" after it runs out, until it is acknowledged. Off: it is gone right after the finished event.",
+          "reminder_minutes": "While a timer rings, a reminder event every so many minutes. 0: no reminders.",
+          "auto_dismiss_minutes": "A ringing timer is acknowledged by itself after so many minutes. 0: it rings until acknowledged.",
+          "report_missed": "A timer that ran out while Home Assistant was restarting is reported right after the start (finished event with \"late\"). Off: it is dropped."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "active_timers": {
+        "name": "Active timers",
+        "state_attributes": {
+          "ringing": {
+            "name": "Ringing"
+          },
+          "next_end": {
+            "name": "Next end"
+          },
+          "next_name": {
+            "name": "Next timer"
+          },
+          "timers": {
+            "name": "Timers"
+          }
+        }
+      }
+    },
+    "binary_sensor": {
+      "ringing": {
+        "name": "Ringing"
+      }
+    },
+    "button": {
+      "acknowledge_all": {
+        "name": "Acknowledge all"
+      }
+    }
+  },
+  "services": {
+    "start": {
+      "name": "Start",
+      "description": "Starts a timer in an area.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "What the timer is for, e.g. \"Let dough rest\"."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "How long the timer runs."
+        },
+        "note": {
+          "name": "Note",
+          "description": "Optional text that goes with the timer's events, e.g. for the notification."
+        },
+        "source": {
+          "name": "Source",
+          "description": "Optional data of the caller (a script, another integration); returned in every event of the timer."
+        }
+      }
+    },
+    "pause": {
+      "name": "Pause",
+      "description": "Pauses a running timer.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer ID",
+          "description": "The timer's id, from the start action's response, an event (timer_id) or the area sensor's timers attribute."
+        }
+      }
+    },
+    "resume": {
+      "name": "Resume",
+      "description": "Resumes a paused timer.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer ID",
+          "description": "The timer's id, from the start action's response, an event (timer_id) or the area sensor's timers attribute."
+        }
+      }
+    },
+    "add_time": {
+      "name": "Add time",
+      "description": "Adds time to a timer. A ringing timer starts again with the added time.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer ID",
+          "description": "The timer's id, from the start action's response, an event (timer_id) or the area sensor's timers attribute."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "How much time to add."
+        }
+      }
+    },
+    "subtract_time": {
+      "name": "Subtract time",
+      "description": "Takes time off a timer. Down to zero, it runs out.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer ID",
+          "description": "The timer's id, from the start action's response, an event (timer_id) or the area sensor's timers attribute."
+        },
+        "duration": {
+          "name": "Duration",
+          "description": "How much time to take off."
+        }
+      }
+    },
+    "cancel": {
+      "name": "Cancel",
+      "description": "Cancels a timer, whatever its state.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer ID",
+          "description": "The timer's id, from the start action's response, an event (timer_id) or the area sensor's timers attribute."
+        }
+      }
+    },
+    "acknowledge": {
+      "name": "Acknowledge",
+      "description": "Acknowledges a ringing timer, or all ringing timers of the targeted areas.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer ID",
+          "description": "The timer to acknowledge. Without it, all ringing timers of the targeted areas."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_duration": {
+      "message": "The duration must be longer than zero."
+    },
+    "unknown_timer": {
+      "message": "There is no timer with the id {timer_id} (anymore)."
+    },
+    "not_active": {
+      "message": "The timer \"{name}\" is not running."
+    },
+    "not_paused": {
+      "message": "The timer \"{name}\" is not paused."
+    },
+    "not_ringing": {
+      "message": "The timer \"{name}\" is not ringing."
+    },
+    "ringing": {
+      "message": "The timer \"{name}\" is ringing; acknowledge it or add time."
+    },
+    "area_not_set_up": {
+      "message": "The area {area} is not set up in Home Timer."
+    },
+    "not_a_home_timer_device": {
+      "message": "The device {device} does not belong to Home Timer."
+    },
+    "one_area": {
+      "message": "Choose exactly one area (or its Home Timer device) for the timer."
+    },
+    "timer_or_area": {
+      "message": "Give a timer id or choose an area."
     }
   }
 }

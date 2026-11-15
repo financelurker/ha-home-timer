@@ -1,0 +1,111 @@
+# Automations
+
+[← Back to the overview](../README.md)
+
+## Actions
+
+Start a timer with `home_timer.start`. The target is the area (or its *Home Timer* device):
+
+```yaml
+action: home_timer.start
+target:
+  area_id: kitchen
+data:
+  name: Let dough rest
+  duration: "00:30:00"
+  note: Cover with a towel        # optional, goes with every event of the timer
+  source:                          # optional, your own data, returned in every event
+    my_script: {step: 2}
+response_variable: started         # optional: started.timer.id is the timer's id
+```
+
+The other actions take the timer's id – from the response above, from an event (`timer_id`) or from the area sensor's `timers` attribute:
+
+| Action | Data | Description |
+|---|---|---|
+| `home_timer.pause` | `timer_id` | pauses an active timer |
+| `home_timer.resume` | `timer_id` | resumes a paused timer |
+| `home_timer.add_time` | `timer_id`, `duration` | extends a timer; a ringing timer starts again |
+| `home_timer.subtract_time` | `timer_id`, `duration` | shortens a timer; down to zero it runs out |
+| `home_timer.cancel` | `timer_id` | cancels a timer, whatever its state |
+| `home_timer.acknowledge` | `timer_id`, or a target (area / device) | acknowledges one ringing timer, or all ringing timers of the targeted areas |
+
+An action that does not fit the timer's state (pause a paused timer, acknowledge one that does not ring) fails with a message saying why.
+
+## Events
+
+| Event | When | Extra data |
+|---|---|---|
+| `home_timer_started` | a timer starts | |
+| `home_timer_paused` | it is paused | |
+| `home_timer_resumed` | it is resumed | |
+| `home_timer_time_changed` | time is added or subtracted | `change` (seconds, negative when subtracted) |
+| `home_timer_finished` | it runs out | `late` (`true`: it ran out during a restart) |
+| `home_timer_reminder` | while it rings, every few minutes | `overtime` (seconds since it ran out) |
+| `home_timer_cancelled` | it is cancelled | `reason`: `manual` or `replaced` |
+| `home_timer_acknowledged` | a ringing timer is acknowledged | `by`: `button`, `action` or `timeout`; `overtime` |
+
+Every event carries:
+
+```yaml
+timer_id: 01JD7Q…
+name: Let dough rest
+area_id: kitchen
+entry_id: 01JC…             # the area's config entry
+device_id: a1b2…            # the area's Home Timer device
+station: null               # stations follow in a later release
+station_name: null
+preset: null
+duration: 1800              # seconds, including added or subtracted time
+note: Cover with a towel
+source: {my_script: {step: 2}}
+```
+
+## Example: notify the phone, with "Got it" and "+2 min"
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: home_timer_finished
+  - trigger: event
+    event_type: home_timer_reminder
+actions:
+  - action: notify.mobile_app_phone
+    data:
+      title: "⏱ {{ trigger.event.data.name }}"
+      message: >-
+        Done{{ ' (during a restart)' if trigger.event.data.late else '' }}.
+        {{ trigger.event.data.note or '' }}
+      data:
+        tag: "home_timer_{{ trigger.event.data.timer_id }}"
+        actions:
+          - action: "HT_ACK_{{ trigger.event.data.timer_id }}"
+            title: Got it
+          - action: "HT_PLUS2_{{ trigger.event.data.timer_id }}"
+            title: "+2 min"
+```
+
+And the answer from the notification:
+
+```yaml
+triggers:
+  - trigger: event
+    event_type: mobile_app_notification_action
+actions:
+  - variables:
+      action: "{{ trigger.event.data.action }}"
+  - choose:
+      - conditions: "{{ action.startswith('HT_ACK_') }}"
+        sequence:
+          - action: home_timer.acknowledge
+            data:
+              timer_id: "{{ action[7:] }}"
+      - conditions: "{{ action.startswith('HT_PLUS2_') }}"
+        sequence:
+          - action: home_timer.add_time
+            data:
+              timer_id: "{{ action[9:] }}"
+              duration: "00:02:00"
+```
+
+Only for one area: add a condition `{{ trigger.event.data.area_id == 'kitchen' }}`.

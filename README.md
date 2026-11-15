@@ -5,19 +5,19 @@
 [![CI](https://github.com/financelurker/ha-home-timer/actions/workflows/ci.yml/badge.svg)](https://github.com/financelurker/ha-home-timer/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/financelurker/ha-home-timer)](https://github.com/financelurker/ha-home-timer/blob/main/LICENSE)
 
-**Timers per room.** Home Timer will give every area its own timers. A timer can belong to a **station** – a hob, the rice cooker, the bathtub, the washing machine – and stations have **presets**: "Rice" is 10 minutes, "Fill the bathtub" 14. When a timer runs out it will ring until you acknowledge it, and your automations decide where to tell you.
+**Timers per room.** Home Timer gives every area its own timers: "Let dough rest, 30 minutes" in the kitchen, "Bath, 14 minutes" in the bathroom. When a timer runs out it rings until you acknowledge it, and your automations decide where to tell you – phone, speaker or light. Stations (a hob, the rice cooker, the bathtub) with presets follow.
 
-> **Status: in development.** This version sets up areas. The timer engine, stations, presets and entities follow in the next releases.
+> **Status: in development.** Areas, timers, actions and events work. Stations and presets come next.
 
 ## What it does
 
-- **[One entry per area](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md):** kitchen, bathroom, laundry – each area gets its own timers.
+- **[One entry per area](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md):** kitchen, bathroom, laundry – each area gets its own timers and a *Home Timer* device.
+- **[Any number of timers](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md):** start, pause, resume, add or subtract time, cancel – by action, from a script or from another integration.
+- **[Rings until acknowledged](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#ringing):** overtime is counted, reminders repeat, and it stops by itself after a while.
+- **[Survives restarts](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#restarts):** a timer that ran out while Home Assistant restarted is reported right after the start.
+- **[For your own automations](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md):** events for every step, with the area, a note and your own data – e.g. a phone notification with "Got it" and "+2 min".
 - **Stations** *(coming)*: hob 1, rice cooker, bathtub … each a device in the area, with one timer at a time.
-- **Presets** *(coming)*: known durations per station, startable from a button, an action or a script.
-- **Timers without a station** *(coming)*: any number per area, e.g. started by a script or another integration.
-- **Rings until acknowledged** *(coming)*: overtime is counted, reminders repeat, and it stops by itself after a while.
-- **Survives restarts** *(coming)*: a timer that ran out while Home Assistant restarted is reported right after the start.
-- **For your own automations** *(coming)*: actions, events and device triggers – notify your phone, a speaker or a light.
+- **Presets** *(coming)*: known durations per station, startable from a button.
 
 ## Installation
 
@@ -43,12 +43,16 @@ Without the button: HACS → ⋮ → **Custom repositories** → add `https://gi
 
 1. Settings → Devices & services → Add integration → **Home Timer**.
 2. Pick an area (e.g. Kitchen). Repeat for every area that should have timers ([Setup](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md)).
+3. Start a timer with the action `home_timer.start` (target: the area, a name and a duration) and react to `home_timer_finished` in an automation ([Automations](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md)).
 
 ## Documentation
 
 | Page | Content |
 |---|---|
-| [Setup](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md) | adding an area, its name and device |
+| [Setup](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md) | adding an area, its device, options, removing it |
+| [Timers](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md) | life cycle, ringing, options, restarts |
+| [Automations](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md) | actions and events, with YAML examples |
+| [Reference](https://github.com/financelurker/ha-home-timer/blob/main/docs/reference.md) | entities and attributes |
 
 ## Support
 

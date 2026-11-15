@@ -30,7 +30,7 @@ def test_keys_used_by_the_flow_exist_and_are_filled():
         assert config["error"]["unknown_area"]
         assert config["abort"]["already_configured"]
         step = config["step"]["user"]
-        for key in ("area_id", "name"):
+        for key in ("area_id",):
             assert step["data"][key] and step["data_description"][key]
         values = list(_values(strings))
         assert all(isinstance(v, str) and v.strip() for v in values), f"empty value in {lang}.json"

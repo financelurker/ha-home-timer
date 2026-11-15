@@ -5,12 +5,10 @@
         "title": "Home Timer",
         "description": "Ein Eintrag je Bereich.",
         "data": {
-          "area_id": "Bereich",
-          "name": "Name"
+          "area_id": "Bereich"
         },
         "data_description": {
-          "area_id": "Jeder Bereich kann nur einmal eingerichtet werden.",
-          "name": "Präfix für die Geräte des Bereichs, z. B. „Küche: Kochfeld 1“. Standard: der Name des Bereichs beim Einrichten; zum Ändern den Eintrag umbenennen."
+          "area_id": "Jeder Bereich kann nur einmal eingerichtet werden."
         }
       }
     },
@@ -19,6 +17,180 @@
     },
     "abort": {
       "already_configured": "Dieser Bereich ist bereits eingerichtet."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Wenn ein Timer abläuft",
+        "data": {
+          "ring_until_acknowledged": "Klingeln bis bestätigt",
+          "reminder_minutes": "Erinnerung alle",
+          "auto_dismiss_minutes": "Klingeln beenden nach",
+          "report_missed": "Verpasste Timer melden"
+        },
+        "data_description": {
+          "ring_until_acknowledged": "Der Timer bleibt nach Ablauf im Zustand „klingelt“, bis er bestätigt wird. Aus: Er ist gleich nach dem Ablauf-Event weg.",
+          "reminder_minutes": "Solange ein Timer klingelt, alle so viele Minuten ein Erinnerungs-Event. 0: keine Erinnerungen.",
+          "auto_dismiss_minutes": "Ein klingelnder Timer wird nach so vielen Minuten von selbst bestätigt. 0: Er klingelt, bis er bestätigt wird.",
+          "report_missed": "Ein Timer, der während eines Neustarts von Home Assistant abgelaufen ist, wird gleich nach dem Start gemeldet (Ablauf-Event mit „late“). Aus: Er wird verworfen."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "active_timers": {
+        "name": "Aktive Timer",
+        "state_attributes": {
+          "ringing": {
+            "name": "Klingelt"
+          },
+          "next_end": {
+            "name": "Nächstes Ende"
+          },
+          "next_name": {
+            "name": "Nächster Timer"
+          },
+          "timers": {
+            "name": "Timer"
+          }
+        }
+      }
+    },
+    "binary_sensor": {
+      "ringing": {
+        "name": "Klingelt"
+      }
+    },
+    "button": {
+      "acknowledge_all": {
+        "name": "Alle bestätigen"
+      }
+    }
+  },
+  "services": {
+    "start": {
+      "name": "Starten",
+      "description": "Startet einen Timer in einem Bereich.",
+      "fields": {
+        "name": {
+          "name": "Name",
+          "description": "Wofür der Timer ist, z. B. „Teig ruhen lassen“."
+        },
+        "duration": {
+          "name": "Dauer",
+          "description": "Wie lange der Timer läuft."
+        },
+        "note": {
+          "name": "Hinweis",
+          "description": "Optionaler Text, der in den Events des Timers mitgeht, z. B. für die Benachrichtigung."
+        },
+        "source": {
+          "name": "Quelle",
+          "description": "Optionale Daten des Aufrufers (ein Skript, eine andere Integration); kommen in jedem Event des Timers zurück."
+        }
+      }
+    },
+    "pause": {
+      "name": "Pausieren",
+      "description": "Pausiert einen laufenden Timer.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer-ID",
+          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Event (timer_id) oder dem Attribut timers des Bereichs-Sensors."
+        }
+      }
+    },
+    "resume": {
+      "name": "Fortsetzen",
+      "description": "Setzt einen pausierten Timer fort.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer-ID",
+          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Event (timer_id) oder dem Attribut timers des Bereichs-Sensors."
+        }
+      }
+    },
+    "add_time": {
+      "name": "Zeit hinzufügen",
+      "description": "Verlängert einen Timer. Ein klingelnder Timer startet mit der zusätzlichen Zeit neu.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer-ID",
+          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Event (timer_id) oder dem Attribut timers des Bereichs-Sensors."
+        },
+        "duration": {
+          "name": "Dauer",
+          "description": "Wie viel Zeit dazukommt."
+        }
+      }
+    },
+    "subtract_time": {
+      "name": "Zeit abziehen",
+      "description": "Verkürzt einen Timer. Bei null läuft er ab.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer-ID",
+          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Event (timer_id) oder dem Attribut timers des Bereichs-Sensors."
+        },
+        "duration": {
+          "name": "Dauer",
+          "description": "Wie viel Zeit abgezogen wird."
+        }
+      }
+    },
+    "cancel": {
+      "name": "Abbrechen",
+      "description": "Bricht einen Timer ab, egal in welchem Zustand.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer-ID",
+          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Event (timer_id) oder dem Attribut timers des Bereichs-Sensors."
+        }
+      }
+    },
+    "acknowledge": {
+      "name": "Bestätigen",
+      "description": "Bestätigt einen klingelnden Timer oder alle klingelnden Timer der gewählten Bereiche.",
+      "fields": {
+        "timer_id": {
+          "name": "Timer-ID",
+          "description": "Der zu bestätigende Timer. Ohne: alle klingelnden Timer der gewählten Bereiche."
+        }
+      }
+    }
+  },
+  "exceptions": {
+    "invalid_duration": {
+      "message": "Die Dauer muss größer als null sein."
+    },
+    "unknown_timer": {
+      "message": "Es gibt keinen Timer mit der ID {timer_id} (mehr)."
+    },
+    "not_active": {
+      "message": "Der Timer „{name}“ läuft nicht."
+    },
+    "not_paused": {
+      "message": "Der Timer „{name}“ ist nicht pausiert."
+    },
+    "not_ringing": {
+      "message": "Der Timer „{name}“ klingelt nicht."
+    },
+    "ringing": {
+      "message": "Der Timer „{name}“ klingelt; bestätige ihn oder füge Zeit hinzu."
+    },
+    "area_not_set_up": {
+      "message": "Der Bereich {area} ist in Home Timer nicht eingerichtet."
+    },
+    "not_a_home_timer_device": {
+      "message": "Das Gerät {device} gehört nicht zu Home Timer."
+    },
+    "one_area": {
+      "message": "Wähle genau einen Bereich (oder sein Home-Timer-Gerät) für den Timer."
+    },
+    "timer_or_area": {
+      "message": "Gib eine Timer-ID an oder wähle einen Bereich."
     }
   }
 }
