@@ -67,6 +67,7 @@ class HomeTimerPanel extends LitElement {
 
   updated(changed) {
     if (changed.has("_dialog") && this._dialog) this._focusDialog();
+    if (changed.has("_menu") && this._menu) this.shadowRoot?.querySelector(".menu button")?.focus();
     if (changed.has("route")) {
       // left a page by any way (browser back, a link …): its unsaved draft is dropped
       const key = this._key();
@@ -180,6 +181,7 @@ class HomeTimerPanel extends LitElement {
     delete drafts[key];
     delete this._base[key];
     delete this._versions[key];
+    this._open = Object.fromEntries(Object.entries(this._open || {}).filter(([k]) => !k.startsWith(`${key}:`)));
     this._drafts = drafts;
     this._errors = { ...this._errors, [key]: {} };
   }
@@ -403,11 +405,21 @@ class HomeTimerPanel extends LitElement {
     ];
     if (station) items.push({ icon: "mdi:delete-outline", label: t("station.delete"), danger: true, run: () => (this._dialog = { type: "delete_station", area, station }) });
     if (page === "options" || (page === "area" && area)) items.push({ icon: "mdi:delete-outline", label: t("area.delete"), danger: true, run: () => (this._dialog = { type: "delete_area", area }) });
-    return html`<div class="menuwrap">
+    const close = () => ((this._menu = false), this.shadowRoot?.querySelector(".menuwrap > .icon")?.focus());
+    const keys = (e) => {
+      const buttons = [...this.shadowRoot.querySelectorAll(".menu button")];
+      const i = buttons.indexOf(this.shadowRoot.activeElement);
+      if (e.key === "Escape" && this._menu) (e.preventDefault(), close());
+      else if (this._menu && (e.key === "ArrowDown" || e.key === "ArrowUp")) {
+        e.preventDefault();
+        buttons[(i + (e.key === "ArrowDown" ? 1 : buttons.length - 1)) % buttons.length]?.focus();
+      }
+    };
+    return html`<div class="menuwrap" @keydown=${keys}>
       <button class="icon" aria-label=${t("menu.open")} aria-haspopup="menu" aria-expanded=${this._menu ? "true" : "false"} @click=${() => (this._menu = !this._menu)}><ha-icon icon="mdi:dots-vertical"></ha-icon></button>
       ${this._menu
         ? html`<div class="menuscrim" @click=${() => (this._menu = false)}></div>
-            <div class="menu" role="menu" @keydown=${(e) => e.key === "Escape" && (this._menu = false)}>
+            <div class="menu" role="menu">
               ${items.map(
                 (it, i) => html`${it.danger && !items[i - 1]?.danger ? html`<div class="menusep"></div>` : nothing}
                   <button role="menuitem" class=${it.danger ? "danger" : ""} @click=${() => ((this._menu = false), it.run())}><ha-icon icon=${it.icon}></ha-icon>${it.label}</button>`
@@ -519,19 +531,28 @@ class HomeTimerPanel extends LitElement {
     return !!customElements.get("ha-selector");
   }
 
-  _selector(key, field, label, selector, value, onChange, helper, required = false) {
+  _selector(key, field, label, selector, value, onChange, helper, required = false, disabled = false) {
+    const kind = Object.keys(selector)[0];
+    const changed = (v) => (this._clearErr(key, field), onChange(v));
     if (this._haSelector) {
       return html`<div class="fieldwrap">
-        <ha-selector .hass=${this.hass} .selector=${selector} .value=${value ?? undefined} .label=${label} .helper=${helper} .required=${required}
-          @value-changed=${(e) => onChange(e.detail.value)}></ha-selector>${this._err(key, field)}</div>`;
+        <ha-selector .hass=${this.hass} .selector=${selector} .value=${value ?? undefined} .label=${label} .helper=${helper} .required=${required} .disabled=${disabled}
+          @value-changed=${(e) => changed(kind === "number" ? (e.detail.value ?? null) : e.detail.value)}></ha-selector>${this._err(key, field)}</div>`;
     }
-    const kind = Object.keys(selector)[0];
+    onChange = changed;
+    if (kind === "select") {
+      return html`<label class="fieldwrap"><span class="ff"><span class="fl">${label}</span>
+          <select ?disabled=${disabled} @change=${(e) => onChange(e.target.value || null)}>
+            <option value="" ?selected=${!value}>–</option>
+            ${selector.select.options.map((o) => html`<option value=${o.value} ?selected=${o.value === value}>${o.label}</option>`)}
+          </select></span>${helper ? html`<span class="help">${helper}</span>` : nothing}${this._err(key, field)}</label>`;
+    }
     if (kind === "boolean") return this._toggle(label, helper, value, onChange);
     const number = kind === "number";
     const unit = selector.number?.unit_of_measurement;
     return html`<label class="fieldwrap"><span class="ff">
         <span class="fl">${label}</span>
-        <input type=${number ? "number" : "text"} inputmode=${number ? "decimal" : "text"} .value=${String(value ?? "")}
+        <input type=${number ? "number" : "text"} inputmode=${number ? "decimal" : "text"} .value=${String(value ?? "")} ?disabled=${disabled}
           step=${selector.number?.step ?? ""} min=${selector.number?.min ?? ""} max=${selector.number?.max ?? ""}
           list=${kind === "entity" ? "ht-sensors" : nothing}
           @input=${(e) => onChange(number ? (e.target.value === "" ? null : Number(e.target.value)) : e.target.value)}
@@ -542,8 +563,16 @@ class HomeTimerPanel extends LitElement {
       ${helper ? html`<span class="help">${helper}</span>` : nothing}${this._err(key, field)}</label>`;
   }
 
-  _number(key, field, label, value, range, unit, onChange, helper, step = 1) {
-    return this._selector(key, field, label, { number: { min: range?.min, max: range?.max, step, mode: "box", unit_of_measurement: unit } }, value, onChange, helper);
+  _number(key, field, label, value, range, unit, onChange, helper, step = 1, disabled = false) {
+    return this._selector(key, field, label, { number: { min: range?.min, max: range?.max, step, mode: "box", unit_of_measurement: unit } }, value, onChange, helper, false, disabled);
+  }
+
+  _clearErr(key, field) {
+    if (this._errors[key]?.[field]) {
+      const errors = { ...this._errors[key] };
+      delete errors[field];
+      this._errors = { ...this._errors, [key]: errors };
+    }
   }
 
   _toggle(label, hint, value, onChange, disabled = false) {
@@ -572,7 +601,7 @@ class HomeTimerPanel extends LitElement {
     return html`<span class="inl ${bad ? "bad" : ""}"><input type="number" inputmode="decimal" aria-label=${this._t(`rule_field.${field.split(".").pop()}`)}
         .value=${String(value ?? "")} step=${step} min=${range?.min ?? ""} max=${range?.max ?? ""}
         style="width:${Math.max(2, String(value ?? "").length) + 1.5}ch"
-        @input=${(e) => onChange(e.target.value === "" ? null : Number(e.target.value))} /><i>${unit}</i></span>`;
+        @input=${(e) => (this._clearErr(key, field), onChange(e.target.value === "" ? null : Number(e.target.value)))} /><i>${unit}</i></span>`;
   }
 
   // ------------------------------------------------------------------ area options
@@ -589,8 +618,8 @@ class HomeTimerPanel extends LitElement {
       <div class="card"><div class="ch">${t("options.when_it_runs_out")}</div><div class="cb">
         ${this._toggle(t("options.ring_until_acknowledged"), t("options.ring_until_acknowledged_hint"), ringing, (v) => set("ring_until_acknowledged", v))}
         <div class="pair ${ringing ? "" : "off"}">
-          ${this._number(key, "reminder_minutes", t("options.reminder_minutes"), d.options.reminder_minutes, spec.reminder_minutes, "min", (v) => set("reminder_minutes", v), t("options.reminder_minutes_hint"))}
-          ${this._number(key, "auto_dismiss_minutes", t("options.auto_dismiss_minutes"), d.options.auto_dismiss_minutes, spec.auto_dismiss_minutes, "min", (v) => set("auto_dismiss_minutes", v), t("options.auto_dismiss_minutes_hint"))}
+          ${this._number(key, "reminder_minutes", t("options.reminder_minutes"), d.options.reminder_minutes, spec.reminder_minutes, "min", (v) => set("reminder_minutes", v), t("options.reminder_minutes_hint"), 1, !ringing)}
+          ${this._number(key, "auto_dismiss_minutes", t("options.auto_dismiss_minutes"), d.options.auto_dismiss_minutes, spec.auto_dismiss_minutes, "min", (v) => set("auto_dismiss_minutes", v), t("options.auto_dismiss_minutes_hint"), 1, !ringing)}
         </div>
         ${this._toggle(t("options.report_missed"), t("options.report_missed_hint"), d.options.report_missed, (v) => set("report_missed", v))}
       </div></div>
@@ -638,7 +667,11 @@ class HomeTimerPanel extends LitElement {
                 <button class="icon sm" aria-label=${t("preset.down")} ?disabled=${i === presets.length - 1} @click=${() => move(i, i + 1)}><ha-icon icon="mdi:chevron-down"></ha-icon></button>
                 <button class="icon sm" aria-label=${t("preset.details")} aria-expanded=${open ? "true" : "false"} @click=${() => this._toggleOpen(`${key}:${p.id}`)}><ha-icon icon=${open ? "mdi:chevron-double-up" : "mdi:dots-horizontal"}></ha-icon></button>
               </span>`
-            : html`<button class="icon sm" aria-label=${t("preset.delete")} @click=${() => remove(i)}><ha-icon icon="mdi:delete-outline"></ha-icon></button>`}
+            : html`<span class="acts">
+                <button class="icon sm" aria-label=${t("preset.up")} ?disabled=${i === 0} @click=${() => move(i, i - 1)}><ha-icon icon="mdi:chevron-up"></ha-icon></button>
+                <button class="icon sm" aria-label=${t("preset.down")} ?disabled=${i === presets.length - 1} @click=${() => move(i, i + 1)}><ha-icon icon="mdi:chevron-down"></ha-icon></button>
+                <button class="icon sm" aria-label=${t("preset.delete")} @click=${() => remove(i)}><ha-icon icon="mdi:delete-outline"></ha-icon></button>
+              </span>`}
           ${open ? html`<button class="link danger" @click=${() => remove(i)}><ha-icon icon="mdi:delete-outline"></ha-icon>${t("preset.delete")}</button>` : nothing}
           <div class="rowerr">${this._err(key, `${prefix}.${i}.name`)}${durErr !== nothing ? durErr : p.text && p.duration == null ? html`<div class="err">${t("error.invalid_duration")}</div>` : nothing}</div>
         </div>`;
@@ -764,11 +797,12 @@ class HomeTimerPanel extends LitElement {
     const spec = this._config.specs.rules;
     const rule = d.power.done?.type || "off";
     const fields = Object.fromEntries(spec[rule].fields.map((f) => [f.key, f]));
-    const typeSelect = html`<select class="inlsel" aria-label=${t("power.rule")} @change=${(e) => set((x) => (x.power.done = { type: e.target.value, ...spec[e.target.value].defaults }))}>
+    const clearRule = () => (this._errors = { ...this._errors, [key]: Object.fromEntries(Object.entries(this._errors[key] || {}).filter(([k]) => !k.startsWith("power.done."))) });
+    const typeSelect = html`<select class="inlsel" aria-label=${t("power.rule")} @change=${(e) => (clearRule(), set((x) => (x.power.done = { type: e.target.value, ...spec[e.target.value].defaults })))}>
         ${Object.keys(spec).map((r) => html`<option value=${r} ?selected=${rule === r}>${t(`rule_verb.${r}`)}</option>`)}
       </select>`;
     const parts = t(`rule_sentence.${rule}`).split(/(\{\w+\})/);
-    const errors = Object.entries(this._errors[key] || {}).filter(([k]) => k.startsWith("power.done."));
+    const errors = Object.entries(this._errors[key] || {}).filter(([k]) => k.startsWith("power.done.") && fields[k.split(".").pop()]);
     return html`<div class="card"><div class="ch">${t("power.done")}</div><div class="cb">
       <div class="sentence">${parts.map((part) => {
         const m = part.match(/^\{(\w+)\}$/);
@@ -777,7 +811,10 @@ class HomeTimerPanel extends LitElement {
         const f = fields[m[1]];
         return f ? this._inline(key, `power.done.${f.key}`, d.power.done[f.key], f, f.unit, (v) => set((x) => (x.power.done[f.key] = v)), f.step) : part;
       })}</div>
-      ${errors.map(([k, code]) => html`<div class="err" role="alert">${t(`rule_field.${k.split(".").pop()}`)}: ${t(`error.${code}`)}</div>`)}
+      ${errors.map(([k, code]) => {
+        const f = fields[k.split(".").pop()];
+        return html`<div class="err" role="alert">${t(`error.${code}`)} ${t("allowed", { min: f.min, max: f.max, unit: f.unit })}</div>`;
+      })}
       ${this._help(t(`rule.${rule}_hint`), t("rule.all_hint"), "rules")}
     </div></div>`;
   }
@@ -875,7 +912,12 @@ class HomeTimerPanel extends LitElement {
     .ic.run { background: color-mix(in srgb, var(--ht-run) 15%, transparent); color: var(--ht-run); }
     .ic.ring { background: color-mix(in srgb, var(--ht-err) 15%, transparent); color: var(--ht-err); }
     .add { color: var(--ht-p); font-weight: 500; padding: 10px 12px; }
-    .pane { flex: 1; overflow: auto; padding: 20px 28px 100px; min-width: 0; }
+    .pane { flex: 1; overflow: auto; padding: 20px 28px 100px; min-width: 0; container-type: inline-size; }
+    @container (max-width: 780px) {
+      .cols { flex-direction: column; gap: 0; }
+      .colr { width: 100%; position: static; order: -1; }
+      .col { max-width: none; }
+    }
     :host([narrow]) .pane { padding: 12px 12px 100px; }
     h1 { font-size: 24px; font-weight: 400; margin: 0 0 10px; }
     .sub { color: var(--ht-s); margin-bottom: 12px; line-height: 1.45; }
@@ -926,8 +968,9 @@ class HomeTimerPanel extends LitElement {
     .colr { width: 320px; flex: none; position: sticky; top: 0; }
     :host([narrow]) .cols { flex-direction: column; gap: 0; }
     :host([narrow]) .colr { width: 100%; position: static; order: -1; }
+    .fieldwrap + .pair { margin-top: 12px; }
     .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 14px; margin: 4px 0; }
-    .pair.off { opacity: 0.5; pointer-events: none; }
+    .pair.off { opacity: 0.6; }
     .fieldwrap { display: block; min-width: 0; }
     .ff { position: relative; display: flex; flex-direction: column; background: var(--ht-fill); border-radius: 4px 4px 0 0; border-bottom: 1px solid var(--ht-under); padding: 6px 12px 6px; min-height: 56px; justify-content: center; }
     .ff:focus-within { border-bottom: 2px solid var(--ht-p); }
@@ -961,7 +1004,7 @@ class HomeTimerPanel extends LitElement {
     .inl input { border: none; background: none; outline: none; font-weight: 500; font-size: 15px; padding: 0; min-width: 3ch; text-align: right; -moz-appearance: textfield; }
     .inl input::-webkit-inner-spin-button, .inl input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
     .inl i { font-style: normal; color: var(--ht-s); font-size: 13px; }
-    .inlsel { background: var(--ht-fill); border: none; border-bottom: 1px solid var(--ht-under); border-radius: 4px 4px 0 0; padding: 4px 6px; font-weight: 500; font-size: 15px; margin: 0 2px; }
+    .inlsel { color-scheme: light dark; background: var(--ht-fill); border: none; border-bottom: 1px solid var(--ht-under); border-radius: 4px 4px 0 0; padding: 4px 6px; font-weight: 500; font-size: 15px; margin: 0 2px; }
     .row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; }
     .row.off { opacity: 0.5; }
     .switch { width: 36px; height: 14px; appearance: none; border-radius: 7px; background: #bdbdbd; position: relative; cursor: pointer; flex: none; margin: 0 4px; }
@@ -969,7 +1012,7 @@ class HomeTimerPanel extends LitElement {
     .switch::after { content: ""; position: absolute; top: -3px; left: -4px; width: 20px; height: 20px; border-radius: 50%; background: #fafafa; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35); transition: left 0.15s; }
     .switch:checked::after { left: 20px; background: var(--ht-p); }
     .presets { display: flex; flex-direction: column; }
-    .preset { display: grid; grid-template-columns: 24px 1.3fr 0.7fr 1.6fr 34px; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--ht-d); }
+    .preset { display: grid; grid-template-columns: 24px 1.3fr 0.7fr 1.6fr auto; gap: 10px; align-items: center; padding: 6px 0; border-bottom: 1px solid var(--ht-d); }
     :host([narrow]) .preset { grid-template-columns: 1fr 92px auto; }
     :host([narrow]) .preset.open label:nth-of-type(3) { grid-column: 1 / 3; }
     .preset .rowerr { grid-column: 1 / -1; }

@@ -41,7 +41,7 @@ The ⋮ menu at the top right holds the panel settings, a link to this documenta
 - **Power** (by power): the power sensor – Home Assistant's entity picker, offering sensors with the device class *power* – and when it counts as running and stopped.
 - **When it runs** (by power): until it switches off, starts a preset, or only warn.
 - **Done when** (until it switches off): the done rule as a sentence, e.g. *The power falls by at least 10 % within 60 s – ignore the first 120 s.* Change the rule in the sentence; ⓘ explains all rules.
-- **Presets:** name, duration (`9` = 9 minutes, `9:30`, `1:05:00`), optional note. Sort them by dragging (on a phone with the arrows; note and delete behind ⋯); the buttons follow. Renaming a preset keeps its button.
+- **Presets:** name, duration (`9` = 9 minutes, `9:30`, `1:05:00`), optional note. Sort them by dragging or with the arrows (on a phone, note and delete are behind ⋯); the buttons follow. Renaming a preset keeps its button.
 - **⋮ → Delete station:** a timer running on it is cancelled (`reason: station_removed`).
 
 The card **Now** (on a phone at the top) shows what the station does right now, with links to its device, its entities and its history.
