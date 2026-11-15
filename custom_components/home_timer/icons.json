@@ -7,6 +7,18 @@
           "0": "mdi:timer-off-outline",
           "1": "mdi:timer-outline"
         }
+      },
+      "station": {
+        "default": "mdi:timer-outline",
+        "state": {
+          "idle": "mdi:timer-off-outline",
+          "active": "mdi:timer-sand",
+          "paused": "mdi:timer-pause-outline",
+          "ringing": "mdi:bell-ring"
+        }
+      },
+      "ends": {
+        "default": "mdi:timer-alert-outline"
       }
     },
     "binary_sensor": {
@@ -20,6 +32,18 @@
     "button": {
       "acknowledge_all": {
         "default": "mdi:bell-check-outline"
+      },
+      "start_preset": {
+        "default": "mdi:play-circle-outline"
+      },
+      "pause_resume": {
+        "default": "mdi:play-pause"
+      },
+      "add_minute": {
+        "default": "mdi:timer-plus-outline"
+      },
+      "stop": {
+        "default": "mdi:stop-circle-outline"
       }
     }
   },

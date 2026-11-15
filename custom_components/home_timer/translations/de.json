@@ -56,6 +56,55 @@
             "name": "Timer"
           }
         }
+      },
+      "station": {
+        "state": {
+          "idle": "Inaktiv",
+          "active": "Aktiv",
+          "paused": "Pausiert",
+          "ringing": "Klingelt"
+        },
+        "state_attributes": {
+          "timer_id": {
+            "name": "Timer-ID"
+          },
+          "timer_name": {
+            "name": "Name des Timers"
+          },
+          "preset": {
+            "name": "Vorlage"
+          },
+          "duration": {
+            "name": "Dauer"
+          },
+          "remaining": {
+            "name": "Restzeit"
+          },
+          "started_at": {
+            "name": "Gestartet"
+          },
+          "ends_at": {
+            "name": "Endet"
+          },
+          "finished_at": {
+            "name": "Abgelaufen"
+          },
+          "overtime": {
+            "name": "Überzeit"
+          },
+          "note": {
+            "name": "Notiz"
+          },
+          "source": {
+            "name": "Quelle"
+          },
+          "presets": {
+            "name": "Vorlagen"
+          }
+        }
+      },
+      "ends": {
+        "name": "Timer-Ende"
       }
     },
     "binary_sensor": {
@@ -66,29 +115,45 @@
     "button": {
       "acknowledge_all": {
         "name": "Alle bestätigen"
+      },
+      "start_preset": {
+        "name": "{preset} starten"
+      },
+      "pause_resume": {
+        "name": "Pause / Fortsetzen"
+      },
+      "add_minute": {
+        "name": "+1 Minute"
+      },
+      "stop": {
+        "name": "Stopp / Bestätigen"
       }
     }
   },
   "services": {
     "start": {
       "name": "Starten",
-      "description": "Startet einen Timer in einem Bereich (Ziel: der Bereich, sein Home-Timer-Gerät oder seine Entitäten).",
+      "description": "Startet einen Timer: an einer Station (Ziel: ihr Gerät oder ihre Entitäten; ersetzt ihren Timer) oder in einem Bereich (Ziel: der Bereich oder sein Home-Timer-Gerät).",
       "fields": {
         "name": {
           "name": "Name",
-          "description": "Wofür der Timer ist, z. B. „Teig ruhen lassen“."
+          "description": "Wofür der Timer ist, z. B. „Teig ruhen lassen“. Mit einer Dauer, statt einer Vorlage."
         },
         "duration": {
           "name": "Dauer",
-          "description": "Wie lange der Timer läuft."
+          "description": "Wie lange der Timer läuft. Mit einem Namen, statt einer Vorlage."
         },
         "note": {
           "name": "Notiz",
-          "description": "Optionaler Text, der in den Ereignissen des Timers mitgeht, z. B. für die Benachrichtigung."
+          "description": "Optionaler Text, der in den Ereignissen des Timers mitgeht, z. B. für die Benachrichtigung. Mit einer Vorlage: statt der Notiz der Vorlage."
         },
         "source": {
           "name": "Quelle",
           "description": "Optionale Daten des Aufrufers (ein Skript, eine andere Integration); werden in jedem Ereignis des Timers mitgeliefert."
+        },
+        "preset": {
+          "name": "Vorlage",
+          "description": "Eine Vorlage der gewählten Station (ihr Name). Statt Name und Dauer."
         }
       }
     },
@@ -98,7 +163,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Ereignis (timer_id) oder dem Attribut timers des Timer-Sensors."
+          "description": "Die ID des Timers (aus der Antwort der Start-Aktion, einem Ereignis oder einem Sensor). Ohne: die Timer der gewählten Stationen."
         }
       }
     },
@@ -108,7 +173,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Ereignis (timer_id) oder dem Attribut timers des Timer-Sensors."
+          "description": "Die ID des Timers (aus der Antwort der Start-Aktion, einem Ereignis oder einem Sensor). Ohne: die Timer der gewählten Stationen."
         }
       }
     },
@@ -118,7 +183,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Ereignis (timer_id) oder dem Attribut timers des Timer-Sensors."
+          "description": "Die ID des Timers (aus der Antwort der Start-Aktion, einem Ereignis oder einem Sensor). Ohne: die Timer der gewählten Stationen."
         },
         "duration": {
           "name": "Dauer",
@@ -132,7 +197,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Ereignis (timer_id) oder dem Attribut timers des Timer-Sensors."
+          "description": "Die ID des Timers (aus der Antwort der Start-Aktion, einem Ereignis oder einem Sensor). Ohne: die Timer der gewählten Stationen."
         },
         "duration": {
           "name": "Dauer",
@@ -146,7 +211,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Die ID des Timers, aus der Antwort der Start-Aktion, einem Ereignis (timer_id) oder dem Attribut timers des Timer-Sensors."
+          "description": "Die ID des Timers (aus der Antwort der Start-Aktion, einem Ereignis oder einem Sensor). Ohne: die Timer der gewählten Stationen."
         }
       }
     },
@@ -156,7 +221,7 @@
       "fields": {
         "timer_id": {
           "name": "Timer-ID",
-          "description": "Der zu bestätigende Timer. Ohne: alle klingelnden Timer der gewählten Bereiche."
+          "description": "Die ID des Timers (aus der Antwort der Start-Aktion, einem Ereignis oder einem Sensor). Ohne: die Timer der gewählten Stationen."
         }
       }
     }
@@ -191,6 +256,112 @@
     },
     "invalid_source": {
       "message": "Die Quelle muss aus Daten bestehen, die als JSON gespeichert werden können."
+    },
+    "unknown_station": {
+      "message": "Diese Station gibt es nicht (mehr)."
+    },
+    "unknown_preset": {
+      "message": "Die Station {station} hat keine Vorlage „{preset}“."
+    },
+    "one_station": {
+      "message": "Das Ziel muss genau eine Station nennen."
+    },
+    "preset_needs_station": {
+      "message": "Eine Vorlage braucht eine Station als Ziel."
+    },
+    "name_and_duration": {
+      "message": "Gib eine Vorlage an oder einen Namen und eine Dauer."
+    },
+    "timer_or_station": {
+      "message": "Gib eine Timer-ID an oder wähle eine Station."
+    },
+    "station_idle": {
+      "message": "Die Station {station} hat keinen Timer."
+    },
+    "mixed_target": {
+      "message": "Wähle entweder Stationen oder Bereiche als Ziel, nicht beides."
+    },
+    "preset_with_duration": {
+      "message": "Eine Vorlage bringt ihre eigene Dauer mit; lass die Dauer weg."
+    }
+  },
+  "config_subentries": {
+    "station": {
+      "initiate_flow": {
+        "user": "Station hinzufügen",
+        "reconfigure": "Station konfigurieren"
+      },
+      "entry_type": "Station",
+      "step": {
+        "settings": {
+          "title": "Station",
+          "description": "Bereich {area}. Eine Station ist alles, woran ein Timer hängt: ein Kochfeld, ein Gerät, ein Wasserhahn. Sie bekommt ein eigenes Gerät mit jeweils einem Timer.",
+          "data": {
+            "name": "Name",
+            "icon": "Symbol"
+          },
+          "data_description": {
+            "name": "Z. B. „Kochfeld 1“, „Reiskocher“, „Badewanne“.",
+            "icon": "Optional; wird beim Timer der Station angezeigt."
+          }
+        },
+        "menu": {
+          "title": "{station}",
+          "description": "Vorlagen:\n{presets}",
+          "menu_options": {
+            "settings": "Name und Symbol",
+            "add_preset": "Vorlage hinzufügen",
+            "edit_preset": "Vorlage ändern oder löschen",
+            "done": "Fertig"
+          }
+        },
+        "add_preset": {
+          "title": "{station}: Vorlage hinzufügen",
+          "description": "Eine Vorlage wird zum Button „… starten“ an der Station und lässt sich mit der Aktion home_timer.start starten.",
+          "data": {
+            "name": "Name",
+            "duration": "Dauer",
+            "note": "Notiz"
+          },
+          "data_description": {
+            "name": "Wird zum Namen des Timers, z. B. „Reis“.",
+            "note": "Optional; geht mit den Ereignissen des Timers mit, z. B. „Stufe 6, dann 3“."
+          }
+        },
+        "edit_preset": {
+          "title": "Welche Vorlage?",
+          "data": {
+            "preset": "Vorlage"
+          }
+        },
+        "preset": {
+          "title": "{station}: Vorlage",
+          "data": {
+            "name": "Name",
+            "duration": "Dauer",
+            "note": "Notiz",
+            "delete": "Diese Vorlage löschen"
+          },
+          "data_description": {
+            "name": "Wird zum Namen des Timers, z. B. „Reis“.",
+            "note": "Optional; geht mit den Ereignissen des Timers mit."
+          }
+        }
+      },
+      "error": {
+        "name_required": "Gib einen Namen ein.",
+        "station_exists": "Dieser Bereich hat bereits eine Station mit diesem Namen.",
+        "preset_exists": "Diese Station hat bereits eine Vorlage mit diesem Namen.",
+        "invalid_duration": "Die Dauer muss größer als null sein."
+      }
+    }
+  },
+  "device_automation": {
+    "trigger_type": {
+      "started": "Timer gestartet",
+      "finished": "Timer abgelaufen",
+      "reminder": "Timer erinnert (klingelt noch)",
+      "acknowledged": "Timer bestätigt"
     }
   }
 }

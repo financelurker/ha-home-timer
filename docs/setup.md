@@ -18,10 +18,14 @@ After it was created, its area is yours: move it to another area or take it out 
 
 If the area is deleted, the entry keeps working and logs a warning; its device stays without an area. Delete the entry and set up the new area instead.
 
+## Stations
+
+Stations (hob, rice cooker, bathtub …) are added on the area's entry with **Add station**; each gets its own device. See [Stations and presets](stations.md).
+
 ## Options
 
 Settings → Devices & services → Home Timer → the area's entry → **Configure** sets how the area's timers behave when they run out: ringing, reminders, auto-dismiss and timers missed during a restart. See [Timers](timers.md#options).
 
 ## Removing an area
 
-Settings → Devices & services → Home Timer → the area's entry → ⋮ → **Delete**. Its device and its stored timers go with it.
+Settings → Devices & services → Home Timer → the area's entry → ⋮ → **Delete**. Its devices (the area's and its stations') and its stored timers go with it.

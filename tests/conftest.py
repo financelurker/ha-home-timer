@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import timedelta
 
 import pytest
+from types import MappingProxyType
+
+from homeassistant.config_entries import ConfigSubentry
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar
 from pytest_homeassistant_custom_component.common import MockConfigEntry, async_fire_time_changed
@@ -39,3 +42,16 @@ async def tick(hass: HomeAssistant, freezer, seconds: float) -> None:
 @pytest.fixture
 async def kitchen(hass: HomeAssistant) -> MockConfigEntry:
     return await setup_area(hass, "Kitchen")
+
+
+async def add_station(hass: HomeAssistant, entry: MockConfigEntry, name: str, presets: list | None = None,
+                      icon: str | None = None) -> str:
+    """Add a station directly (the area reloads); returns its id."""
+    data = {"icon": icon, "presets": [
+        {"id": f"{name}-{i}", "name": p[0], "duration": p[1], **({"note": p[2]} if len(p) > 2 else {})}
+        for i, p in enumerate(presets or [])
+    ]}
+    subentry = ConfigSubentry(data=MappingProxyType(data), subentry_type="station", title=name, unique_id=None)
+    hass.config_entries.async_add_subentry(entry, subentry)
+    await hass.async_block_till_done()
+    return subentry.subentry_id

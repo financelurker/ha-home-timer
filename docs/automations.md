@@ -4,7 +4,18 @@
 
 ## Actions
 
-Start a timer with `home_timer.start`. The target is the area – or anything that leads to exactly one area set up in Home Timer: its *Home Timer* device or entities, a floor or a label (resolved like any target in Home Assistant):
+Start a timer with `home_timer.start`:
+
+- **On a station:** target the station's device or one of its entities, and give a `preset` (its own duration; `note` replaces the preset's note) – or a `name` and a `duration`. It replaces the station's timer.
+- **On an area, without a station:** target the area – or anything that leads to exactly one area set up in Home Timer (its *Home Timer* device, a floor, a label) – with a `name` and a `duration`.
+
+```yaml
+action: home_timer.start
+target:
+  entity_id: sensor.kitchen_hob_1
+data:
+  preset: Rice
+```
 
 ```yaml
 action: home_timer.start
@@ -19,18 +30,18 @@ data:
 response_variable: started         # optional: started.timer.id is the timer's id
 ```
 
-The other actions take the timer's id – from the response above, from an event (`timer_id`) or from the *Timers* sensor's `timers` attribute:
+The other actions take the timer's id – from the response above, from an event (`timer_id`) or from a sensor's attributes – or target stations (their devices or entities), meaning the station's timer:
 
 | Action | Data | Description |
 |---|---|---|
-| `home_timer.pause` | `timer_id` | pauses an active timer |
-| `home_timer.resume` | `timer_id` | resumes a paused timer |
-| `home_timer.add_time` | `timer_id`, `duration` | extends a timer; a ringing timer starts again |
-| `home_timer.subtract_time` | `timer_id`, `duration` | shortens a timer; down to zero it runs out |
-| `home_timer.cancel` | `timer_id` | cancels a timer, whatever its state |
-| `home_timer.acknowledge` | `timer_id`, or a target (areas, floor, devices …) | acknowledges one ringing timer, or all ringing timers of the targeted areas |
+| `home_timer.pause` | `timer_id` or stations | pauses an active timer |
+| `home_timer.resume` | `timer_id` or stations | resumes a paused timer |
+| `home_timer.add_time` | `timer_id` or stations, `duration` | extends a timer; a ringing timer starts again |
+| `home_timer.subtract_time` | `timer_id` or stations, `duration` | shortens a timer; down to zero it runs out |
+| `home_timer.cancel` | `timer_id` or stations | cancels a timer, whatever its state |
+| `home_timer.acknowledge` | `timer_id`, stations, or areas (area, floor, …) | acknowledges one ringing timer, the ringing timers of the stations, or all ringing timers of the areas |
 
-Durations must be at least one second. An action that does not fit the timer's state (pause a paused timer, acknowledge one that does not ring) fails with a message saying why.
+A target names either stations or areas, not both (only `acknowledge` takes both). With a `timer_id`, the target is not used. Durations must be at least one second. An action that does not fit the timer's state (pause a paused timer, acknowledge one that does not ring) fails with a message saying why.
 
 ## Events
 
@@ -42,7 +53,7 @@ Durations must be at least one second. An action that does not fit the timer's s
 | `home_timer_time_changed` | time is added or subtracted | `change` (seconds, negative when subtracted; at most what was left) |
 | `home_timer_finished` | it runs out | `late` (`true`: it ran out during a restart) |
 | `home_timer_reminder` | while it rings, every few minutes | `overtime` (seconds since it ran out) |
-| `home_timer_cancelled` | it is cancelled | `reason`: `manual` or `replaced` |
+| `home_timer_cancelled` | it is cancelled | `reason`: `manual`, `replaced` (a new timer on the station) or `station_removed` (then `device_id` is the area's device; `station_name` is still the station's) |
 | `home_timer_acknowledged` | a ringing timer is acknowledged | `by`: `button`, `action` or `timeout`; `overtime` |
 
 Every event carries:
@@ -52,14 +63,27 @@ timer_id: 01JD7Q…
 name: Let dough rest
 area_id: kitchen
 entry_id: 01JC…             # the area's config entry
-device_id: a1b2…            # the area's Home Timer device
-station: null               # stations follow in a later release
-station_name: null
-preset: null
+device_id: a1b2…            # the station's device, or the area's Home Timer device
+station: 01JD…              # the station's id, or null without a station
+station_name: Hob 1
+preset: Rice                # the preset's name, or null
 duration: 1800              # seconds, including added or subtracted time
 note: Cover with a towel
 source: {my_script: {step: 2}}
 ```
+
+## Device triggers
+
+In the automation editor: **When** → *Device* → a station's device or the area's *Home Timer* device:
+
+| Trigger | Station's device | Area's *Home Timer* device |
+|---|---|---|
+| Timer started | its timer | any timer of the area |
+| Timer finished | its timer | any timer of the area |
+| Timer reminds (still ringing) | its timer | any timer of the area |
+| Timer acknowledged | its timer | any timer of the area |
+
+The trigger variables are those of the event: `trigger.event.data.name`, `.station_name`, `.note` …
 
 ## Example: notify the phone, with "Got it" and "+2 min"
 
@@ -72,7 +96,7 @@ triggers:
 actions:
   - action: notify.mobile_app_phone
     data:
-      title: "⏱ {{ trigger.event.data.name }}"
+      title: "⏱ {{ trigger.event.data.name }}{{ ' · ' ~ trigger.event.data.station_name if trigger.event.data.station_name else '' }}"
       message: >-
         {% if trigger.event.event_type == 'home_timer_reminder' %}
           Done {{ (trigger.event.data.overtime / 60) | round | int }} min ago.
