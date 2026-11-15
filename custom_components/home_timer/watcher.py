@@ -58,6 +58,7 @@ class PowerWatcher:
         self.timer_id: str | None = None
         self.rang: float | None = None  # seconds after the start when the run's timer rang
         self.trigger: str | None = None  # how: rule, off, countdown
+        self.mark: float | None = None  # "done now" during the run: seconds after its start
         self._below_since: datetime | None = None
         self._resumed = False  # waiting for the first valid reading after a (re)start
         self._rearm = False  # warn: our timer was acknowledged while the appliance runs
@@ -100,6 +101,7 @@ class PowerWatcher:
             self.run_start = existing.started_at
             self.timer_id = existing.id
             self.done = existing.status == STATUS_RINGING
+            self.mark = self.engine.runs.pending_mark(self.station.id, existing.started_at.isoformat())
             if existing.finished_at is not None:  # it rang before the restart
                 self.rang = (existing.finished_at - existing.started_at).total_seconds()
                 self.trigger = "rule" if self.config.kind == KIND_UNTIL_OFF else "countdown"
@@ -174,6 +176,17 @@ class PowerWatcher:
                 # no rule reads it: a long run is thinned as it will be stored
                 self.trace.times, self.trace.watts = compact(self.trace.times, self.trace.watts)
 
+    @callback
+    def mark_done(self, seconds: float | None = None) -> float:
+        """The user says it is done now (or at ``seconds`` of the run); kept with the run when it is stored."""
+        if not self.running or self.run_start is None or self.config.kind != KIND_UNTIL_OFF:
+            raise ValueError("not running")
+        now = self.elapsed()
+        self.mark = round(now if seconds is None else min(max(self.trace.start, float(seconds)), now), 1)
+        self.engine.runs.set_pending(self.station.id, self.run_start.isoformat(), self.mark)
+        self.engine.notify_power()
+        return self.mark
+
     def elapsed(self, when: datetime | None = None) -> float:
         if self.run_start is None:
             return 0.0
@@ -195,6 +208,7 @@ class PowerWatcher:
         self._rearm = False
         self._below_since = None
         self.rang = self.trigger = None
+        self.mark = None
         timer = None
         if self.config.kind == KIND_UNTIL_OFF:
             timer = self.engine.start(
@@ -263,6 +277,7 @@ class PowerWatcher:
                 make_run(
                     self.run_start, seconds, self.trace, on_above=self.config.on_above,
                     rang=self.rang, trigger=self.trigger, sensor=self.config.sensor,
+                    marks={"done": self.mark} if self.mark is not None else None,
                 ),
             )
         self.running = False
@@ -272,5 +287,7 @@ class PowerWatcher:
         self._rearm = False
         self.timer_id = None
         self.rang = self.trigger = None
+        self.mark = None
+        self.engine.runs.set_pending(self.station.id, "", None)
         self.trace = Trace()
         self.engine.notify_power()

@@ -2,7 +2,7 @@
 
 The runs are made from the real moka pot run in the tests (tests/fixtures/moka.py):
 more or less water stretches it, the sensor reports every ~10 s with a little
-scatter. Each run goes through the integration's own code (``make_run``, and
+scatter. All but one are marked "done" where the coffee was ready (learning). Each run goes through the integration's own code (``make_run``, and
 ``first_fire`` for when the moka pot's done rule rings), so it looks exactly like
 a stored run. Runs on the same machine as the instance: it writes the area's run
 store while the area is disabled.
@@ -45,7 +45,7 @@ def moka_at(t: float) -> float:
     return pts[-1][1]
 
 
-def one_run(rng: random.Random, start: datetime, rule: DoneRule) -> dict:
+def one_run(rng: random.Random, start: datetime, rule: DoneRule, marked: bool) -> dict:
     water = rng.uniform(0.8, 1.15)  # more water: everything after the heat-up takes longer
     off = (moka.MARK_OFF - moka.START) * water
     trace = Trace()
@@ -56,8 +56,10 @@ def one_run(rng: random.Random, start: datetime, rule: DoneRule) -> dict:
         t += rng.uniform(8, 12)
     trace.add(round(off, 1), 0.0)
     rang = first_fire(rule, trace, off)
+    done = round(30 + (moka.MARK_DONE - moka.START - 30) * water + rng.gauss(0, 4), 1)  # when the coffee was ready
     return make_run(start, off, trace, on_above=10, rang=rang if rang is not None else off,
-                    trigger="rule" if rang is not None else "off", sensor="sensor.moka_pot_plug_power")
+                    trigger="rule" if rang is not None else "off", sensor="sensor.moka_pot_plug_power",
+                    marks={"done": done} if marked else None)
 
 
 async def main() -> None:
@@ -71,7 +73,7 @@ async def main() -> None:
         rule = DoneRule.from_data(station["power"]["done"])
         rng = random.Random(7)
         today = datetime.now(UTC).replace(hour=6, minute=40, second=0, microsecond=0)
-        runs = [one_run(rng, today - timedelta(days=d, minutes=-rng.randint(0, 80) - (600 if i % 3 == 2 else 0)), rule)
+        runs = [one_run(rng, today - timedelta(days=d, minutes=-rng.randint(0, 80) - (600 if i % 3 == 2 else 0)), rule, i != 2)
                 for i, d in enumerate(DAYS)]
         entry_id = area["entry_id"]
         await ha.call({"type": "config_entries/disable", "entry_id": entry_id, "disabled_by": "user"})

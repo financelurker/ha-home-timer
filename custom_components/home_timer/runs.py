@@ -13,7 +13,8 @@ A run (JSON)::
      "from": s – the curve is known from here (later than 0 for a run picked up after a restart),
      "interval": median s between readings, "noise": W,
      "t": [s, …], "w": [W, …]  (a step curve: each reading holds until the next),
-     "marks": {}, "skip": False}
+     "marks": {"done": s on the curve – when it was really done, marked by the user},
+     "skip": True to leave it out of learning}
 
 The first time a power station is seen, its earlier runs are read once from the
 recorder's history of its sensor (``async_import_history``), so there is something
@@ -146,6 +147,7 @@ def make_run(
     source: str = "live",
     simulated: bool = False,
     sensor: str | None = None,
+    marks: dict[str, float] | None = None,
 ) -> dict[str, Any]:
     times, watts = compact(trace.times, trace.watts)
     return {
@@ -162,7 +164,7 @@ def make_run(
         "noise": noise(trace.watts, on_above),
         "t": times,
         "w": watts,
-        "marks": {},
+        "marks": dict(marks or {}),
         "skip": False,
     }
 
@@ -282,6 +284,7 @@ class RunStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, runs_key(entry_id))
         self.runs: dict[str, list[dict[str, Any]]] = {}  # station id → runs, oldest first
         self.imported: set[str] = set()  # stations whose history was read
+        self.pending: dict[str, dict[str, Any]] = {}  # station id → {"start", "done"}: a mark on the run going on
 
     async def async_load(self) -> None:
         data = await self._store.async_load()
@@ -293,6 +296,9 @@ class RunStore:
                 str(k): [r for r in v if isinstance(r, dict) and r.get("id")] for k, v in runs.items() if isinstance(v, list)
             }
         self.imported = {str(s) for s in data.get("imported", []) if isinstance(s, str)}
+        pending = data.get("pending")
+        if isinstance(pending, dict):
+            self.pending = {str(k): v for k, v in pending.items() if isinstance(v, dict) and isinstance(v.get("done"), (int, float))}
 
     def list(self, station_id: str) -> list[dict[str, Any]]:
         return self.runs.get(station_id, [])
@@ -317,6 +323,43 @@ class RunStore:
         self._save()
         return True
 
+    def set_mark(self, station_id: str, run_id: str, done: float | None) -> dict[str, Any] | None:
+        """Mark when the run was done (seconds on its curve), or remove the mark."""
+        run = self.get(station_id, run_id)
+        if run is None:
+            return None
+        marks = dict(run.get("marks") or {})
+        if done is None:
+            marks.pop("done", None)
+        else:  # on the curve: from where it is known to its last reading
+            last = (run.get("t") or [0.0])[-1]
+            marks["done"] = round(min(max(float(run.get("from") or 0.0), float(done)), max(last, float(run.get("duration") or 0.0))), 1)
+        run["marks"] = marks
+        self._save()
+        return run
+
+    def set_skip(self, station_id: str, run_id: str, skip: bool) -> dict[str, Any] | None:
+        """Leave a run out of learning (it stays stored), or take it back in."""
+        run = self.get(station_id, run_id)
+        if run is None:
+            return None
+        run["skip"] = bool(skip)
+        self._save()
+        return run
+
+    def set_pending(self, station_id: str, start: str, done: float | None) -> None:
+        """"Done now" during a run: kept here until the run is stored – also across a reload."""
+        if done is None:
+            if self.pending.pop(station_id, None) is not None:
+                self._save()
+            return
+        self.pending[station_id] = {"start": start, "done": done}
+        self._save()
+
+    def pending_mark(self, station_id: str, start: str) -> float | None:
+        mark = self.pending.get(station_id)
+        return mark["done"] if mark and mark.get("start") == start else None
+
     def fill_sensor(self, station_id: str, sensor: str) -> None:
         """Runs stored before runs knew their sensor: they were recorded with the station's."""
         missing = [r for r in self.list(station_id) if not r.get("sensor")]
@@ -339,7 +382,7 @@ class RunStore:
             self._save()
 
     def _data(self) -> dict[str, Any]:
-        return {"runs": self.runs, "imported": sorted(self.imported)}
+        return {"runs": self.runs, "imported": sorted(self.imported), "pending": self.pending}
 
     def _save(self) -> None:
         self._store.async_delay_save(self._data, 5)

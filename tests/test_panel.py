@@ -274,6 +274,7 @@ def test_panel_texts_complete() -> None:
     built |= {f"error.{code}" for code in re.findall(r'= "([a-z_]+)"$', edit, re.M) if code not in ("panel",)}
     built |= {"error.already_configured", "error.unknown_area"}
     built |= {f"outcome.{x}" for x in ("rule", "off", "never", "cancelled")} | {f"mark.{x}" for x in ("rule", "off", "never", "cancelled")}
+    built |= {f"verdict.{x}" for x in ("on_time", "early", "late")} | {f"runs.tag.{x}" for x in ("on_time", "early", "late")}
     built |= {f"preview.n.{x}" for x in ("rings", "warns", "cancelled", "no_ring", "no_warning", "blip", "rule", "off", "never")}
     assert sorted(built - set(en)) == []
     # every value of a rule appears in its sentence, in both languages

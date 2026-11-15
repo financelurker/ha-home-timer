@@ -42,6 +42,7 @@ POWER_DEFAULTS: dict[str, Any] = {
     "cancel_on_off": True,  # start_preset: switching off before the end cancels the timer
     "warn_after": 120.0,  # warn: minutes
     "done": {"type": "off"},  # until_off: the done rule
+    "tolerance": 60.0,  # s: learning – a ring up to this long after the user's mark is on time
 }
 
 
@@ -80,6 +81,7 @@ class PowerConfig:
     cancel_on_off: bool = True
     warn_after: float = POWER_DEFAULTS["warn_after"]
     done: DoneRule = field(default_factory=DoneRule)
+    tolerance: float = field(default=POWER_DEFAULTS["tolerance"], compare=False)  # learning only
 
     @classmethod
     def from_data(cls, data: dict[str, Any] | None) -> PowerConfig | None:
@@ -96,6 +98,7 @@ class PowerConfig:
             cancel_on_off=bool(merged["cancel_on_off"]),
             warn_after=float(merged["warn_after"]),
             done=DoneRule.from_data(merged.get("done")),
+            tolerance=float(merged["tolerance"]),
         )
 
 
