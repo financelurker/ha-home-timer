@@ -13,7 +13,7 @@ In the [panel](panel.md): open the area → **+ Add station**.
 3. **Presets:** name (*Rice*), duration (10 min), optional note (*level 6, then 3*). The note goes with the timer's events, e.g. into a notification. Sort them by dragging or with the arrows.
 4. **Save.** The area reloads; running timers go on.
 
-Change a station later by opening it in the panel (or with the link on its device's page); **Delete station** removes it. A timer that runs on a deleted station is cancelled (`reason: station_removed`).
+Change a station later by opening it in the panel (or with the link on its device's page); ⋮ → **Delete station** removes it. A timer that runs on a deleted station is cancelled (`reason: station_removed`).
 
 How you set up your stations is up to you – by place (*Hob 1*, *Hob 2*) with dishes as presets, or by appliance (*Rice cooker* with *White rice*, *Brown rice*). One station, one timer: for two timers on the same spot, add a second station.
 

@@ -265,14 +265,21 @@ def test_panel_texts_complete() -> None:
     from custom_components.home_timer.power import RULE_FIELDS
     from custom_components.home_timer.stations import KINDS
 
-    built = {f"kind.{k}" for k in KINDS} | {f"kind.{k}_hint" for k in KINDS}
+    built = {f"kind.{k}" for k in KINDS} | {f"kind.{k}_long" for k in KINDS}
     built |= {f"rule.{r}" for r in RULE_FIELDS} | {f"rule.{r}_hint" for r in RULE_FIELDS}
+    built |= {f"rule_verb.{r}" for r in RULE_FIELDS} | {f"rule_sentence.{r}" for r in RULE_FIELDS}
     built |= {f"rule_field.{f[0]}" for fields in RULE_FIELDS.values() for f in fields}
     built |= {f"status.{s}" for s in ("idle", "active", "paused", "ringing")} | {"mode.manual", "mode.power", "mode.manual_hint", "mode.power_hint"}
     edit = (FRONTEND.parent / "panel" / "edit.py").read_text(encoding="utf-8") + (FRONTEND.parent / "panel" / "ws.py").read_text(encoding="utf-8")
     built |= {f"error.{code}" for code in re.findall(r'= "([a-z_]+)"$', edit, re.M) if code not in ("panel",)}
     built |= {"error.already_configured", "error.unknown_area"}
     assert sorted(built - set(en)) == []
+    # every value of a rule appears in its sentence, in both languages
+    for lang in (en, de):
+        for rule, fields in RULE_FIELDS.items():
+            sentence = lang[f"rule_sentence.{rule}"]
+            assert "{type}" in sentence, rule
+            assert all("{" + f[0] + "}" in sentence for f in fields), (rule, sentence)
 
 
 async def test_save_as_preset_meanwhile_is_not_overwritten(hass: HomeAssistant, kitchen, hass_ws_client) -> None:
