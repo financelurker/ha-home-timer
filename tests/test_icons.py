@@ -33,3 +33,9 @@ def test_services_yaml_selectors_are_valid():
             selector.TargetSelector.CONFIG_SCHEMA(spec["target"])
         for field in spec.get("fields", {}).values():
             selector.validate_selector(field["selector"])
+
+
+def test_targets_without_device_filters():
+    """hassfest: services do not support device filters on targets."""
+    for spec in SERVICES.values():
+        assert "device" not in spec.get("target", {})

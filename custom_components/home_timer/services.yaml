@@ -2,8 +2,6 @@ start:
   target:
     entity:
       integration: home_timer
-    device:
-      integration: home_timer
   fields:
     name:
       required: true
@@ -57,8 +55,6 @@ cancel:
 acknowledge:
   target:
     entity:
-      integration: home_timer
-    device:
       integration: home_timer
   fields:
     timer_id:
