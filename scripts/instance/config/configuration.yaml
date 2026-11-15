@@ -1,0 +1,73 @@
+# A local Home Assistant instance for Home Timer: README screenshots and checks on a
+# real instance (see ../README.md). The appliances are plugs whose power comes from
+# input_number helpers, so a run can be played back exactly.
+homeassistant:
+  name: Demo Home
+  unit_system: metric
+  time_zone: Europe/Vienna
+  country: AT
+  currency: EUR
+  language: en
+  elevation: 200
+  latitude: 48.2
+  longitude: 16.37
+
+frontend:
+config:
+http:
+onboarding:
+person:
+history:
+logbook:
+recorder:
+  purge_keep_days: 1
+mobile_app:
+automation: !include automations.yaml
+logger:
+  default: warning
+  logs:
+    custom_components.home_timer: debug
+
+input_number:
+  kettle_watts: &watts
+    name: Kettle watts
+    min: 0
+    max: 3000
+    step: 0.1
+    mode: box
+  moka_watts:
+    <<: *watts
+    name: Moka pot watts
+  rice_watts:
+    <<: *watts
+    name: Rice cooker watts
+  e2e_watts:
+    <<: *watts
+    name: E2E plug watts
+
+template:
+  - sensor:
+      - name: Kettle plug power
+        unique_id: kettle_plug_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: "{{ states('input_number.kettle_watts') | float(0) }}"
+      - name: Moka pot plug power
+        unique_id: moka_plug_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: "{{ states('input_number.moka_watts') | float(0) }}"
+      - name: Rice cooker plug power
+        unique_id: rice_plug_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: "{{ states('input_number.rice_watts') | float(0) }}"
+      - name: E2E plug power
+        unique_id: e2e_plug_power
+        unit_of_measurement: W
+        device_class: power
+        state_class: measurement
+        state: "{{ states('input_number.e2e_watts') | float(0) }}"

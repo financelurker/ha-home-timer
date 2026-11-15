@@ -17,6 +17,8 @@ In the [panel](panel.md), add or open a station and set **Starts** to *By power*
 | Stopped after | it has stopped once the power stayed at or below *runs above* for this long (e.g. 30 s; short dips are ignored). A run shorter than 10 s is a blip: its timer is cancelled and it does not count |
 | When it runs | one of the three kinds below |
 
+![A power station in the panel: the moka pot with the drop rule](images/panel-power.png)
+
 The power curve, marking runs and learning rules from them will follow in the panel.
 
 ## Three kinds

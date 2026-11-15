@@ -4,6 +4,8 @@
 
 Areas, stations, presets and options are set up in Home Timer's own panel – not in dialogs. It is for administrators and works on the phone as well.
 
+![The panel: areas on the left, the kitchen's stations with their live state on the right](images/panel.png)
+
 ## Opening it
 
 - **The cog of an area:** Settings → Devices & services → Home Timer → the cog next to an area opens the panel at that area.
@@ -45,6 +47,14 @@ The ⋮ menu at the top right holds the panel settings, a link to this documenta
 - **⋮ → Delete station:** a timer running on it is cancelled (`reason: station_removed`).
 
 The card **Now** (on a phone at the top) shows what the station does right now, with links to its device, its entities and its history.
+
+![A station by hand: name, icon and its presets, sortable](images/panel-station.png)
+
+![A station by power: sensor, thresholds, kind and done rule; on the right the appliance's state](images/panel-power.png)
+
+On a phone:
+
+<img src="images/phone-area.png" alt="The kitchen on a phone" width="300"> <img src="images/phone-power.png" alt="The moka pot on a phone" width="300">
 
 ## Saving
 

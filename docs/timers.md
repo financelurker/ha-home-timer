@@ -6,6 +6,8 @@ A timer belongs to an area and, optionally, to one of its [stations](stations.md
 
 ## Starting timers from a dashboard
 
+![A dashboard with the kitchen's buttons and the ringing timers as a to-do list](images/dashboard.png)
+
 The area's *Home Timer* device has controls for timers without a station, so a dashboard that shows the area's entities (e.g. the built-in area view) can start them without a custom card:
 
 | Entity | Use |
