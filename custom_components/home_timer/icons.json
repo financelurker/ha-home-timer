@@ -68,6 +68,9 @@
     },
     "acknowledge": {
       "service": "mdi:bell-check-outline"
+    },
+    "assign": {
+      "service": "mdi:timer-marker-outline"
     }
   }
 }

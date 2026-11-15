@@ -14,10 +14,11 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.trigger import TriggerActionType, TriggerInfo
 from homeassistant.helpers.typing import ConfigType
 
-from .const import DOMAIN, EVENT_ACKNOWLEDGED, EVENT_FINISHED, EVENT_REMINDER, EVENT_STARTED
+from .const import DOMAIN, EVENT_ACKNOWLEDGED, EVENT_ASSIGNED, EVENT_FINISHED, EVENT_REMINDER, EVENT_STARTED
 
 TRIGGER_EVENTS = {
     "started": EVENT_STARTED,
+    "assigned": EVENT_ASSIGNED,
     "finished": EVENT_FINISHED,
     "reminder": EVENT_REMINDER,
     "acknowledged": EVENT_ACKNOWLEDGED,

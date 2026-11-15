@@ -17,7 +17,9 @@ async def test_triggers_listed(hass: HomeAssistant, kitchen) -> None:
     hob = await add_station(hass, kitchen, "Hob 1", [("Rice", 60)])
     device = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, hob), kitchen.entry_id)
     triggers = await async_get_device_automations(hass, DeviceAutomationType.TRIGGER, device.id)
-    assert {t["type"] for t in triggers if t["domain"] == DOMAIN} == {"started", "finished", "reminder", "acknowledged"}
+    assert {t["type"] for t in triggers if t["domain"] == DOMAIN} == {
+        "started", "assigned", "finished", "reminder", "acknowledged",
+    }
 
 
 async def test_station_and_area_triggers_fire(hass: HomeAssistant, kitchen, freezer) -> None:

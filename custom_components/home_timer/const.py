@@ -38,6 +38,7 @@ EVENT_FINISHED: Final = f"{DOMAIN}_finished"
 EVENT_REMINDER: Final = f"{DOMAIN}_reminder"
 EVENT_CANCELLED: Final = f"{DOMAIN}_cancelled"
 EVENT_ACKNOWLEDGED: Final = f"{DOMAIN}_acknowledged"
+EVENT_ASSIGNED: Final = f"{DOMAIN}_assigned"
 
 # why a timer was cancelled / who acknowledged it
 REASON_MANUAL: Final = "manual"
@@ -55,6 +56,7 @@ SERVICE_ADD_TIME: Final = "add_time"
 SERVICE_SUBTRACT_TIME: Final = "subtract_time"
 SERVICE_CANCEL: Final = "cancel"
 SERVICE_ACKNOWLEDGE: Final = "acknowledge"
+SERVICE_ASSIGN: Final = "assign"
 
 ATTR_TIMER_ID: Final = "timer_id"
 ATTR_NAME: Final = "name"
