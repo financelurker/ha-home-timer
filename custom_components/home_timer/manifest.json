@@ -3,7 +3,8 @@
   "name": "Home Timer",
   "after_dependencies": [
     "frontend",
-    "http"
+    "http",
+    "recorder"
   ],
   "codeowners": [
     "@financelurker"

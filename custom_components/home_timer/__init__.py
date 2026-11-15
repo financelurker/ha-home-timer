@@ -28,6 +28,7 @@ from homeassistant.helpers.typing import ConfigType
 from .const import CONF_AREA_ID, DOMAIN, NAME, PANEL_URL, STORAGE_VERSION
 from .engine import AreaTimers, storage_key
 from .panel import async_setup_panel
+from .runs import RunStore
 from .services import async_register_services
 from .stations import stations
 from .todo import async_ensure_list, async_remove_list
@@ -112,6 +113,7 @@ async def async_unload_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) -
 async def async_remove_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) -> None:
     """The area is deleted: its stored timers go with it, and with the last area the to-do list."""
     await Store(hass, STORAGE_VERSION, storage_key(entry.entry_id)).async_remove()
+    await RunStore(hass, entry.entry_id).async_remove()
     if not [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]:
         async_remove_list(hass)
 

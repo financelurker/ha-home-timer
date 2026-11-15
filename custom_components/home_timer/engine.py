@@ -17,6 +17,8 @@ started, so automations listen – schedules them and reports what happened mean
 
 from __future__ import annotations
 
+import asyncio
+
 import json
 import logging
 from collections.abc import Callable
@@ -61,6 +63,7 @@ from .const import (
     STATUSES,
     STORAGE_VERSION,
 )
+from .runs import RunStore, async_import_history
 from .stations import CONF_PRESETS, Preset, Station, area_presets, find_preset, stations
 
 AREA = ""  # scope key of the area itself (timers without a station)
@@ -211,6 +214,8 @@ class AreaTimers:
         # per power station: {"runs": n, "durations": [seconds, …] (last 20), "last": seconds}
         self.power_stats: dict[str, dict[str, Any]] = {}
         self._watchers: list[Any] = []
+        self.runs = RunStore(hass, entry.entry_id)  # power stations' runs with their curves
+        self._imports: list[asyncio.Task[Any]] = []  # reading earlier runs from the history
 
     # ------------------------------------------------------------- settings
 
@@ -245,6 +250,7 @@ class AreaTimers:
 
     async def async_load(self) -> None:
         """Restore the stored timers; nothing is scheduled or reported yet."""
+        await self.runs.async_load()
         data = await self._store.async_load()
         if isinstance(data, dict):
             custom = data.get("custom")
@@ -285,6 +291,7 @@ class AreaTimers:
             self.custom_seconds.pop(scope, None)  # a station deleted meanwhile
             self._last_custom.pop(scope, None)
             self.power_stats.pop(scope, None)
+        self.runs.prune(set(known))
         before = self._data()
         for timer in list(self.timers.values()):
             if timer.id not in self.timers:
@@ -312,9 +319,18 @@ class AreaTimers:
                 watcher = PowerWatcher(self, station)
                 self._watchers.append(watcher)
                 watcher.start()
+                if station.id not in self.runs.imported:
+                    self._imports.append(self.entry.async_create_background_task(
+                        self.hass,
+                        async_import_history(self.hass, self.runs, station.id, station.power),
+                        f"{DOMAIN} history of {station.name}",
+                    ))
 
     async def async_unload(self) -> None:
         self._running = False
+        for task in self._imports:
+            task.cancel()  # before the store is saved: a late import must not write to it
+        self._imports.clear()
         for watcher in self._watchers:
             watcher.stop()
         self._watchers.clear()
@@ -323,6 +339,7 @@ class AreaTimers:
         self._listeners.clear()
         async_dispatcher_send(self.hass, SIGNAL_TIMERS_CHANGED)  # no longer running: leaves the to-do list
         await self._store.async_save(self._data())
+        await self.runs.async_save()
 
     # ---------------------------------------------------------- operations
 
@@ -431,6 +448,11 @@ class AreaTimers:
         stats["last"] = round(seconds, 1)
         stats["durations"] = [*stats.get("durations", []), round(seconds, 1)][-20:]
         self._changed()
+
+    @callback
+    def record_run(self, station_id: str, run: dict[str, Any]) -> None:
+        """A power station's run with its curve (for the panel)."""
+        self.runs.add(station_id, run)
 
     def usual_duration(self, station_id: str) -> float | None:
         """Median of the last runs, or None before the first."""

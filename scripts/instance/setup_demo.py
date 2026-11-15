@@ -5,6 +5,7 @@ import asyncio
 
 import aiohttp
 
+import seed_runs
 from client import Instance, onboard
 
 KITCHEN_STATIONS = [
@@ -66,6 +67,7 @@ async def main() -> None:
         await asyncio.sleep(2)
         print("set up:", entry_id, bathroom)
         await ha.close()
+    await seed_runs.main()  # a week of moka pot runs for its Runs tab
 
 
 asyncio.run(main())

@@ -56,6 +56,17 @@ On a phone:
 
 <img src="images/phone-area.png" alt="The kitchen on a phone" width="300"> <img src="images/phone-power.png" alt="The moka pot on a phone" width="300">
 
+## Runs
+
+A station by power has two tabs: **Settings** (above) and **Runs**. *Runs* shows the station's stored runs – see [Power stations › Runs](power.md#runs):
+
+- **The curve** of the chosen run: the power as the sensor reported it, the *runs above* threshold (dashed), the start the done rule ignores (grey), where the run stopped (*off*) and when it rang (red). Point at the curve to read a value. A run going on right now is shown live and updates every few seconds.
+- Below it, what happened: which way it rang – the done rule, switching off, or the preset's or warning's countdown. For runs read from the history: when the done rule, as set when they were read, would ring.
+- **Runs:** the list, newest first, with duration and ring time; click one to see its curve. The bin icon deletes a run (it asks first). On a phone the list folds in and out; the panel remembers it per device.
+- **Sensor:** how often it reports and how much its readings scatter.
+
+<img src="images/phone-runs.png" alt="The moka pot's runs on a phone" width="300">
+
 ## Saving
 
 Changes collect in a bar at the bottom: **Save** or **Discard**. Saving reloads the area once; running timers go on. Leaving the page within the panel, reloading or closing the tab with unsaved changes asks first; leaving it otherwise (browser back, the sidebar, a link) discards them.

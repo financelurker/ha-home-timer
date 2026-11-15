@@ -154,6 +154,14 @@ async def checks(ha: Instance, s: aiohttp.ClientSession, ctx: dict) -> None:
     check("ringing sensor on, device class problem (shown red)", ringing and ring_state.get("attributes", {}).get("device_class") == "problem", ring_state)
     runs = await ha.state("sensor.kitchen_e2e_plug_runs")
     check("power: run counted", runs and runs["state"] == "1", runs)
+    stored = await ha.call({"type": "home_timer/runs/list", "entry_id": entry_id, "station_id": ctx["station_id"]})
+    check("runs: the run is stored", len(stored["runs"]) == 1 and stored["runs"][0]["trigger"] == "off", stored)
+    if stored["runs"]:
+        run = await ha.call({"type": "home_timer/runs/get", "entry_id": entry_id, "station_id": ctx["station_id"], "run_id": stored["runs"][0]["id"]})
+        check("runs: with its curve", run["w"][:1] == [2000] and 10 <= run["duration"] <= 16, {k: run[k] for k in ("duration", "t", "w")})
+    moka = next(st for st in kitchen["stations"] if st["name"] == "Moka pot")
+    seeded = await ha.call({"type": "home_timer/runs/list", "entry_id": entry_id, "station_id": moka["id"]})
+    check("runs: the moka pot's week (seed_runs.py)", len(seeded["runs"]) >= 8 and seeded["sensor"]["interval"], seeded["sensor"])
 
 
 async def _remove_leftovers(ha: Instance) -> None:

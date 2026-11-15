@@ -20,7 +20,8 @@ can be played back exactly. The scripts talk to `http://127.0.0.1:8123` (set `HA
 
 2. Onboard and set up Home Timer as a user would – the first area through the config flow, the rest through
    the panel's websocket API (writes `session.json` with a token; git ignores it). It needs a fresh config folder
-   (onboarding runs once):
+   (onboarding runs once). At the end `seed_runs.py` gives the moka pot a week of runs (made from the real moka
+   run in the tests, through the integration's own code) for its *Runs* tab:
 
    ```bash
    ~/hareal/bin/python setup_demo.py

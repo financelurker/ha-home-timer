@@ -64,9 +64,21 @@ Events carry `trigger: rule` or `trigger: off` when a run finishes, `reason: pow
 
 Once a run is done, its timer is an ordinary ringing timer: adding time snoozes it with a countdown. With *when it switches off*, it ends at the moment the power went down, not *stopped after* later.
 
+## Runs
+
+Every run is stored with its power curve when the appliance switches off (runs shorter than 10 s are blips and are not). The station's tab **Runs** in the [panel](panel.md#runs) shows them: the curve with the *runs above* threshold, the start the done rule ignores, where the run stopped and when it rang. Per station the newest 30 runs are kept.
+
+![The Runs tab: a moka pot run with its curve and when the done rule rang, the list of runs and the sensor's report rate and scatter](images/panel-runs.png)
+
+The first time Home Timer sees a power station, it reads the station's earlier runs once from the recorder's history of the sensor, as far as the recorder kept it (10 days by default). For those runs of a station *until it switches off*, when its done rule – as set at that moment – would have rung is worked out from the curve, and labelled as such. Only the history before the first run stored live is read, so no run appears twice. A station's runs are deleted with the station.
+
+The tab also shows how often the sensor reports and how much its readings scatter. Both limit every rule: a sensor that reports every 10 s notices a change up to 10 s late, and scatter hides small changes.
+
 ## Restarts
 
 After a restart (or when the area reloads, e.g. after saving a preset) the first valid power reading decides – while the sensor is still unavailable, nothing happens:
 
 - **Still running:** its timer goes on. The earlier readings are gone, so rules that look back (pause, drop, knee, cycling) wait until they have a full window of new readings, and *energy* only counts from then.
-- **Off:** it is handled like switching off – *until it switches off* rings, a warning is cancelled (or acknowledged if it rang), a preset is cancelled if set so. The run is not counted, because its end is unknown.
+- **Off:** it is handled like switching off – *until it switches off* rings, a warning is cancelled (or acknowledged if it rang), a preset is cancelled if set so. The run is not counted (nor stored), because its end is unknown.
+
+A run that goes on across a restart is stored with the readings from the restart on; the panel says where its curve starts.
