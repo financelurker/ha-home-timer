@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Home Timer",
-        "description": "One entry per area.",
+        "description": "One entry per area. Stations, presets and options are set up afterwards in the Home Timer panel – the cog of the area opens it.",
         "data": {
           "area_id": "Area"
         },
@@ -16,73 +16,20 @@
       "unknown_area": "This area does not exist (anymore)."
     },
     "abort": {
-      "already_configured": "This area is already set up."
+      "already_configured": "This area is already set up.",
+      "unknown_area": "This area does not exist (anymore)."
+    },
+    "create_entry": {
+      "default": "Done. Set up its stations and presets in the [Home Timer panel]({panel}) – or later with the cog of the area."
     }
   },
-  "options": {
-    "step": {
-      "menu": {
-        "title": "{area}",
-        "description": "Quick timers (presets without a station):\n{presets}",
-        "menu_options": {
-          "behaviour": "When a timer runs out",
-          "add_preset": "Add quick timer",
-          "edit_preset": "Change or delete a quick timer",
-          "done": "Save"
-        }
+  "config_subentries": {
+    "station": {
+      "entry_type": "Station",
+      "initiate_flow": {
+        "user": "Add station"
       },
-      "behaviour": {
-        "title": "When a timer runs out",
-        "data": {
-          "ring_until_acknowledged": "Ring until acknowledged",
-          "reminder_minutes": "Reminder every",
-          "auto_dismiss_minutes": "Stop ringing after",
-          "report_missed": "Report missed timers"
-        },
-        "data_description": {
-          "ring_until_acknowledged": "The timer stays \"ringing\" after it runs out, until it is acknowledged. Off: it is gone right after the finished event; timers ringing when you turn it off are acknowledged.",
-          "reminder_minutes": "While a timer rings, a reminder event every so many minutes. 0: no reminders.",
-          "auto_dismiss_minutes": "A ringing timer is acknowledged by itself after so many minutes (for a timer missed during a restart: counted from the start). 0: it rings until acknowledged.",
-          "report_missed": "A timer that ran out while Home Assistant was restarting is reported right after the start (finished event with \"late\"). Off: it is dropped."
-        }
-      },
-      "add_preset": {
-        "title": "{station}: add quick timer",
-        "description": "A quick timer becomes a button \"Start …\" on the area's Home Timer device and starts a timer without a station.",
-        "data": {
-          "name": "Name",
-          "duration": "Duration",
-          "note": "Note"
-        },
-        "data_description": {
-          "name": "Becomes the timer's name, e.g. \"Rice\".",
-          "note": "Optional; goes with the timer's events, e.g. \"level 6, then 3\"."
-        }
-      },
-      "edit_preset": {
-        "title": "Which quick timer?",
-        "data": {
-          "preset": "Quick timer"
-        }
-      },
-      "preset": {
-        "title": "{station}: quick timer",
-        "data": {
-          "name": "Name",
-          "duration": "Duration",
-          "note": "Note",
-          "delete": "Delete this quick timer"
-        },
-        "data_description": {
-          "name": "Becomes the timer's name, e.g. \"Rice\".",
-          "note": "Optional; goes with the timer's events."
-        }
-      }
-    },
-    "error": {
-      "name_required": "Enter a name.",
-      "preset_exists": "This area already has a quick timer with this name.",
-      "invalid_duration": "The duration must be longer than zero."
+      "step": {}
     }
   },
   "entity": {
@@ -412,138 +359,6 @@
       "message": "The timer \"{name}\" runs until its appliance is done; it cannot be paused or changed in time."
     }
   },
-  "config_subentries": {
-    "station": {
-      "initiate_flow": {
-        "user": "Add station",
-        "reconfigure": "Configure station"
-      },
-      "entry_type": "Station",
-      "step": {
-        "settings": {
-          "title": "Station",
-          "description": "Area {area}. A station is anything a timer belongs to: a hob, an appliance, a faucet. It gets its own device with one timer at a time.",
-          "data": {
-            "name": "Name",
-            "icon": "Icon",
-            "mode": "Starts"
-          },
-          "data_description": {
-            "name": "E.g. \"Hob 1\", \"Rice cooker\", \"Bathtub\".",
-            "icon": "Optional; shown on the station's timer.",
-            "mode": "By hand: presets and buttons. By power: a power sensor tells when the appliance runs."
-          }
-        },
-        "menu": {
-          "title": "{station}",
-          "description": "Presets:\n{presets}\n\nPower: {power}",
-          "menu_options": {
-            "settings": "Name and icon",
-            "add_preset": "Add preset",
-            "edit_preset": "Change or delete a preset",
-            "done": "Done",
-            "power": "Power settings"
-          }
-        },
-        "add_preset": {
-          "title": "{station}: add preset",
-          "description": "A preset becomes a button \"Start …\" on the station and can be started by the action home_timer.start.",
-          "data": {
-            "name": "Name",
-            "duration": "Duration",
-            "note": "Note"
-          },
-          "data_description": {
-            "name": "Becomes the timer's name, e.g. \"Rice\".",
-            "note": "Optional; goes with the timer's events, e.g. \"level 6, then 3\"."
-          }
-        },
-        "edit_preset": {
-          "title": "Which preset?",
-          "data": {
-            "preset": "Preset"
-          }
-        },
-        "preset": {
-          "title": "{station}: preset",
-          "data": {
-            "name": "Name",
-            "duration": "Duration",
-            "note": "Note",
-            "delete": "Delete this preset"
-          },
-          "data_description": {
-            "name": "Becomes the timer's name, e.g. \"Rice\".",
-            "note": "Optional; goes with the timer's events."
-          }
-        },
-        "power": {
-          "title": "{station}: by power",
-          "description": "Plain settings for now; an own configuration panel will replace them.",
-          "data": {
-            "sensor": "Power sensor",
-            "on_above": "Runs above",
-            "off_after": "Stopped after",
-            "kind": "When it runs"
-          },
-          "data_description": {
-            "on_above": "Above this power the appliance counts as running.",
-            "off_after": "At or below \"runs above\" for this long: it has stopped (short dips are ignored). Runs under 10 s do not count."
-          }
-        },
-        "done_rule": {
-          "title": "{station}: when is it done?",
-          "description": "How the run counts as done; it then rings.",
-          "data": {
-            "type": "Done rule"
-          }
-        },
-        "done_params": {
-          "title": "{station}: done rule",
-          "description": "{rule}",
-          "data": {
-            "below": "Below",
-            "seconds": "For / after",
-            "level": "\"On\" from",
-            "window": "Window",
-            "share": "\"On\" share under",
-            "percent": "Falls by at least",
-            "factor": "Falls faster by",
-            "baseline": "Compared with the",
-            "ignore": "Ignore the first",
-            "wh": "After energy"
-          },
-          "data_description": {
-            "ignore": "Switch-on spikes are ignored in this time.",
-            "window": "The time span the rule looks at.",
-            "baseline": "… seconds before the window (knee)."
-          }
-        },
-        "power_preset": {
-          "title": "{station}: preset on power",
-          "description": "Switching the appliance on starts this preset.",
-          "data": {
-            "preset": "Preset",
-            "cancel_on_off": "Switching off cancels the timer"
-          }
-        },
-        "warn": {
-          "title": "{station}: warn",
-          "description": "Rings if the appliance runs longer than this; acknowledged while it still runs, it warns again after the same time.",
-          "data": {
-            "warn_after": "Warn after"
-          }
-        }
-      },
-      "error": {
-        "name_required": "Enter a name.",
-        "station_exists": "This area already has a station with this name.",
-        "preset_exists": "This station already has a preset with this name.",
-        "invalid_duration": "The duration must be longer than zero.",
-        "no_presets": "Add a preset first (menu → Add preset), then choose it here."
-      }
-    }
-  },
   "device_automation": {
     "trigger_type": {
       "started": "Timer started",
@@ -551,32 +366,6 @@
       "reminder": "Timer reminds (still ringing)",
       "acknowledged": "Timer acknowledged",
       "assigned": "Timer assigned to the station"
-    }
-  },
-  "selector": {
-    "mode": {
-      "options": {
-        "manual": "By hand",
-        "power": "By power"
-      }
-    },
-    "kind": {
-      "options": {
-        "until_off": "Until it switches off by itself – counts up, rings when done",
-        "start_preset": "Starts a preset – switching on starts the countdown",
-        "warn": "Only warn if it runs too long"
-      }
-    },
-    "rule": {
-      "options": {
-        "off": "When it switches off",
-        "pause": "First pause – power below a level for a while",
-        "cycling": "Cycling – a thermostat switches on and off",
-        "drop": "Drop – power falls by a share within a time",
-        "knee": "Knee – power falls much faster than before",
-        "time": "After a time",
-        "energy": "After an amount of energy"
-      }
     }
   }
 }

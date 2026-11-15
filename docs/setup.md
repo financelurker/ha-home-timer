@@ -4,7 +4,7 @@
 
 ## Adding an area
 
-Settings → Devices & services → Add integration → **Home Timer**, then pick the Home Assistant area that gets timers, e.g. *Kitchen*. Each area can be set up only once; the entry is named after the area.
+In the [panel](panel.md): **+ Add area** and pick the Home Assistant area that gets timers, e.g. *Kitchen*. Or: Settings → Devices & services → Add integration → **Home Timer**, then pick the area – the first area is always added this way. Each area can be set up only once; the entry is named after the area.
 
 Repeat this for every area that should have timers. An open kitchen-living room is one area; if you want separate timers for the kitchen part, give it its own Home Assistant area.
 
@@ -20,12 +20,12 @@ If the area is deleted, the entry keeps working and logs a warning; its device s
 
 ## Stations
 
-Stations (hob, rice cooker, bathtub …) are added on the area's entry with **Add station**; each gets its own device. See [Stations and presets](stations.md).
+Stations (hob, rice cooker, bathtub …) are added in the [panel](panel.md); each gets its own device. See [Stations and presets](stations.md).
 
 ## Options
 
-Settings → Devices & services → Home Timer → the area's entry → **Configure** is a menu: *When a timer runs out* (ringing, reminders, auto-dismiss, missed timers – see [Timers](timers.md#options)) and the area's **quick timers** (presets without a station – see [Timers](timers.md#starting-timers-from-a-dashboard)). **Save** applies the changes.
+The cog of the area (Settings → Devices & services → Home Timer) opens the [panel](panel.md) at the area; **Area options** holds what happens when a timer runs out (ringing, reminders, stop ringing, missed timers – see [Timers](timers.md#options)) and the area's **quick timers** (presets without a station – see [Timers](timers.md#starting-timers-from-a-dashboard)).
 
 ## Removing an area
 
-Settings → Devices & services → Home Timer → the area's entry → ⋮ → **Delete**. Its devices (the area's and its stations') and its stored timers go with it.
+In the [panel](panel.md): **Area options** → *Remove Home Timer from this area*, or Settings → Devices & services → Home Timer → the area's entry → ⋮ → **Delete**. Its devices (the area's and its stations') and its stored timers go with it.

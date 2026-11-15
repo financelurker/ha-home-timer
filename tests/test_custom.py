@@ -169,27 +169,6 @@ async def test_save_while_ringing_and_onto_a_preset_in_other_case(hass: HomeAssi
     assert (attrs["timer_name"], attrs["note"]) == ("Rice", "Lid on")
 
 
-async def test_open_options_flow_keeps_presets_saved_meanwhile(hass: HomeAssistant, kitchen) -> None:
-    from homeassistant.data_entry_flow import FlowResultType
-
-    hass.config_entries.async_update_entry(kitchen, options={"presets": [{"id": "e1", "name": "Eggs", "duration": 360}]})
-    await hass.async_block_till_done()
-    result = await hass.config_entries.options.async_init(kitchen.entry_id)
-    await set_minutes(hass, MINUTES, 4)
-    await save(hass, SAVE, "Tea")  # while the flow is open
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "add_preset"})
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {"name": "Dough", "duration": {"minutes": 30}})
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "edit_preset"})
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {"preset": "e1"})
-    result = await hass.config_entries.options.async_configure(
-        result["flow_id"], {"name": "Eggs", "duration": {"minutes": 6}, "delete": True}
-    )
-    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "done"})
-    assert result["type"] is FlowResultType.CREATE_ENTRY
-    await hass.async_block_till_done()
-    assert [p["name"] for p in kitchen.options["presets"]] == ["Tea", "Dough"]
-
-
 async def test_upgrade_without_new_store_keys(hass: HomeAssistant, hass_storage) -> None:
     from homeassistant.helpers import area_registry as ar
     from pytest_homeassistant_custom_component.common import MockConfigEntry

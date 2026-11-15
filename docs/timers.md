@@ -17,7 +17,7 @@ The area's *Home Timer* device has controls for timers without a station, so a d
 
 **Example:** set *Custom timer* to 4, press *Start custom timer*; while it runs, enter "Tea" in *Save as preset*. From now on there is a button *Start Tea*, and the running timer is called "Tea". A quick timer of the same name gets the new duration instead of a duplicate (the timer takes over its note). If several custom timers run, the last one started is meant. Renaming fires no event; later events of the timer carry the new name.
 
-Quick timers are kept in the area's options (**Configure** → *Add quick timer* / *Change or delete a quick timer*), where saved ones can be changed or deleted like any other. Saving reloads the area; running timers go on. Stations have the same controls for their own presets, see [Stations](stations.md#creating-presets-while-cooking).
+Quick timers are kept in the area's options ([panel](panel.md) → **Area options**), where saved ones can be changed, sorted or deleted like any other. Saving reloads the area; running timers go on. Stations have the same controls for their own presets, see [Stations](stations.md#creating-presets-while-cooking).
 
 ## Life cycle
 
@@ -59,7 +59,7 @@ You find it in the to-do panel and under Settings → Entities (not on an area's
 
 ## Options
 
-Per area: Settings → Devices & services → Home Timer → the area's entry → **Configure** → *When a timer runs out*, then **Save**. Saving reloads the area; running timers go on.
+Per area, in the [panel](panel.md) → **Area options** (the cog of the area opens it), then **Save**. Saving reloads the area; running timers go on.
 
 | Option | Default | Description |
 |---|---|---|

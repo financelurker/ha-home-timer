@@ -6,16 +6,14 @@ A **station** is anything a timer belongs to: a hob, the rice cooker, the oven, 
 
 ## Adding a station
 
-Settings → Devices & services → Home Timer → the area's entry → **Add station**.
+In the [panel](panel.md): open the area → **+ Add station**.
 
-1. **Name, icon and how it starts:** *By hand* (as described here) or *By power* (see [Power stations](power.md)).
-   **Name and icon:** e.g. *Hob 1* with `mdi:stove`. The dialog keeps names unique within the area (renaming a station with ⋮ → *Rename* does not check this; Home Timer logs a warning if two stations share a name). With an icon, the station's timer shows it in every state instead of the state icons.
-2. **Presets** (a menu, as often as you like):
-   - **Add preset:** name (*Rice*), duration (10 min), optional note (*level 6, then 3*). The note goes with the timer's events, e.g. into a notification.
-   - **Change or delete a preset.**
-3. **Done** saves the station. The area reloads; running timers go on.
+1. **Name and icon:** e.g. *Hob 1* with `mdi:stove`. Names are unique within the area. With an icon, the station's timer shows it in every state instead of the state icons.
+2. **Starts:** *By hand* (as described here) or *By power* (see [Power stations](power.md)).
+3. **Presets:** name (*Rice*), duration (10 min), optional note (*level 6, then 3*). The note goes with the timer's events, e.g. into a notification. Sort them by dragging or with the arrows.
+4. **Save.** The area reloads; running timers go on.
 
-Change a station later with **Configure** next to it on the entry; remove it with ⋮ → **Delete**. A timer that runs on a deleted station is cancelled (`reason: station_removed`).
+Change a station later by opening it in the panel (or with the link on its device's page); **Delete station** removes it. A timer that runs on a deleted station is cancelled (`reason: station_removed`).
 
 How you set up your stations is up to you – by place (*Hob 1*, *Hob 2*) with dishes as presets, or by appliance (*Rice cooker* with *White rice*, *Brown rice*). One station, one timer: for two timers on the same spot, add a second station.
 
@@ -39,7 +37,7 @@ Renaming a preset keeps its button (its entity id stays); deleting a preset remo
 
 ## Creating presets while cooking
 
-Presets do not have to be set up beforehand: set *Custom timer* (e.g. 9 minutes), press *Start custom timer*, and while it runs enter "Pasta" in *Save as preset*. The station gets a preset *Pasta* (9 min) with its button *Start Pasta*, and its timer is renamed "Pasta". A preset of the same name gets the new duration; if the custom timer is gone (acknowledged, cancelled, replaced or moved), the custom duration is saved. Saved presets show up in **Configure station**, where they can be changed or deleted. Saving reloads the area; the timer goes on.
+Presets do not have to be set up beforehand: set *Custom timer* (e.g. 9 minutes), press *Start custom timer*, and while it runs enter "Pasta" in *Save as preset*. The station gets a preset *Pasta* (9 min) with its button *Start Pasta*, and its timer is renamed "Pasta". A preset of the same name gets the new duration; if the custom timer is gone (acknowledged, cancelled, replaced or moved), the custom duration is saved. Saved presets show up in the station in the [panel](panel.md), where they can be changed or deleted. Saving reloads the area; the timer goes on.
 
 ## One timer per station
 
