@@ -16,7 +16,8 @@
 - **[Survives restarts](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#restarts):** a timer that ran out while Home Assistant restarted is reported right after the start.
 - **[For your own automations](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md):** events for every step, with the area, a note and your own data – e.g. a phone notification with "Got it" and "+2 min".
 - **[Stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md):** hob 1, rice cooker, bathtub … each a device in the area with one timer at a time, its state and end as sensors, and buttons for pause, +1 minute and stop.
-- **[Presets](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#adding-a-station):** known durations per station, one button each – no card needed.
+- **[Presets](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#adding-a-station):** known durations per station, one button each – no card needed; [created while cooking](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#creating-presets-while-cooking) from a custom timer.
+- **[Dashboard controls](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#starting-timers-from-a-dashboard)** for timers without a station: quick timers (one tap), a custom duration, "save as preset".
 - **[Device triggers](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md#device-triggers)** per station and per area: started, finished, reminder, acknowledged.
 
 ## Installation
@@ -52,7 +53,7 @@ Without the button: HACS → ⋮ → **Custom repositories** → add `https://gi
 |---|---|
 | [Setup](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md) | adding an area, its device, options, removing it |
 | [Stations and presets](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md) | adding a station, presets, its device and entities, one timer per station |
-| [Timers](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md) | life cycle, ringing, to-do list, options, restarts |
+| [Timers](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md) | dashboard controls and quick timers, life cycle, ringing, to-do list, options, restarts |
 | [Automations](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md) | actions, events and device triggers, with YAML examples |
 | [Reference](https://github.com/financelurker/ha-home-timer/blob/main/docs/reference.md) | entities and attributes |
 

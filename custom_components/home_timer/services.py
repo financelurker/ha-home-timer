@@ -193,8 +193,6 @@ def async_register_services(hass: HomeAssistant) -> None:
                 raise _error("one_station")
             engine, station_id = stations[0]
         else:
-            if preset is not None:
-                raise _error("preset_needs_station")
             areas = _targeted(hass, rest)
             if len(areas) != 1:
                 raise _error("one_area")

@@ -21,7 +21,17 @@
   },
   "options": {
     "step": {
-      "init": {
+      "menu": {
+        "title": "{area}",
+        "description": "Quick timers (presets without a station):\n{presets}",
+        "menu_options": {
+          "behaviour": "When a timer runs out",
+          "add_preset": "Add quick timer",
+          "edit_preset": "Change or delete a quick timer",
+          "done": "Save"
+        }
+      },
+      "behaviour": {
         "title": "When a timer runs out",
         "data": {
           "ring_until_acknowledged": "Ring until acknowledged",
@@ -35,7 +45,44 @@
           "auto_dismiss_minutes": "A ringing timer is acknowledged by itself after so many minutes (for a timer missed during a restart: counted from the start). 0: it rings until acknowledged.",
           "report_missed": "A timer that ran out while Home Assistant was restarting is reported right after the start (finished event with \"late\"). Off: it is dropped."
         }
+      },
+      "add_preset": {
+        "title": "{station}: add quick timer",
+        "description": "A quick timer becomes a button \"Start …\" on the area's Home Timer device and starts a timer without a station.",
+        "data": {
+          "name": "Name",
+          "duration": "Duration",
+          "note": "Note"
+        },
+        "data_description": {
+          "name": "Becomes the timer's name, e.g. \"Rice\".",
+          "note": "Optional; goes with the timer's events, e.g. \"level 6, then 3\"."
+        }
+      },
+      "edit_preset": {
+        "title": "Which quick timer?",
+        "data": {
+          "preset": "Quick timer"
+        }
+      },
+      "preset": {
+        "title": "{station}: quick timer",
+        "data": {
+          "name": "Name",
+          "duration": "Duration",
+          "note": "Note",
+          "delete": "Delete this quick timer"
+        },
+        "data_description": {
+          "name": "Becomes the timer's name, e.g. \"Rice\".",
+          "note": "Optional; goes with the timer's events."
+        }
       }
+    },
+    "error": {
+      "name_required": "Enter a name.",
+      "preset_exists": "This area already has a quick timer with this name.",
+      "invalid_duration": "The duration must be longer than zero."
     }
   },
   "entity": {
@@ -127,18 +174,39 @@
       },
       "stop": {
         "name": "Stop / acknowledge"
+      },
+      "start_custom": {
+        "name": "Start custom timer"
       }
     },
     "todo": {
       "ringing_timers": {
         "name": "Home Timer: ringing timers"
       }
+    },
+    "number": {
+      "custom_minutes": {
+        "name": "Custom timer"
+      }
+    },
+    "text": {
+      "save_preset": {
+        "name": "Save as preset",
+        "state_attributes": {
+          "custom_timer": {
+            "name": "Custom timer"
+          },
+          "duration": {
+            "name": "Duration"
+          }
+        }
+      }
     }
   },
   "services": {
     "start": {
       "name": "Start",
-      "description": "Starts a timer: on a station (target: its device or entities; replaces its timer) or in an area (target: the area or its Home Timer device).",
+      "description": "Starts a timer: on a station (target: its device or entities; replaces its timer) or in an area (target: the area or its Home Timer device), from a preset or with a name and a duration.",
       "fields": {
         "name": {
           "name": "Name",
@@ -158,7 +226,7 @@
         },
         "preset": {
           "name": "Preset",
-          "description": "A preset of the targeted station (its name). Instead of a name and a duration."
+          "description": "A preset of the targeted station, or a quick timer of the targeted area (its name). Instead of a name and a duration."
         }
       }
     },
@@ -281,9 +349,6 @@
     "one_station": {
       "message": "The target must name exactly one station."
     },
-    "preset_needs_station": {
-      "message": "A preset needs a station as the target."
-    },
     "name_and_duration": {
       "message": "Give a preset, or a name and a duration."
     },
@@ -304,6 +369,12 @@
     },
     "todo_check_off_only": {
       "message": "Ringing timers can only be checked off here; that acknowledges them."
+    },
+    "name_required": {
+      "message": "Enter a name."
+    },
+    "unknown_quick_timer": {
+      "message": "The area {area} has no quick timer \"{preset}\"."
     }
   },
   "config_subentries": {

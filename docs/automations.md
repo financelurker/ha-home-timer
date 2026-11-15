@@ -7,7 +7,7 @@
 Start a timer with `home_timer.start`:
 
 - **On a station:** target the station's device or one of its entities, and give a `preset` (its own duration; `note` replaces the preset's note) – or a `name` and a `duration`. It replaces the station's timer.
-- **On an area, without a station:** target the area – or anything that leads to exactly one area set up in Home Timer (its *Home Timer* device, a floor, a label) – with a `name` and a `duration`.
+- **On an area, without a station:** target the area – or anything that leads to exactly one area set up in Home Timer (its *Home Timer* device, a floor, a label) – with a `preset` (a quick timer of the area) or a `name` and a `duration`.
 
 ```yaml
 action: home_timer.start

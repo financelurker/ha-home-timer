@@ -24,7 +24,7 @@ Stations (hob, rice cooker, bathtub …) are added on the area's entry with **Ad
 
 ## Options
 
-Settings → Devices & services → Home Timer → the area's entry → **Configure** sets how the area's timers behave when they run out: ringing, reminders, auto-dismiss and timers missed during a restart. See [Timers](timers.md#options).
+Settings → Devices & services → Home Timer → the area's entry → **Configure** is a menu: *When a timer runs out* (ringing, reminders, auto-dismiss, missed timers – see [Timers](timers.md#options)) and the area's **quick timers** (presets without a station – see [Timers](timers.md#starting-timers-from-a-dashboard)). **Save** applies the changes.
 
 ## Removing an area
 

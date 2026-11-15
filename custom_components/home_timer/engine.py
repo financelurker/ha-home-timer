@@ -61,7 +61,11 @@ from .const import (
     STATUSES,
     STORAGE_VERSION,
 )
-from .stations import Station, stations
+from .stations import CONF_PRESETS, Preset, Station, area_presets, find_preset, stations
+
+AREA = ""  # scope key of the area itself (timers without a station)
+CUSTOM_NAME = "Timer"
+DEFAULT_CUSTOM_SECONDS = 300.0
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -196,6 +200,9 @@ class AreaTimers:
         self._scheduled: dict[str, list[CALLBACK_TYPE]] = {}
         self._listeners: list[Callable[[], None]] = []
         self._running = False
+        # per scope (AREA or a station id): the custom duration and the last custom timer started
+        self.custom_seconds: dict[str, float] = {}
+        self._last_custom: dict[str, dict[str, Any]] = {}
 
     # ------------------------------------------------------------- settings
 
@@ -231,6 +238,19 @@ class AreaTimers:
     async def async_load(self) -> None:
         """Restore the stored timers; nothing is scheduled or reported yet."""
         data = await self._store.async_load()
+        if isinstance(data, dict):
+            custom = data.get("custom")
+            if isinstance(custom, dict):
+                self.custom_seconds = {
+                    str(k): float(v) for k, v in custom.items() if isinstance(v, (int, float)) and v > 0
+                }
+            last = data.get("last_custom")
+            if isinstance(last, dict):
+                self._last_custom = {
+                    str(k): v
+                    for k, v in last.items()
+                    if isinstance(v, dict) and v.get("timer_id") and isinstance(v.get("duration"), (int, float))
+                }
         raw_timers = data.get("timers", []) if isinstance(data, dict) else []
         for raw in raw_timers if isinstance(raw_timers, list) else []:
             try:
@@ -247,8 +267,11 @@ class AreaTimers:
             return
         self._running = True
         now = dt_util.utcnow()
-        before = self._data()
         known = self.stations
+        for scope in [s for s in (*self.custom_seconds, *self._last_custom) if s != AREA and s not in known]:
+            self.custom_seconds.pop(scope, None)  # a station deleted meanwhile
+            self._last_custom.pop(scope, None)
+        before = self._data()
         for timer in list(self.timers.values()):
             if timer.id not in self.timers:
                 continue
@@ -323,28 +346,118 @@ class AreaTimers:
         self._changed()
         return timer
 
-    @callback
-    def start_preset(
-        self, station_id: str, preset_key: str, *, note: str | None = None, source: dict[str, Any] | None = None
-    ) -> Timer:
-        """Start a station's preset (by id or name); replaces the station's timer.
-
-        ``note`` replaces the preset's note.
-        """
+    def presets(self, station_id: str | None) -> tuple[Preset, ...]:
+        """The presets of a station, or the area's quick timers (``None``)."""
+        if station_id is None:
+            return area_presets(self.entry)
         station = self.stations.get(station_id)
         if station is None:
             raise TimerError("unknown_station", station=station_id)
-        preset = station.preset(preset_key)
+        return station.presets
+
+    def scope_name(self, station_id: str | None) -> str:
+        station = self.stations.get(station_id) if station_id else None
+        return station.name if station else self.entry.title
+
+    @callback
+    def start_preset(
+        self,
+        station_id: str | None,
+        preset_key: str,
+        *,
+        note: str | None = None,
+        source: dict[str, Any] | None = None,
+    ) -> Timer:
+        """Start a preset (by id or name): a station's (replacing its timer) or a quick timer of the area.
+
+        ``note`` replaces the preset's note.
+        """
+        preset = find_preset(self.presets(station_id), preset_key)
+        if preset is None and station_id is None:
+            raise TimerError("unknown_quick_timer", preset=preset_key, area=self.entry.title)
         if preset is None:
-            raise TimerError("unknown_preset", preset=preset_key, station=station.name)
+            raise TimerError("unknown_preset", preset=preset_key, station=self.scope_name(station_id))
         return self.start(
             preset.name,
             preset.duration,
-            station=station.id,
+            station=station_id,
             preset=preset.name,
             note=note if note is not None else preset.note,
             source=source,
         )
+
+    # ------------------------------------------------------- custom timers
+
+    def custom_duration(self, station_id: str | None) -> float:
+        return self.custom_seconds.get(station_id or AREA, DEFAULT_CUSTOM_SECONDS)
+
+    @callback
+    def set_custom_duration(self, station_id: str | None, seconds: float) -> None:
+        if seconds <= 0:
+            raise TimerError("invalid_duration")
+        self.custom_seconds[station_id or AREA] = float(seconds)
+        self._changed()
+
+    @callback
+    def start_custom(self, station_id: str | None) -> Timer:
+        """Start a timer "Timer" with the custom duration (on the station, or in the area)."""
+        seconds = self.custom_duration(station_id)
+        timer = self.start(CUSTOM_NAME, seconds, station=station_id)
+        self._last_custom[station_id or AREA] = {"timer_id": timer.id, "duration": seconds}
+        self._changed()
+        return timer
+
+    def last_custom(self, station_id: str | None) -> Timer | None:
+        """The last custom timer started on the station (or in the area), while it is still there.
+
+        A timer that has moved to another station (assign) no longer counts.
+        """
+        info = self._last_custom.get(station_id or AREA)
+        timer = self.timers.get(info["timer_id"]) if info else None
+        return timer if timer is not None and timer.station == station_id else None
+
+    def save_duration(self, station_id: str | None) -> float:
+        """What "save as preset" saves: the last custom timer's duration as started, else the custom duration."""
+        info = self._last_custom.get(station_id or AREA)
+        if info and self.last_custom(station_id) is not None:
+            return float(info["duration"])
+        return self.custom_duration(station_id)
+
+    @callback
+    def save_preset(self, station_id: str | None, name: str) -> None:
+        """Save as preset: the last custom timer's duration (else the custom duration) under ``name``.
+
+        A running custom timer is renamed to ``name``. A preset of the same name gets the
+        new duration. Saving changes the configuration, so the area reloads (timers go on).
+        """
+        name = name.strip()
+        if not name:
+            raise TimerError("name_required")
+        timer = self.last_custom(station_id)
+        seconds = self.save_duration(station_id)
+        presets = [p.to_data() for p in self.presets(station_id)]
+        existing = next((p for p in presets if p["name"].casefold() == name.casefold()), None)
+        if existing is not None:
+            existing["duration"] = seconds
+            name = existing["name"]
+        else:
+            presets.append({"id": ulid_now(), "name": name, "duration": seconds})
+        if timer is not None:
+            timer.name = name
+            timer.preset = name
+            if existing is not None and not timer.note:
+                timer.note = existing.get("note")
+            self._last_custom.pop(station_id or AREA, None)
+            self._changed()
+        if station_id is None:
+            self.hass.config_entries.async_update_entry(
+                self.entry, options={**self.entry.options, CONF_PRESETS: presets}
+            )
+        else:
+            subentry = self.entry.subentries[station_id]
+            self.hass.config_entries.async_update_subentry(
+                self.entry, subentry, data={**subentry.data, CONF_PRESETS: presets}
+            )
 
     @callback
     def pause(self, timer_id: str) -> Timer:
@@ -586,7 +699,11 @@ class AreaTimers:
         self.hass.bus.async_fire(event_type, self.event_data(timer, **extra))
 
     def _data(self) -> dict[str, Any]:
-        return {"timers": [t.to_store() for t in self.timers.values()]}
+        return {
+            "timers": [t.to_store() for t in self.timers.values()],
+            "custom": dict(self.custom_seconds),
+            "last_custom": {k: dict(v) for k, v in self._last_custom.items()},
+        }
 
     def _changed(self) -> None:
         self._store.async_delay_save(self._data, 1)

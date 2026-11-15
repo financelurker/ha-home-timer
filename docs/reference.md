@@ -13,6 +13,10 @@ On the area's *Home Timer* device.
 | `sensor.<area>_home_timer_timers` | *Timers*: how many timers the area has (active, paused or ringing) |
 | `binary_sensor.<area>_home_timer_ringing` | on while any timer of the area rings |
 | `button.<area>_home_timer_acknowledge_all` | acknowledges all ringing timers of the area (does nothing while none rings) |
+| `button.<area>_home_timer_start_<quick timer>` | starts the quick timer (one per quick timer of the area) |
+| `number.<area>_home_timer_custom_timer` | custom duration in minutes (1–600) |
+| `button.<area>_home_timer_start_custom_timer` | starts a timer "Timer" with the custom duration |
+| `text.<area>_home_timer_save_as_preset` | enter a name: saves the last custom timer (or the custom duration) as a quick timer; attributes `custom_timer`, `duration` |
 
 ## Attributes of *Timers*
 
@@ -55,6 +59,9 @@ On the station's device.
 | `button.<area>_<station>_pause_resume` | pauses or resumes the timer |
 | `button.<area>_<station>_1_minute` | +1 minute (a ringing timer starts again) |
 | `button.<area>_<station>_stop_acknowledge` | acknowledges a ringing timer, cancels a running or paused one |
+| `number.<area>_<station>_custom_timer` | custom duration in minutes (1–600) |
+| `button.<area>_<station>_start_custom_timer` | starts a timer "Timer" with the custom duration |
+| `text.<area>_<station>_save_as_preset` | enter a name: saves the custom timer as a preset of the station; attributes `custom_timer`, `duration` |
 
 Attributes of `sensor.<area>_<station>`:
 

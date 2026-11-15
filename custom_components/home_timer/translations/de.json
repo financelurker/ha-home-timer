@@ -21,7 +21,17 @@
   },
   "options": {
     "step": {
-      "init": {
+      "menu": {
+        "title": "{area}",
+        "description": "Schnell-Timer (Vorlagen ohne Station):\n{presets}",
+        "menu_options": {
+          "behaviour": "Wenn ein Timer abläuft",
+          "add_preset": "Schnell-Timer hinzufügen",
+          "edit_preset": "Schnell-Timer ändern oder löschen",
+          "done": "Speichern"
+        }
+      },
+      "behaviour": {
         "title": "Wenn ein Timer abläuft",
         "data": {
           "ring_until_acknowledged": "Klingeln bis bestätigt",
@@ -35,7 +45,44 @@
           "auto_dismiss_minutes": "Ein klingelnder Timer wird nach so vielen Minuten von selbst bestätigt (bei einem während eines Neustarts verpassten Timer ab dem Start gezählt). 0: Er klingelt, bis er bestätigt wird.",
           "report_missed": "Ein Timer, der während eines Neustarts von Home Assistant abgelaufen ist, wird gleich nach dem Start gemeldet (Ablauf-Ereignis mit „late“). Aus: Er wird verworfen."
         }
+      },
+      "add_preset": {
+        "title": "{station}: Schnell-Timer hinzufügen",
+        "description": "Ein Schnell-Timer wird zum Button „… starten“ am Home-Timer-Gerät des Bereichs und startet einen Timer ohne Station.",
+        "data": {
+          "name": "Name",
+          "duration": "Dauer",
+          "note": "Notiz"
+        },
+        "data_description": {
+          "name": "Wird zum Namen des Timers, z. B. „Reis“.",
+          "note": "Optional; geht mit den Ereignissen des Timers mit, z. B. „Stufe 6, dann 3“."
+        }
+      },
+      "edit_preset": {
+        "title": "Welcher Schnell-Timer?",
+        "data": {
+          "preset": "Schnell-Timer"
+        }
+      },
+      "preset": {
+        "title": "{station}: Schnell-Timer",
+        "data": {
+          "name": "Name",
+          "duration": "Dauer",
+          "note": "Notiz",
+          "delete": "Diesen Schnell-Timer löschen"
+        },
+        "data_description": {
+          "name": "Wird zum Namen des Timers, z. B. „Reis“.",
+          "note": "Optional; geht mit den Ereignissen des Timers mit."
+        }
       }
+    },
+    "error": {
+      "name_required": "Gib einen Namen ein.",
+      "preset_exists": "Dieser Bereich hat bereits einen Schnell-Timer mit diesem Namen.",
+      "invalid_duration": "Die Dauer muss größer als null sein."
     }
   },
   "entity": {
@@ -127,18 +174,39 @@
       },
       "stop": {
         "name": "Stopp / Bestätigen"
+      },
+      "start_custom": {
+        "name": "Eigenen Timer starten"
       }
     },
     "todo": {
       "ringing_timers": {
         "name": "Home Timer: klingelnde Timer"
       }
+    },
+    "number": {
+      "custom_minutes": {
+        "name": "Eigener Timer"
+      }
+    },
+    "text": {
+      "save_preset": {
+        "name": "Als Vorlage speichern",
+        "state_attributes": {
+          "custom_timer": {
+            "name": "Eigener Timer"
+          },
+          "duration": {
+            "name": "Dauer"
+          }
+        }
+      }
     }
   },
   "services": {
     "start": {
       "name": "Starten",
-      "description": "Startet einen Timer: an einer Station (Ziel: ihr Gerät oder ihre Entitäten; ersetzt ihren Timer) oder in einem Bereich (Ziel: der Bereich oder sein Home-Timer-Gerät).",
+      "description": "Startet einen Timer: an einer Station (Ziel: ihr Gerät oder ihre Entitäten; ersetzt ihren Timer) oder in einem Bereich (Ziel: der Bereich oder sein Home-Timer-Gerät), aus einer Vorlage oder mit Name und Dauer.",
       "fields": {
         "name": {
           "name": "Name",
@@ -158,7 +226,7 @@
         },
         "preset": {
           "name": "Vorlage",
-          "description": "Eine Vorlage der gewählten Station (ihr Name). Statt Name und Dauer."
+          "description": "Eine Vorlage der gewählten Station oder ein Schnell-Timer des gewählten Bereichs (ihr Name). Statt Name und Dauer."
         }
       }
     },
@@ -281,9 +349,6 @@
     "one_station": {
       "message": "Das Ziel muss genau eine Station nennen."
     },
-    "preset_needs_station": {
-      "message": "Eine Vorlage braucht eine Station als Ziel."
-    },
     "name_and_duration": {
       "message": "Gib eine Vorlage an oder einen Namen und eine Dauer."
     },
@@ -304,6 +369,12 @@
     },
     "todo_check_off_only": {
       "message": "Klingelnde Timer können hier nur abgehakt werden; das bestätigt sie."
+    },
+    "name_required": {
+      "message": "Gib einen Namen ein."
+    },
+    "unknown_quick_timer": {
+      "message": "Der Bereich {area} hat keinen Schnell-Timer „{preset}“."
     }
   },
   "config_subentries": {

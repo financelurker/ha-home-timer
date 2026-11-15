@@ -1,4 +1,5 @@
-"""Buttons: acknowledge all (area); per station: its presets, pause/resume, +1 minute, stop."""
+"""Buttons. Area: acknowledge all, its quick timers, start custom timer. Station: its
+presets, start custom timer, pause/resume, +1 minute, stop."""
 
 from __future__ import annotations
 
@@ -21,11 +22,17 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: HomeTimerConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
     engine = entry.runtime_data
-    async_add_entities([AcknowledgeAllButton(engine, "acknowledge_all")])
-    wanted: set[str] = {f"{engine.entry.entry_id}_acknowledge_all"}
+    area_buttons: list[ButtonEntity] = [
+        AcknowledgeAllButton(engine, "acknowledge_all"),
+        *(AreaPresetButton(engine, p) for p in engine.presets(None)),
+        AreaStartCustomButton(engine, "start_custom"),
+    ]
+    async_add_entities(area_buttons)
+    wanted: set[str] = {b.unique_id for b in area_buttons if b.unique_id}
     for station in engine.stations.values():
         buttons: list[ButtonEntity] = [PresetButton(engine, station, p) for p in station.presets]
         buttons += [
+            StationStartCustomButton(engine, station, "start_custom"),
             PauseResumeButton(engine, station, "pause_resume"),
             AddMinuteButton(engine, station, "add_minute"),
             StopButton(engine, station, "stop"),
@@ -66,6 +73,33 @@ class PresetButton(StationEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         _run(self.engine.start_preset, self.station.id, self.preset.id)
+
+
+class AreaPresetButton(AreaEntity, ButtonEntity):
+    """Starts a quick timer of the area (a timer without a station)."""
+
+    def __init__(self, engine, preset: Preset) -> None:
+        super().__init__(engine, PRESET_KEY)
+        self.preset = preset
+        self._attr_unique_id = f"{engine.entry.entry_id}_preset_{preset.id}"
+        self._attr_translation_placeholders = {"preset": preset.name}
+
+    async def async_press(self) -> None:
+        _run(self.engine.start_preset, None, self.preset.id)
+
+
+class AreaStartCustomButton(AreaEntity, ButtonEntity):
+    """Starts a timer "Timer" with the area's custom duration."""
+
+    async def async_press(self) -> None:
+        _run(self.engine.start_custom, None)
+
+
+class StationStartCustomButton(StationEntity, ButtonEntity):
+    """Starts a timer "Timer" with the station's custom duration, replacing its timer."""
+
+    async def async_press(self) -> None:
+        _run(self.engine.start_custom, self.station.id)
 
 
 class PauseResumeButton(StationEntity, ButtonEntity):
