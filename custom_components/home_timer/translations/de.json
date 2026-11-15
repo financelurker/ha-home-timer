@@ -161,7 +161,7 @@
             "name": "Fertig-Regel"
           },
           "elapsed": {
-            "name": "Vergangen"
+            "name": "Verstrichen"
           }
         }
       },
@@ -426,7 +426,7 @@
           "data": {
             "name": "Name",
             "icon": "Symbol",
-            "mode": "Start"
+            "mode": "Startet"
           },
           "data_description": {
             "name": "Z. B. „Kochfeld 1“, „Reiskocher“, „Badewanne“.",
@@ -442,7 +442,7 @@
             "add_preset": "Vorlage hinzufügen",
             "edit_preset": "Vorlage ändern oder löschen",
             "done": "Fertig",
-            "power": "Leistung"
+            "power": "Leistungseinstellungen"
           }
         },
         "add_preset": {
@@ -482,13 +482,13 @@
           "description": "Vorerst schlichte Einstellungen; eine eigene Konfigurationsoberfläche löst sie ab.",
           "data": {
             "sensor": "Leistungssensor",
-            "on_above": "Läuft ab",
+            "on_above": "Gilt als laufend über",
             "off_after": "Aus nach",
             "kind": "Wenn es läuft"
           },
           "data_description": {
             "on_above": "Über dieser Leistung gilt das Gerät als laufend.",
-            "off_after": "So lange unter „läuft ab“: Es ist aus (kurze Einbrüche werden ignoriert)."
+            "off_after": "So lange höchstens bei „gilt als laufend über“: Es ist aus (kurze Einbrüche werden ignoriert). Läufe unter 10 s zählen nicht."
           }
         },
         "done_rule": {

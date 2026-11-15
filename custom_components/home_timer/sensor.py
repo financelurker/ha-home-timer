@@ -45,7 +45,7 @@ class TimersSensor(AreaEntity, SensorEntity):
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
         now = dt_util.utcnow()
-        timers = sorted(self.engine.timers.values(), key=lambda t: (t.status != STATUS_RINGING, t.remaining(now)))
+        timers = sorted(self.engine.timers.values(), key=lambda t: (t.status != STATUS_RINGING, float("inf") if t.open else t.remaining(now)))
         active = [t for t in timers if t.status == STATUS_ACTIVE and t.ends_at is not None]
         nxt = min(active, key=lambda t: t.ends_at) if active else None
         return {
@@ -65,7 +65,7 @@ class StationTimerSensor(StationEntity, SensorEntity):
     _attr_name = None
     _attr_device_class = SensorDeviceClass.ENUM
     _attr_options = [STATE_IDLE, STATUS_ACTIVE, STATUS_PAUSED, STATUS_RINGING]
-    _unrecorded_attributes = frozenset({"source", "remaining", "overtime"})
+    _unrecorded_attributes = frozenset({"source", "remaining", "overtime", "elapsed"})
 
     def __init__(self, engine, station, key) -> None:
         super().__init__(engine, station, key)

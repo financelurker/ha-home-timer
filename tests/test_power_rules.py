@@ -79,3 +79,24 @@ def test_rule_data_and_words() -> None:
     assert rule.to_data() == {"type": "drop", "percent": 12.0, "window": 60.0, "ignore": 120.0}
     assert rule.describe() == "falls by ≥ 12 % within 60 s (first 120 s ignored)"
     assert DoneRule.from_data({"type": "nonsense"}).type == "off"
+
+
+def test_knee_ignores_noise_on_a_flat_load() -> None:
+    trace = Trace()
+    for i in range(0, 600, 5):
+        trace.add(i, 1000 + (2 if (i // 5) % 2 else -1))
+    rule = DoneRule.from_data({"type": "knee"})
+    assert not any(rule.fires(trace, t) for t in range(0, 600, 5))
+
+
+def test_rules_never_look_before_a_late_start() -> None:
+    trace = Trace()
+    trace.add(300, 2000)
+    for rule in ("cycling", "drop", "knee", "pause"):
+        done = DoneRule.from_data({"type": rule})
+        assert not done.fires(trace, 330), rule
+    assert DoneRule.from_data({"type": "energy", "wh": 1}).fires(trace, 302)  # counts from the pickup
+
+
+def test_flags_are_not_numbers() -> None:
+    assert DoneRule.from_data({"type": "drop", "percent": True}).p("percent") == 10

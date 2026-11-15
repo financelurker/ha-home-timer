@@ -523,15 +523,22 @@ class AreaTimers:
             )
 
     @callback
-    def finish(self, timer_id: str, **extra: Any) -> Timer:
-        """Finish an active timer now (e.g. a power station's run is done); it rings."""
+    def finish(self, timer_id: str, *, at: datetime | None = None, **extra: Any) -> Timer:
+        """Finish an active timer (e.g. a power station's run is done); it rings.
+
+        ``at``: when it really ended (default now). An open timer gets its duration and
+        is a normal timer from then on (snoozing it counts down).
+        """
         timer = self.get(timer_id)
         if timer.status != STATUS_ACTIVE:
             raise TimerError("not_active", name=timer.name)
         now = dt_util.utcnow()
+        end = min(at, now) if at is not None else now
+        end = max(end, timer.started_at)
         if timer.open:
-            timer.duration = (now - timer.started_at).total_seconds()
-        timer.ends_at = now
+            timer.duration = (end - timer.started_at).total_seconds()
+            timer.open = False
+        timer.ends_at = end
         self._unschedule(timer.id)
         self._finish(timer, **extra)
         self._changed()

@@ -148,3 +148,154 @@ async def test_open_timer_cannot_be_paused(hass: HomeAssistant, kitchen, freezer
     with pytest.raises(ServiceValidationError) as err:
         await hass.services.async_call(DOMAIN, "pause", {"entity_id": "sensor.kitchen_kettle"}, blocking=True)
     assert err.value.translation_key == "open_timer"
+
+
+def engine_of(entry):
+    return entry.runtime_data
+
+
+async def reload(hass, entry) -> None:
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+
+
+@pytest.mark.parametrize(
+    "done",
+    [
+        {"type": "cycling", "level": 50, "window": 60, "share": 60, "ignore": 120},
+        {"type": "knee", "factor": 3, "window": 60, "baseline": 180, "ignore": 120},
+        {"type": "drop", "percent": 10, "window": 60, "ignore": 120},
+    ],
+)
+async def test_look_back_rules_after_a_reload(hass: HomeAssistant, kitchen, freezer, done) -> None:
+    """Before the pickup nothing is known – it must not count as 0 W."""
+    hass.states.async_set(SENSOR, "0")
+    await add_power_station(hass, kitchen, "Boiler", "until_off", done=done)
+    ev = events(hass)
+    await watts(hass, freezer, 2000)
+    await tick(hass, freezer, 300)
+    await reload(hass, kitchen)
+    for i in range(60):  # steady with a little noise for 5 minutes
+        await watts(hass, freezer, 2000 + (3 if i % 2 else -3), seconds_after=5)
+    assert not ev["finished"]
+    assert hass.states.get("sensor.kitchen_boiler").state == "active"
+
+
+async def test_sensor_unknown_at_start_picks_up_later(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    await add_power_station(hass, kitchen, "Rice cooker", "start_preset", presets=[("Rice", 1200)], preset="p0")
+    ev = events(hass)
+    await watts(hass, freezer, 500)
+    started = engine_of(kitchen).timer_at(next(iter(kitchen.subentries))).id
+    assert await hass.config_entries.async_unload(kitchen.entry_id)
+    hass.states.async_set(SENSOR, "unknown")
+    assert await hass.config_entries.async_setup(kitchen.entry_id)
+    await hass.async_block_till_done()
+    await watts(hass, freezer, 500, seconds_after=20)
+    assert not ev["cancelled"]  # not replaced: the same countdown goes on
+    assert engine_of(kitchen).timers[started].status == "active"
+    await watts(hass, freezer, 0, seconds_after=60)
+    await tick(hass, freezer, 31)
+    assert ev["cancelled"][0].data["reason"] == "power_off"
+
+
+async def test_until_off_unknown_at_start_does_not_ring(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    await add_power_station(hass, kitchen, "Kettle", "until_off")
+    await watts(hass, freezer, 2000)
+    assert await hass.config_entries.async_unload(kitchen.entry_id)
+    hass.states.async_set(SENSOR, "unavailable")
+    assert await hass.config_entries.async_setup(kitchen.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.kitchen_kettle").state == "active"
+    await watts(hass, freezer, 2000, seconds_after=10)
+    assert hass.states.get("sensor.kitchen_kettle").state == "active"
+    assert hass.states.get("binary_sensor.kitchen_kettle_running").state == "on"
+
+
+async def test_stopped_during_downtime(hass: HomeAssistant, kitchen, freezer) -> None:
+    """The downtime is not counted as a run; a warning is not left behind."""
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Iron", "warn", warn_after=60)
+    ev = events(hass)
+    await watts(hass, freezer, 1200)
+    await tick(hass, freezer, 60)
+    assert await hass.config_entries.async_unload(kitchen.entry_id)
+    hass.states.async_set(SENSOR, "0")
+    freezer.tick(600)
+    assert await hass.config_entries.async_setup(kitchen.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.kitchen_iron").state == "idle"
+    assert ev["cancelled"][0].data["reason"] == "power_off"
+    assert engine_of(kitchen).power_stats.get(station, {}).get("runs", 0) == 0
+
+
+async def test_warn_stop_silences_the_run(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    await add_power_station(hass, kitchen, "Iron", "warn", warn_after=60)
+    ev = events(hass)
+    await watts(hass, freezer, 1200)
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_iron_stop_acknowledge"}, blocking=True)
+    await tick(hass, freezer, 10)
+    assert hass.states.get("sensor.kitchen_iron").state == "idle"  # stopped: no new warning this run
+    assert len(ev["started"]) == 1
+
+
+async def test_warn_leaves_your_own_timer_alone(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Iron", "warn", warn_after=60)
+    ev = events(hass)
+    await watts(hass, freezer, 1200)
+    engine = engine_of(kitchen)
+    mine = engine.start("Shirts", 600, station=station)
+    await tick(hass, freezer, 20)
+    assert engine.timer_at(station).id == mine.id
+    assert [e.data["reason"] for e in ev["cancelled"]] == ["replaced"]  # only the warning, by your start
+    await watts(hass, freezer, 0)
+    await tick(hass, freezer, 35)
+    assert engine.timer_at(station).id == mine.id  # not ours: switching off leaves it
+
+
+async def test_snoozing_a_finished_open_timer(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Kettle", "until_off")
+    await watts(hass, freezer, 2000)
+    await watts(hass, freezer, 0, seconds_after=120)
+    await tick(hass, freezer, 31)
+    engine = engine_of(kitchen)
+    timer = engine.timer_at(station)
+    assert timer.status == "ringing"
+    assert timer.duration == pytest.approx(120, abs=1)  # ended when it went off, not 30 s later
+    engine.add_time(timer.id, 60)
+    await hass.async_block_till_done()
+    attrs = hass.states.get("sensor.kitchen_kettle").attributes
+    assert attrs["remaining"] == pytest.approx(60, abs=1)
+    assert timer.open is False
+    engine.pause(timer.id)
+
+
+async def test_blips_are_not_runs(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Kettle", "until_off")
+    ev = events(hass)
+    await watts(hass, freezer, 12)
+    await watts(hass, freezer, 0, seconds_after=1)
+    await tick(hass, freezer, 31)
+    assert not ev["finished"]
+    assert ev["cancelled"][0].data["reason"] == "power_off"
+    assert engine_of(kitchen).power_stats.get(station, {}).get("runs", 0) == 0
+
+
+async def test_a_moved_timer_is_left_alone(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    await add_power_station(hass, kitchen, "Kettle", "until_off")
+    other = await add_power_station(hass, kitchen, "Hob", "until_off", sensor="sensor.other")
+    ev = events(hass)
+    await watts(hass, freezer, 2000)
+    engine = engine_of(kitchen)
+    timer = next(iter(engine.timers.values()))
+    engine.assign(timer.id, other)
+    await watts(hass, freezer, 0, seconds_after=60)
+    await tick(hass, freezer, 31)
+    assert not ev["finished"]
+    assert engine.timers[timer.id].status == "active"

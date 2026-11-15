@@ -20,7 +20,8 @@ energy     ``wh`` Wh have been used                                     very reg
 =========  ===========================================================  ====================
 
 All rules except ``off`` ignore the first ``ignore`` seconds of a run (switch-on
-spikes).
+spikes). A trace may start late (a run picked up after a restart): rules that look
+back never look before its first sample, and ``energy`` only counts from there.
 """
 
 from __future__ import annotations
@@ -49,6 +50,7 @@ RULE_DEFAULTS: dict[str, dict[str, float]] = {
 }
 RULE_TYPES = tuple(RULE_DEFAULTS)
 MIN_SLOPE = 0.5 / 60  # W per second: below this a baseline counts as flat
+MIN_SLOPE_SHARE = 0.005 / 60  # … or below 0.5 % of the power level per minute
 
 
 @dataclass
@@ -66,6 +68,11 @@ class Trace:
             return
         self.times.append(t)
         self.watts.append(w)
+
+    @property
+    def start(self) -> float:
+        """From when the samples are known (0, or later for a run picked up after a restart)."""
+        return self.times[0] if self.times else 0.0
 
     def value(self, t: float) -> float:
         i = bisect_right(self.times, t) - 1
@@ -95,8 +102,14 @@ class Trace:
             return 1.0
         return sum(b - a for a, b, w in self._segments(t0, t1) if w >= level) / total
 
+    def mean(self, t0: float, t1: float) -> float:
+        """Time-weighted mean between t0 and t1."""
+        if t1 <= t0:
+            return self.value(t1)
+        return sum((b - a) * w for a, b, w in self._segments(t0, t1)) / (t1 - t0)
+
     def energy_wh(self, t1: float) -> float:
-        return sum((b - a) * w for a, b, w in self._segments(0, t1)) / 3600
+        return sum((b - a) * w for a, b, w in self._segments(self.start, t1)) / 3600
 
     def below_since(self, level: float, t: float) -> float | None:
         """Since when (seconds) the power has been below ``level`` at ``t``, or None."""
@@ -122,7 +135,7 @@ class DoneRule:
         params = dict(RULE_DEFAULTS[rule_type])
         for key in params:
             value = data.get(key)
-            if isinstance(value, (int, float)) and value >= 0:
+            if isinstance(value, (int, float)) and not isinstance(value, bool) and value >= 0:
                 params[key] = float(value)
         return cls(rule_type, params)
 
@@ -156,26 +169,31 @@ class DoneRule:
             return now >= self.p("seconds")
         if self.type == RULE_ENERGY:
             return trace.energy_wh(now) >= self.p("wh")
-        ignore = self.p("ignore")
+        # never before "ignore", never looking back before the first known sample
+        earliest = max(self.p("ignore"), trace.start)
         if self.type == RULE_PAUSE:
             since = trace.below_since(self.p("below"), now)
-            return since is not None and since >= ignore and now - since >= self.p("seconds")
+            return since is not None and since >= earliest and now - since >= self.p("seconds")
         if self.type == RULE_CYCLING:
             window = self.p("window")
-            if now - window < ignore:
+            if now - window < earliest:
                 return False
             return trace.share_at_least(self.p("level"), now - window, now) * 100 < self.p("share")
         if self.type == RULE_DROP:
             window = self.p("window")
-            if now - window < ignore:
+            if now - window < earliest:
                 return False
             peak = trace.maximum(now - window, now)
             return peak > 0 and (peak - trace.value(now)) / peak * 100 >= self.p("percent")
         if self.type == RULE_KNEE:
             window, baseline = self.p("window"), self.p("baseline")
-            if now - window - baseline < ignore:
+            if now - window - baseline < earliest:
                 return False
-            recent = (trace.value(now - window) - trace.value(now)) / window
-            before = (trace.value(now - window - baseline) - trace.value(now - window)) / baseline
-            return recent > 0 and recent >= self.p("factor") * max(before, MIN_SLOPE)
+            # slopes from the means of each half (robust against single noisy readings)
+            w0, wm = now - window, now - window / 2
+            b0, bm = w0 - baseline, w0 - baseline / 2
+            recent = (trace.mean(w0, wm) - trace.mean(wm, now)) / (window / 2)
+            before = (trace.mean(b0, bm) - trace.mean(bm, w0)) / (baseline / 2)
+            floor = max(MIN_SLOPE, MIN_SLOPE_SHARE * trace.mean(w0, now))
+            return recent > 0 and recent >= self.p("factor") * max(before, floor)
         return False

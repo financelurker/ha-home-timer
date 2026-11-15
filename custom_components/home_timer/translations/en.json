@@ -488,7 +488,7 @@
           },
           "data_description": {
             "on_above": "Above this power the appliance counts as running.",
-            "off_after": "Below \"runs above\" for this long: it has stopped (short dips are ignored)."
+            "off_after": "At or below \"runs above\" for this long: it has stopped (short dips are ignored). Runs under 10 s do not count."
           }
         },
         "done_rule": {
