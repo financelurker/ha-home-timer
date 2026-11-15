@@ -10,9 +10,11 @@ moved, so it never holds anything but Home Timer's own items.
 from __future__ import annotations
 
 from homeassistant.components.todo import TodoItem, TodoItemStatus, TodoListEntity, TodoListEntityFeature
-from homeassistant.core import HomeAssistant, callback
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.exceptions import HomeAssistantError
 from homeassistant.helpers import area_registry as ar
+from homeassistant.helpers import entity_registry as er
+from homeassistant.helpers import intent
 from homeassistant.helpers.dispatcher import async_dispatcher_connect
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.typing import ConfigType, DiscoveryInfoType
@@ -29,14 +31,37 @@ async def async_setup_platform(
 ) -> None:
     if discovery_info is None:
         return
+    # kept so an area set up after the list was removed (last area deleted) brings it back
+    hass.data.setdefault(DOMAIN, {})[DATA_ADD_LIST] = async_add_entities
     async_add_entities([RingingTimersList(hass)])
+
+
+DATA_ADD_LIST = "todo_add_entities"
+DATA_LIST = "todo_list"
+LIST_UNIQUE_ID = f"{DOMAIN}_ringing_timers"
+
+
+@callback
+def async_ensure_list(hass: HomeAssistant) -> None:
+    """Add the list again if it was removed (an area is set up after the last one was deleted)."""
+    data = hass.data.get(DOMAIN, {})
+    if data.get(DATA_LIST) is None and (add := data.get(DATA_ADD_LIST)) is not None:
+        add([RingingTimersList(hass)])
+
+
+@callback
+def async_remove_list(hass: HomeAssistant) -> None:
+    """The last area is deleted: the list goes too (it belongs to no entry, so HA would keep it)."""
+    registry = er.async_get(hass)
+    if entity_id := registry.async_get_entity_id("todo", DOMAIN, LIST_UNIQUE_ID):
+        registry.async_remove(entity_id)
 
 
 class RingingTimersList(TodoListEntity):
     _attr_has_entity_name = True
     _attr_should_poll = False
     _attr_translation_key = "ringing_timers"
-    _attr_unique_id = f"{DOMAIN}_ringing_timers"
+    _attr_unique_id = LIST_UNIQUE_ID
     _attr_supported_features = TodoListEntityFeature.UPDATE_TODO_ITEM
 
     def __init__(self, hass: HomeAssistant) -> None:
@@ -73,7 +98,20 @@ class RingingTimersList(TodoListEntity):
         return sorted(ringing, key=lambda item: item.due)
 
     async def async_added_to_hass(self) -> None:
+        self.hass.data.setdefault(DOMAIN, {})[DATA_LIST] = self
         self.async_on_remove(async_dispatcher_connect(self.hass, SIGNAL_TIMERS_CHANGED, self._refresh))
+        # area names are part of the summaries
+        self.async_on_remove(
+            self.hass.bus.async_listen(ar.EVENT_AREA_REGISTRY_UPDATED, self._area_changed)
+        )
+        self._refresh()
+
+    async def async_will_remove_from_hass(self) -> None:
+        if self.hass.data.get(DOMAIN, {}).get(DATA_LIST) is self:
+            self.hass.data[DOMAIN][DATA_LIST] = None
+
+    @callback
+    def _area_changed(self, _event: Event) -> None:
         self._refresh()
 
     @callback
@@ -81,7 +119,18 @@ class RingingTimersList(TodoListEntity):
         self._attr_todo_items = self._items()
         self.async_write_ha_state()
 
+    # Assist's list intents call these regardless of the supported features: answer cleanly
+    async def async_create_todo_item(self, item: TodoItem) -> None:
+        raise intent.IntentHandleError("Items cannot be added to the list of ringing timers")
+
+    async def async_delete_todo_items(self, uids: list[str]) -> None:
+        raise intent.IntentHandleError("Ringing timers cannot be removed here; check them off to acknowledge them")
+
+    async def async_move_todo_item(self, uid: str, previous_uid: str | None = None) -> None:
+        raise intent.IntentHandleError("The list of ringing timers cannot be reordered")
+
     async def async_update_todo_item(self, item: TodoItem) -> None:
+        # with status "completed", any other change (e.g. a rename) is ignored: the item is acknowledged
         if item.status != TodoItemStatus.COMPLETED:
             raise HomeAssistantError(translation_domain=DOMAIN, translation_key="todo_check_off_only")
         uid = item.uid or ""

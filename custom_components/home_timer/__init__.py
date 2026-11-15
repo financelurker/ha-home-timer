@@ -28,6 +28,7 @@ from .const import CONF_AREA_ID, DOMAIN, NAME, STORAGE_VERSION
 from .engine import AreaTimers, storage_key
 from .services import async_register_services
 from .stations import stations
+from .todo import async_ensure_list, async_remove_list
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -87,6 +88,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) ->
     # timers are scheduled, and missed ones reported, once automations listen
     entry.async_on_unload(async_at_started(hass, engine.async_start))
     entry.async_on_unload(entry.add_update_listener(_async_reload))
+    async_ensure_list(hass)
     _LOGGER.debug("%s: set up (area %s, %d stored timers)", entry.title, area_id, len(engine.timers))
     return True
 
@@ -103,8 +105,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) -
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) -> None:
-    """The area is deleted: its stored timers go with it."""
+    """The area is deleted: its stored timers go with it, and with the last area the to-do list."""
     await Store(hass, STORAGE_VERSION, storage_key(entry.entry_id)).async_remove()
+    if not [e for e in hass.config_entries.async_entries(DOMAIN) if e.entry_id != entry.entry_id]:
+        async_remove_list(hass)
 
 
 def place_in_area(hass: HomeAssistant, device: dr.DeviceEntry, area_id: str) -> None:

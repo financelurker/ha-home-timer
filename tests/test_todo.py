@@ -80,3 +80,46 @@ async def test_nothing_else_can_be_done(hass: HomeAssistant, kitchen, freezer) -
     with pytest.raises(HomeAssistantError):
         await hass.services.async_call("todo", "remove_item", {"entity_id": TODO, "item": timer.id}, blocking=True)
     assert len(await items(hass)) == 1
+
+
+async def test_area_rename_updates_the_list(hass: HomeAssistant, kitchen, freezer) -> None:
+    from homeassistant.helpers import area_registry as ar
+
+    kitchen.runtime_data.start("Tea", 60)
+    await tick(hass, freezer, 61)
+    ar.async_get(hass).async_update(kitchen.data["area_id"], name="Cuisine")
+    await hass.async_block_till_done()
+    assert [i["summary"] for i in await items(hass)] == ["Tea · Cuisine"]
+
+
+async def test_assist_add_and_remove_are_refused_cleanly(hass: HomeAssistant, kitchen, freezer, caplog) -> None:
+    from homeassistant.helpers import intent
+    from homeassistant.setup import async_setup_component
+
+    assert await async_setup_component(hass, "intent", {})
+    assert await async_setup_component(hass, "todo", {})
+    kitchen.runtime_data.start("Tea", 60)
+    await tick(hass, freezer, 61)
+    name = hass.states.get(TODO).name
+    for intent_type in ("HassListAddItem", "HassListRemoveItem"):
+        with pytest.raises(intent.IntentError):
+            await intent.async_handle(hass, "test", intent_type, {"item": {"value": "Tea · Kitchen"}, "name": {"value": name}})
+    assert "Traceback" not in caplog.text
+    await intent.async_handle(hass, "test", "HassListCompleteItem", {"item": {"value": "Tea · Kitchen"}, "name": {"value": name}})
+    await hass.async_block_till_done()
+    assert await items(hass) == []
+
+
+async def test_list_goes_with_the_last_area_and_comes_back(hass: HomeAssistant, kitchen) -> None:
+    from homeassistant.helpers import entity_registry as er
+
+    bathroom = await setup_area(hass, "Bathroom")
+    await hass.config_entries.async_remove(bathroom.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(TODO) is not None
+    await hass.config_entries.async_remove(kitchen.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(TODO) is None
+    assert er.async_get(hass).async_get(TODO) is None
+    await setup_area(hass, "Laundry")
+    assert hass.states.get(TODO) is not None

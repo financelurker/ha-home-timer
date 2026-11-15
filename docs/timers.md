@@ -40,6 +40,8 @@ Home Timer has one to-do list for all areas, *Home Timer: ringing timers* (`todo
 
 The list only offers checking off: items cannot be added, renamed, deleted or moved, so it only ever holds ringing timers. Active and paused timers do not appear; acknowledged ones are gone (no history).
 
+You find it in the to-do panel and under Settings → Entities (not on an area's entry or device). Like every to-do list it is exposed to Assist by default: "complete <item> on Home Timer: ringing timers" acknowledges a timer (the item's text must match); adding or removing items is refused. It is removed with the last area; setting up an area brings it back.
+
 ## Options
 
 Per area: Settings → Devices & services → Home Timer → the area's entry → **Configure**. Saving reloads the area; running timers go on.
