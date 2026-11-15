@@ -49,6 +49,27 @@ RULE_DEFAULTS: dict[str, dict[str, float]] = {
     RULE_ENERGY: {"wh": 30},
 }
 RULE_TYPES = tuple(RULE_DEFAULTS)
+
+# the values of each rule type: (key, min, max, step, unit) – for the panel's fields and checks
+RULE_FIELDS: dict[str, list[tuple[str, float, float, float, str]]] = {
+    RULE_OFF: [],
+    RULE_PAUSE: [("below", 0, 5000, 1, "W"), ("seconds", 1, 3600, 1, "s"), ("ignore", 0, 3600, 5, "s")],
+    RULE_CYCLING: [
+        ("level", 0, 5000, 1, "W"),
+        ("window", 10, 3600, 5, "s"),
+        ("share", 1, 100, 1, "%"),
+        ("ignore", 0, 3600, 5, "s"),
+    ],
+    RULE_DROP: [("percent", 1, 100, 1, "%"), ("window", 10, 3600, 5, "s"), ("ignore", 0, 3600, 5, "s")],
+    RULE_KNEE: [
+        ("factor", 1.5, 20, 0.5, "×"),
+        ("window", 10, 3600, 5, "s"),
+        ("baseline", 30, 7200, 10, "s"),
+        ("ignore", 0, 3600, 5, "s"),
+    ],
+    RULE_TIME: [("seconds", 1, 86400, 1, "s")],
+    RULE_ENERGY: [("wh", 0.1, 100000, 0.1, "Wh")],
+}
 MIN_SLOPE = 0.5 / 60  # W per second: below this a baseline counts as flat
 MIN_SLOPE_SHARE = 0.005 / 60  # … or below 0.5 % of the power level per minute
 

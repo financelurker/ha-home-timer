@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "Home Timer",
-        "description": "Ein Eintrag je Bereich.",
+        "description": "Ein Eintrag pro Bereich. Stationen, Vorlagen und Optionen richtest du danach im Home-Timer-Panel ein – das Zahnrad des Bereichs öffnet es.",
         "data": {
           "area_id": "Bereich"
         },
@@ -16,73 +16,20 @@
       "unknown_area": "Diesen Bereich gibt es nicht (mehr)."
     },
     "abort": {
-      "already_configured": "Dieser Bereich ist bereits eingerichtet."
+      "already_configured": "Dieser Bereich ist bereits eingerichtet.",
+      "unknown_area": "Diesen Bereich gibt es nicht (mehr)."
+    },
+    "create_entry": {
+      "default": "Fertig. Richte Stationen und Vorlagen im [Home-Timer-Panel]({panel}) ein – oder später über das Zahnrad des Bereichs."
     }
   },
-  "options": {
-    "step": {
-      "menu": {
-        "title": "{area}",
-        "description": "Schnell-Timer (Vorlagen ohne Station):\n{presets}",
-        "menu_options": {
-          "behaviour": "Wenn ein Timer abläuft",
-          "add_preset": "Schnell-Timer hinzufügen",
-          "edit_preset": "Schnell-Timer ändern oder löschen",
-          "done": "Speichern"
-        }
+  "config_subentries": {
+    "station": {
+      "entry_type": "Station",
+      "initiate_flow": {
+        "user": "Station hinzufügen"
       },
-      "behaviour": {
-        "title": "Wenn ein Timer abläuft",
-        "data": {
-          "ring_until_acknowledged": "Klingeln bis bestätigt",
-          "reminder_minutes": "Erinnerung alle",
-          "auto_dismiss_minutes": "Klingeln beenden nach",
-          "report_missed": "Verpasste Timer melden"
-        },
-        "data_description": {
-          "ring_until_acknowledged": "Der Timer bleibt nach Ablauf im Zustand „klingelt“, bis er bestätigt wird. Aus: Er wird direkt nach dem Ablauf-Ereignis entfernt; Timer, die beim Ausschalten klingeln, werden bestätigt.",
-          "reminder_minutes": "Solange ein Timer klingelt, alle so viele Minuten ein Erinnerungs-Ereignis. 0: keine Erinnerungen.",
-          "auto_dismiss_minutes": "Ein klingelnder Timer wird nach so vielen Minuten von selbst bestätigt (bei einem während eines Neustarts verpassten Timer ab dem Start gezählt). 0: Er klingelt, bis er bestätigt wird.",
-          "report_missed": "Ein Timer, der während eines Neustarts von Home Assistant abgelaufen ist, wird gleich nach dem Start gemeldet (Ablauf-Ereignis mit „late“). Aus: Er wird verworfen."
-        }
-      },
-      "add_preset": {
-        "title": "{station}: Schnell-Timer hinzufügen",
-        "description": "Ein Schnell-Timer wird zum Button „… starten“ am Home-Timer-Gerät des Bereichs und startet einen Timer ohne Station.",
-        "data": {
-          "name": "Name",
-          "duration": "Dauer",
-          "note": "Notiz"
-        },
-        "data_description": {
-          "name": "Wird zum Namen des Timers, z. B. „Reis“.",
-          "note": "Optional; geht mit den Ereignissen des Timers mit, z. B. „Stufe 6, dann 3“."
-        }
-      },
-      "edit_preset": {
-        "title": "Welcher Schnell-Timer?",
-        "data": {
-          "preset": "Schnell-Timer"
-        }
-      },
-      "preset": {
-        "title": "{station}: Schnell-Timer",
-        "data": {
-          "name": "Name",
-          "duration": "Dauer",
-          "note": "Notiz",
-          "delete": "Diesen Schnell-Timer löschen"
-        },
-        "data_description": {
-          "name": "Wird zum Namen des Timers, z. B. „Reis“.",
-          "note": "Optional; geht mit den Ereignissen des Timers mit."
-        }
-      }
-    },
-    "error": {
-      "name_required": "Gib einen Namen ein.",
-      "preset_exists": "Dieser Bereich hat bereits einen Schnell-Timer mit diesem Namen.",
-      "invalid_duration": "Die Dauer muss größer als null sein."
+      "step": {}
     }
   },
   "entity": {
@@ -412,138 +359,6 @@
       "message": "Der Timer „{name}“ läuft, bis sein Gerät fertig ist; er lässt sich nicht pausieren und seine Zeit nicht ändern."
     }
   },
-  "config_subentries": {
-    "station": {
-      "initiate_flow": {
-        "user": "Station hinzufügen",
-        "reconfigure": "Station konfigurieren"
-      },
-      "entry_type": "Station",
-      "step": {
-        "settings": {
-          "title": "Station",
-          "description": "Bereich {area}. Eine Station ist alles, woran ein Timer hängt: ein Kochfeld, ein Gerät, ein Wasserhahn. Sie bekommt ein eigenes Gerät mit jeweils einem Timer.",
-          "data": {
-            "name": "Name",
-            "icon": "Symbol",
-            "mode": "Startet"
-          },
-          "data_description": {
-            "name": "Z. B. „Kochfeld 1“, „Reiskocher“, „Badewanne“.",
-            "icon": "Optional; wird beim Timer der Station angezeigt.",
-            "mode": "Per Hand: Vorlagen und Buttons. Über Leistung: Ein Leistungssensor zeigt, wann das Gerät läuft."
-          }
-        },
-        "menu": {
-          "title": "{station}",
-          "description": "Vorlagen:\n{presets}\n\nLeistung: {power}",
-          "menu_options": {
-            "settings": "Name und Symbol",
-            "add_preset": "Vorlage hinzufügen",
-            "edit_preset": "Vorlage ändern oder löschen",
-            "done": "Fertig",
-            "power": "Leistungseinstellungen"
-          }
-        },
-        "add_preset": {
-          "title": "{station}: Vorlage hinzufügen",
-          "description": "Eine Vorlage wird zum Button „… starten“ an der Station und lässt sich mit der Aktion home_timer.start starten.",
-          "data": {
-            "name": "Name",
-            "duration": "Dauer",
-            "note": "Notiz"
-          },
-          "data_description": {
-            "name": "Wird zum Namen des Timers, z. B. „Reis“.",
-            "note": "Optional; geht mit den Ereignissen des Timers mit, z. B. „Stufe 6, dann 3“."
-          }
-        },
-        "edit_preset": {
-          "title": "Welche Vorlage?",
-          "data": {
-            "preset": "Vorlage"
-          }
-        },
-        "preset": {
-          "title": "{station}: Vorlage",
-          "data": {
-            "name": "Name",
-            "duration": "Dauer",
-            "note": "Notiz",
-            "delete": "Diese Vorlage löschen"
-          },
-          "data_description": {
-            "name": "Wird zum Namen des Timers, z. B. „Reis“.",
-            "note": "Optional; geht mit den Ereignissen des Timers mit."
-          }
-        },
-        "power": {
-          "title": "{station}: über Leistung",
-          "description": "Vorerst schlichte Einstellungen; eine eigene Konfigurationsoberfläche löst sie ab.",
-          "data": {
-            "sensor": "Leistungssensor",
-            "on_above": "Gilt als laufend über",
-            "off_after": "Aus nach",
-            "kind": "Wenn es läuft"
-          },
-          "data_description": {
-            "on_above": "Über dieser Leistung gilt das Gerät als laufend.",
-            "off_after": "So lange höchstens bei „gilt als laufend über“: Es ist aus (kurze Einbrüche werden ignoriert). Läufe unter 10 s zählen nicht."
-          }
-        },
-        "done_rule": {
-          "title": "{station}: Wann ist es fertig?",
-          "description": "Wann der Lauf als fertig gilt; dann klingelt es.",
-          "data": {
-            "type": "Fertig-Regel"
-          }
-        },
-        "done_params": {
-          "title": "{station}: Fertig-Regel",
-          "description": "{rule}",
-          "data": {
-            "below": "Unter",
-            "seconds": "Für / nach",
-            "level": "„An“ ab",
-            "window": "Zeitfenster",
-            "share": "„An“-Anteil unter",
-            "percent": "Fällt um mindestens",
-            "factor": "Fällt schneller um",
-            "baseline": "Verglichen mit den",
-            "ignore": "Ignoriere die ersten",
-            "wh": "Nach Energie"
-          },
-          "data_description": {
-            "ignore": "Einschaltspitzen werden in dieser Zeit ignoriert.",
-            "window": "Die Zeitspanne, die die Regel betrachtet.",
-            "baseline": "… Sekunden vor dem Zeitfenster (Knick)."
-          }
-        },
-        "power_preset": {
-          "title": "{station}: Vorlage beim Einschalten",
-          "description": "Einschalten des Geräts startet diese Vorlage.",
-          "data": {
-            "preset": "Vorlage",
-            "cancel_on_off": "Ausschalten bricht den Timer ab"
-          }
-        },
-        "warn": {
-          "title": "{station}: warnen",
-          "description": "Klingelt, wenn das Gerät länger läuft; bestätigt, während es noch läuft, warnt es nach derselben Zeit erneut.",
-          "data": {
-            "warn_after": "Warnen nach"
-          }
-        }
-      },
-      "error": {
-        "name_required": "Gib einen Namen ein.",
-        "station_exists": "Dieser Bereich hat bereits eine Station mit diesem Namen.",
-        "preset_exists": "Diese Station hat bereits eine Vorlage mit diesem Namen.",
-        "invalid_duration": "Die Dauer muss größer als null sein.",
-        "no_presets": "Lege zuerst eine Vorlage an (Menü → Vorlage hinzufügen) und wähle sie dann hier."
-      }
-    }
-  },
   "device_automation": {
     "trigger_type": {
       "started": "Timer gestartet",
@@ -551,32 +366,6 @@
       "reminder": "Timer erinnert (klingelt noch)",
       "acknowledged": "Timer bestätigt",
       "assigned": "Timer der Station zugeordnet"
-    }
-  },
-  "selector": {
-    "mode": {
-      "options": {
-        "manual": "Per Hand",
-        "power": "Über Leistung"
-      }
-    },
-    "kind": {
-      "options": {
-        "until_off": "Bis es von selbst ausgeht – zählt hoch, klingelt, wenn fertig",
-        "start_preset": "Startet eine Vorlage – Einschalten startet den Countdown",
-        "warn": "Nur warnen, wenn es zu lange läuft"
-      }
-    },
-    "rule": {
-      "options": {
-        "off": "Beim Ausschalten",
-        "pause": "Erste Pause – Leistung eine Weile unter einem Wert",
-        "cycling": "Takten – ein Thermostat schaltet ein und aus",
-        "drop": "Abfall – Leistung fällt um einen Anteil innerhalb einer Zeit",
-        "knee": "Knick – Leistung fällt viel schneller als vorher",
-        "time": "Nach einer Zeit",
-        "energy": "Nach einer Energiemenge"
-      }
     }
   }
 }

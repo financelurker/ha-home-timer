@@ -20,6 +20,7 @@
 - **[Dashboard controls](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#starting-timers-from-a-dashboard)** for timers without a station: quick timers (one tap), a custom duration, "save as preset".
 - **[Power stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md):** a power sensor starts the timer – it rings when the appliance is done (e.g. a moka pot), starts a preset when switched on, or warns if it runs too long.
 - **[Device triggers](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md#device-triggers)** per station and per area: started, finished, reminder, acknowledged.
+- **[Its own panel](https://github.com/financelurker/ha-home-timer/blob/main/docs/panel.md):** areas, stations, presets and options on one page, with what each station does right now – also on the phone.
 
 ## Installation
 
@@ -45,7 +46,7 @@ Without the button: HACS → ⋮ → **Custom repositories** → add `https://gi
 
 1. Settings → Devices & services → Add integration → **Home Timer**.
 2. Pick an area (e.g. Kitchen). Repeat for every area that should have timers ([Setup](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md)).
-3. On the area's entry: **Add station** (e.g. *Hob 1*) with presets (e.g. *Rice*, 10 min) – [Stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md).
+3. The cog of the area opens the [panel](https://github.com/financelurker/ha-home-timer/blob/main/docs/panel.md): **+ Add station** (e.g. *Hob 1*) with presets (e.g. *Rice*, 10 min) – [Stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md).
 4. Press *Start Rice* on the station's device, and react to `home_timer_finished` (or the station's device trigger) in an automation – [Automations](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md).
 
 ## Documentation
@@ -53,6 +54,7 @@ Without the button: HACS → ⋮ → **Custom repositories** → add `https://gi
 | Page | Content |
 |---|---|
 | [Setup](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md) | adding an area, its device, options, removing it |
+| [The panel](https://github.com/financelurker/ha-home-timer/blob/main/docs/panel.md) | opening it, areas, area options, stations, saving |
 | [Stations and presets](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md) | adding a station, presets, its device and entities, one timer per station |
 | [Power stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md) | stations started by a power sensor: kinds, done rules, entities |
 | [Timers](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md) | dashboard controls and quick timers, life cycle, ringing, to-do list, options, restarts |

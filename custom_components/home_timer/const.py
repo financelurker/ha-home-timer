@@ -6,6 +6,7 @@ from typing import Final
 
 DOMAIN: Final = "home_timer"
 NAME: Final = "Home Timer"
+PANEL_URL: Final = "home-timer"  # the configuration panel: /home-timer
 
 # config entry: one per Home Assistant area
 CONF_AREA_ID: Final = "area_id"

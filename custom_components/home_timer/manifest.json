@@ -1,11 +1,17 @@
 {
   "domain": "home_timer",
   "name": "Home Timer",
+  "after_dependencies": [
+    "frontend",
+    "http"
+  ],
   "codeowners": [
     "@financelurker"
   ],
   "config_flow": true,
-  "dependencies": [],
+  "dependencies": [
+    "websocket_api"
+  ],
   "documentation": "https://github.com/financelurker/ha-home-timer",
   "integration_type": "hub",
   "iot_class": "calculated",

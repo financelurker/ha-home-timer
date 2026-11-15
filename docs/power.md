@@ -8,7 +8,7 @@ A station can be started **by power** instead of by hand: a power sensor (e.g. o
 
 ## Setting it up
 
-Add a station (or **Configure station**), set **Starts** to *By power*, then:
+In the [panel](panel.md), add or open a station and set **Starts** to *By power*, then:
 
 | Setting | Description |
 |---|---|
@@ -17,7 +17,7 @@ Add a station (or **Configure station**), set **Starts** to *By power*, then:
 | Stopped after | it has stopped once the power stayed at or below *runs above* for this long (e.g. 30 s; short dips are ignored). A run shorter than 10 s is a blip: its timer is cancelled and it does not count |
 | When it runs | one of the three kinds below |
 
-These settings are plain on purpose: an own configuration panel (with the power curve, marks and learning) will replace them.
+The power curve, marking runs and learning rules from them will follow in the panel.
 
 ## Three kinds
 

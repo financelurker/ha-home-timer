@@ -3,7 +3,8 @@
 Each config entry is an area: its hub device ("Home Timer") in the area, the
 area's timer engine (engine.py) and the area's entities. Stations are config
 subentries of the area, each with its own device and entities (stations.py).
-Actions are registered once for all areas (services.py).
+Actions are registered once for all areas (services.py); areas and stations are
+configured in the panel (panel/).
 
 Any change of the entry – options, a station added, changed or removed, the title –
 reloads the area; running timers go on (they are stored).
@@ -24,8 +25,9 @@ from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
 
-from .const import CONF_AREA_ID, DOMAIN, NAME, STORAGE_VERSION
+from .const import CONF_AREA_ID, DOMAIN, NAME, PANEL_URL, STORAGE_VERSION
 from .engine import AreaTimers, storage_key
+from .panel import async_setup_panel
 from .services import async_register_services
 from .stations import stations
 from .todo import async_ensure_list, async_remove_list
@@ -40,6 +42,7 @@ type HomeTimerConfigEntry = ConfigEntry[AreaTimers]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_register_services(hass)
+    await async_setup_panel(hass)
     # one to-do list for all areas, not tied to an area's entry
     hass.async_create_task(async_load_platform(hass, Platform.TODO, DOMAIN, {}, config), eager_start=False)
     return True
@@ -58,6 +61,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) ->
         manufacturer=NAME,
         model="Area",
         entry_type=dr.DeviceEntryType.SERVICE,
+        configuration_url=f"homeassistant://{PANEL_URL}/area/{entry.entry_id}",  # the area in the panel
     )
     if is_new:
         place_in_area(hass, device, area_id)
@@ -73,6 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) ->
             name=station.name,
             manufacturer=NAME,
             model="Station",
+            configuration_url=f"homeassistant://{PANEL_URL}/station/{entry.entry_id}/{station.id}",
         )
         if is_new:
             place_in_area(hass, station_device, area_id)
