@@ -913,11 +913,6 @@ class HomeTimerPanel extends LitElement {
     .ic.ring { background: color-mix(in srgb, var(--ht-err) 15%, transparent); color: var(--ht-err); }
     .add { color: var(--ht-p); font-weight: 500; padding: 10px 12px; }
     .pane { flex: 1; overflow: auto; padding: 20px 28px 100px; min-width: 0; container-type: inline-size; }
-    @container (max-width: 780px) {
-      .cols { flex-direction: column; gap: 0; }
-      .colr { width: 100%; position: static; order: -1; }
-      .col { max-width: none; }
-    }
     :host([narrow]) .pane { padding: 12px 12px 100px; }
     h1 { font-size: 24px; font-weight: 400; margin: 0 0 10px; }
     .sub { color: var(--ht-s); margin-bottom: 12px; line-height: 1.45; }
@@ -1039,6 +1034,12 @@ class HomeTimerPanel extends LitElement {
     .dialog h2 { margin: 0 0 8px; font-size: 20px; font-weight: 400; }
     .choices { display: flex; flex-direction: column; gap: 4px; max-height: 50vh; overflow: auto; }
     .actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    /* last, so it wins over the column rules above: at medium widths form and Now stack */
+    @container (max-width: 780px) {
+      .cols { flex-direction: column; gap: 0; }
+      .colr { width: 100%; position: static; order: -1; }
+      .col { max-width: none; }
+    }
   `;
 }
 
