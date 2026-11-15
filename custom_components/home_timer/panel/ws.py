@@ -9,6 +9,7 @@ station/delete    remove a station
 runs/list         a power station's stored runs (without curves), the current run, the sensor's report rate and noise
 runs/get          one run with its curve ("current": the run going on)
 runs/delete       delete a stored run
+runs/preview      what saved settings and a draft make of each stored run (and of the current one)
 settings/save     the panel's own settings (shown in the sidebar)
 
 Saves send the ``version`` they started from; if the stored data changed meanwhile
@@ -28,9 +29,9 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_AREA_ID, DOMAIN
-from ..runs import CURRENT, KEEP, compact, summary
-from ..stations import CONF_PRESETS, SUBENTRY_STATION
-from .edit import check_options, check_presets, check_station
+from ..runs import CURRENT, KEEP, compact, simulate, summary
+from ..stations import CONF_PRESETS, SUBENTRY_STATION, PowerConfig
+from .edit import check_options, check_presets, check_station, draft_power
 from .settings import async_save_settings, get_settings
 from .view import area_options, config_view, version
 
@@ -40,7 +41,7 @@ PREFIX = DOMAIN
 @callback
 def async_setup_ws(hass: HomeAssistant) -> None:
     for command in (ws_config_get, ws_area_create, ws_area_save, ws_area_delete, ws_station_save, ws_station_delete, ws_settings_save,
-                    ws_runs_list, ws_runs_get, ws_runs_delete):
+                    ws_runs_list, ws_runs_get, ws_runs_delete, ws_runs_preview):
         websocket_api.async_register_command(hass, command)
 
 
@@ -263,3 +264,76 @@ def ws_runs_delete(hass: HomeAssistant, connection: websocket_api.ActiveConnecti
         connection.send_error(msg["id"], "not_found", "Unknown run")
         return
     connection.send_result(msg["id"], {"deleted": True})
+
+
+def _preset_seconds(presets: list[Any], preset_id: str | None) -> float | None:
+    preset = next((p for p in presets if isinstance(p, dict) and p.get("id") == preset_id), None)
+    try:
+        seconds = float(preset["duration"]) if preset else None
+    except (KeyError, TypeError, ValueError):
+        return None
+    return seconds if seconds and 0 < seconds <= 86400 else None
+
+
+# saved settings simulated on stored runs, per station: they only change with the settings
+_SAVED: dict[str, tuple[str, dict[str, dict[str, Any]]]] = {}
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{PREFIX}/runs/preview",
+        **RUN_SCHEMA,
+        vol.Required("power"): dict,
+        vol.Optional("presets"): list,
+        vol.Optional("current_only", default=False): bool,
+    }
+)
+@websocket_api.async_response
+async def ws_runs_preview(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """The panel's live preview: each run as the saved settings and as the draft see it.
+
+    The draft is the station's power settings as edited; a value that cannot be used
+    (a field being typed, out of range) falls back to the saved one. ``presets``: the
+    draft's presets (default: the saved ones). ``current_only``: only the run going on.
+    """
+    if (engine := _engine(hass, connection, msg)) is None:
+        return
+    station_id = msg["station_id"]
+    subentry = engine.entry.subentries.get(station_id)
+    station = engine.stations.get(station_id)
+    if station is None or station.power is None or subentry is None:
+        connection.send_error(msg["id"], "not_found", "Unknown power station")
+        return
+    saved = station.power
+    saved_presets = [p.to_data() for p in station.presets]
+    saved_preset = _preset_seconds(saved_presets, saved.preset)
+    draft = PowerConfig.from_data(draft_power(msg["power"], dict(subentry.data.get("power") or {}))) or saved
+    draft_preset = _preset_seconds(msg["presets"] if "presets" in msg else saved_presets, draft.preset)
+    same_settings = draft == saved and draft_preset == saved_preset
+    runs = [] if msg["current_only"] else list(engine.runs.list(station_id))
+    current = _current(engine, station_id, curve=True)
+    key = f"{engine.entry.entry_id}:{station_id}"
+    sig = repr((saved, saved_preset))
+    cache = _SAVED.get(key)
+    cached = cache[1] if cache and cache[0] == sig else {}
+
+    def _run() -> dict[str, Any]:
+        def both(run: dict[str, Any], ended: bool) -> dict[str, Any]:
+            if ended and run["id"] in cached:
+                res_saved = cached[run["id"]]
+            else:
+                res_saved = simulate(run, saved, saved_preset, ended=ended)
+                if ended:
+                    cached[run["id"]] = res_saved
+            res_draft = res_saved if same_settings else simulate(run, draft, draft_preset, ended=ended)
+            return {"id": run["id"], "saved": res_saved, "draft": res_draft}
+
+        return {
+            "runs": [both(r, True) for r in runs],
+            "current": both(current, False) if current else None,
+        }
+
+    result = await hass.async_add_executor_job(_run)
+    _SAVED[key] = (sig, cached)
+    connection.send_result(msg["id"], result)

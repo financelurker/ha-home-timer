@@ -9,6 +9,7 @@ A run (JSON)::
     {"id", "start": ISO time, "duration": s (until it stopped),
      "rang": s after the start or None, "trigger": "rule" | "off" | "countdown" | None,
      "source": "live" | "history", "simulated": True if "rang" was worked out afterwards,
+     "sensor": the power sensor it was recorded with,
      "from": s – the curve is known from here (later than 0 for a run picked up after a restart),
      "interval": median s between readings, "noise": W,
      "t": [s, …], "w": [W, …]  (a step curve: each reading holds until the next),
@@ -33,8 +34,8 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.ulid import ulid_now
 
 from .const import DOMAIN
-from .power import RULE_ENERGY, RULE_TIME, DoneRule, Trace
-from .stations import KIND_UNTIL_OFF, PowerConfig
+from .power import RULE_ENERGY, RULE_OFF, RULE_TIME, DoneRule, Trace
+from .stations import KIND_START_PRESET, KIND_UNTIL_OFF, KIND_WARN, PowerConfig
 
 if TYPE_CHECKING:
     from homeassistant.core import State
@@ -77,7 +78,7 @@ def compact(times: list[float], watts: list[float], max_points: int = MAX_POINTS
         w_out.append(w)
     if len(t_out) <= max_points:
         return t_out, w_out
-    size = len(t_out) / (max_points // 2)
+    size = len(t_out) / (max_points // 4)  # up to four readings kept per stretch
     keep: set[int] = {0, len(t_out) - 1}
     start = 0.0
     while int(start) < len(t_out):
@@ -85,8 +86,8 @@ def compact(times: list[float], watts: list[float], max_points: int = MAX_POINTS
         if hi <= lo:
             hi = lo + 1
         chunk = range(lo, hi)
-        keep.add(min(chunk, key=lambda i: w_out[i]))
-        keep.add(max(chunk, key=lambda i: w_out[i]))
+        for k in (min(chunk, key=lambda i: w_out[i]), max(chunk, key=lambda i: w_out[i])):
+            keep.update((k, min(k + 1, len(t_out) - 1)))  # and the reading after it: a step keeps its length
         start += size
     order = sorted(keep)
     return [t_out[i] for i in order], [w_out[i] for i in order]
@@ -144,6 +145,7 @@ def make_run(
     trigger: str | None,
     source: str = "live",
     simulated: bool = False,
+    sensor: str | None = None,
 ) -> dict[str, Any]:
     times, watts = compact(trace.times, trace.watts)
     return {
@@ -154,6 +156,7 @@ def make_run(
         "trigger": trigger,
         "source": source,
         "simulated": simulated,
+        "sensor": sensor,
         "from": round(trace.start, 1),
         "interval": interval(trace.times),
         "noise": noise(trace.watts, on_above),
@@ -167,6 +170,105 @@ def make_run(
 def summary(run: dict[str, Any]) -> dict[str, Any]:
     """A run without its curve (for the list)."""
     return {k: v for k, v in run.items() if k not in ("t", "w")} | {"points": len(run.get("t", []))}
+
+
+# ------------------------------------------------------------------ preview
+
+
+def _detect(times: list[float], watts: list[float], config: PowerConfig, ended: bool, duration: float) -> dict[str, Any] | None:
+    """The first run in a stored curve with these thresholds, as the watcher finds it.
+
+    Blips are skipped (as the watcher drops them and starts afresh at the next rise).
+    Returns {first, start, end, open, split} or None (no run at all).
+    """
+    i = 0
+    n = len(times)
+    while i < n:
+        first = next((k for k in range(i, n) if watts[k] > config.on_above), None)
+        if first is None:
+            return None
+        below: float | None = None
+        end: float | None = None
+        nxt = n
+        for k in range(first, n):
+            t, w = times[k], watts[k]
+            if below is not None and t - below >= config.off_after:
+                end, nxt = below, k
+                break
+            below = (below if below is not None else t) if w <= config.on_above else None
+        is_open = False
+        if end is None:
+            if not ended:
+                end = max(times[-1], duration)
+            elif below is not None:
+                end = below  # a stored run ends switched off: the power stays below
+            else:
+                end, is_open = times[-1], True  # still above at the end of the curve
+        # a run picked up after a restart: its curve starts late, the run did not
+        start = 0.0 if first == 0 and times[0] > 0 else times[first]
+        if ended and not is_open and end - start < MIN_RUN:
+            i = nxt if nxt > first else first + 1
+            continue
+        split = any(w > config.on_above for w in watts[nxt:])
+        return {"first": first, "start": start, "end": end, "open": is_open, "split": split}
+    return None
+
+
+def simulate(run: dict[str, Any], config: PowerConfig, preset_seconds: float | None, *, ended: bool = True) -> dict[str, Any]:
+    """What a station set up like ``config`` would make of a stored run (the panel's preview).
+
+    The run is detected again within its curve ("runs above", "stopped after"): its
+    start, its end, blips before it. Then, by kind: when it is done (the rule,
+    checked until the stop is noticed, as live), when the preset rings or is
+    cancelled, or when it warns – a countdown due before the stop is noticed
+    ("stopped after" later) still rings, as live. A stored run ends switched off;
+    beyond its curve the power stays where it ended. ``ended``: False for the run
+    going on.
+
+    Returns {start, duration, rang, trigger, blip, split, open}: ``start`` in seconds
+    of the stored curve, ``rang`` in seconds after that start (or None), ``trigger``
+    one of rule, off (done when it switched off), never (the rule did not fire: it
+    rings at switch-off), countdown, cancelled, none. ``open``: the run does not stop
+    within the curve with these settings.
+    """
+    times, watts = run.get("t") or [], run.get("w") or []
+    out: dict[str, Any] = {"start": None, "duration": 0.0, "rang": None, "trigger": "none", "blip": False, "split": False, "open": False}
+    found = _detect(times, watts, config, ended, float(run.get("duration") or 0.0))
+    if found is None:
+        out["blip"] = True
+        return out
+    start, end = found["start"], found["end"]
+    duration = end - start
+    out.update(start=round(start, 1), duration=round(duration, 1), split=found["split"], open=found["open"])
+    noticed = duration + config.off_after if ended and not found["open"] else None  # when the stop is noticed
+    if config.kind == KIND_UNTIL_OFF:
+        if config.done.type == RULE_OFF:
+            if noticed is not None:
+                out.update(rang=round(duration, 1), trigger="off")
+            return out
+        trace = Trace()
+        for t, w in zip(times[found["first"] :], watts[found["first"] :], strict=True):
+            trace.add(t - start, w)
+        until = noticed - 1e-6 if noticed is not None else duration  # the stop check comes first
+        rang = first_fire(config.done, trace, until)
+        if rang is not None:
+            out.update(rang=round(rang, 1), trigger="rule")
+        elif noticed is not None:
+            out.update(rang=round(duration, 1), trigger="never")
+    elif config.kind == KIND_START_PRESET:
+        if preset_seconds:
+            if noticed is None:
+                if preset_seconds <= duration:
+                    out.update(rang=round(preset_seconds, 1), trigger="countdown")
+            elif preset_seconds < noticed or not config.cancel_on_off:
+                out.update(rang=round(preset_seconds, 1), trigger="countdown")
+            else:
+                out.update(rang=round(duration, 1), trigger="cancelled")
+    elif config.kind == KIND_WARN:
+        warn = config.warn_after * 60
+        if warn < (noticed if noticed is not None else duration + 1e-6):
+            out.update(rang=round(warn, 1), trigger="countdown")
+    return out
 
 
 # ------------------------------------------------------------------ the store
@@ -214,6 +316,14 @@ class RunStore:
         self.runs[station_id] = kept
         self._save()
         return True
+
+    def fill_sensor(self, station_id: str, sensor: str) -> None:
+        """Runs stored before runs knew their sensor: they were recorded with the station's."""
+        missing = [r for r in self.list(station_id) if not r.get("sensor")]
+        for run in missing:
+            run["sensor"] = sensor
+        if missing:
+            self._save()
 
     def mark_imported(self, station_id: str) -> None:
         self.imported.add(station_id)
@@ -321,7 +431,7 @@ def build_runs(found: list[tuple[datetime, float, Trace]], config: PowerConfig) 
         runs.append(
             make_run(
                 start, duration, trace, on_above=config.on_above, rang=rang, trigger=trigger,
-                source="history", simulated=rang is not None,
+                source="history", simulated=rang is not None, sensor=config.sensor,
             )
         )
     return runs

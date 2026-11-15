@@ -8,26 +8,24 @@ A station can be started **by power** instead of by hand: a power sensor (e.g. o
 
 ## Setting it up
 
-In the [panel](panel.md), add or open a station and set **Starts** to *By power*, then:
+In the [panel](panel.md), add or open a station and set **Starts** to *By power*. The station's page then asks:
 
-| Setting | Description |
+| Card | Setting |
 |---|---|
-| Power sensor | a sensor in W, e.g. `sensor.kitchen_plug_power` |
-| Runs above | above this power the appliance counts as running (e.g. 10 W) |
-| Stopped after | it has stopped once the power stayed at or below *runs above* for this long (e.g. 30 s; short dips are ignored). A run shorter than 10 s is a blip: its timer is cancelled and it does not count |
-| When it runs | one of the three kinds below |
+| **On and off** | the power sensor (in W, e.g. `sensor.kitchen_plug_power`), and as a sentence: *It runs while the power is above 10 W and counts as off after 30 s below.* Short dips are ignored; a run shorter than 10 s is a blip – its timer is cancelled and it does not count |
+| **What should the timer do?** | one of the three answers below; the answer's own setting opens under it – *it is done when …* for the first, the preset for the second, *warn after* for the third |
 
-![A power station in the panel: the moka pot with the drop rule](images/panel-power.png)
-
-The power curve, marking runs and learning rules from them will follow in the panel.
+![A power station in the panel: the moka pot's curve with the saved and the draft ring, what the timer should do, on and off, the runs](images/panel-runs.png)
 
 ## Three kinds
 
-| Kind | Switched on | Done | Switched off |
+| What the timer should do | Switched on | Then | Switched off |
 |---|---|---|---|
-| **Until it switches off by itself** | the timer counts up | the *done rule* fires → it rings | not done yet: it rings now |
-| **Starts a preset** | the chosen preset starts (e.g. "Rice 20 min") | the preset's countdown ends | cancels the timer (optional) |
-| **Only warn if it runs too long** | a countdown *warn after* starts | after that time it rings ("forgotten?") | cancels it; if you acknowledge the warning while it still runs, it warns again (Stop silences it for this run) |
+| **Ring when it's done** | the timer counts up | *it is done when …* (the done rule) fires → it rings | not done yet: it rings now |
+| **Start a preset** | the chosen preset starts (e.g. "Rice 20 min") | the preset's countdown ends → it rings | cancels the timer (optional) |
+| **Warn if it runs too long** | a countdown *warn after* starts | after that time it rings ("forgotten?") | cancels it; if you acknowledge the warning while it still runs, it warns again (Stop silences it for this run) |
+
+*Done* and *off* are not the same: a moka pot's coffee is ready while its plate is still hot, so its done rule fires before it switches off. For a kettle: *it is done when it switches off*.
 
 A station that starts a preset keeps its manual controls (presets, custom timer, pause, +1 minute). The other two kinds have no presets or pause: the appliance decides.
 
@@ -66,9 +64,7 @@ Once a run is done, its timer is an ordinary ringing timer: adding time snoozes 
 
 ## Runs
 
-Every run is stored with its power curve when the appliance switches off (runs shorter than 10 s are blips and are not). The station's tab **Runs** in the [panel](panel.md#runs) shows them: the curve with the *runs above* threshold, the start the done rule ignores, where the run stopped and when it rang. Per station the newest 30 runs are kept.
-
-![The Runs tab: a moka pot run with its curve and when the done rule rang, the list of runs and the sensor's report rate and scatter](images/panel-runs.png)
+Every run is stored with its power curve when the appliance switches off (runs shorter than 10 s are blips and are not). The station's page in the [panel](panel.md#a-station-by-power) shows them: the curve with the *runs above* threshold, the start the done rule ignores, where the run stopped, and when the saved settings – and your changes, while they are not saved – would ring on it; when it really rang is written below. Per station the newest 30 runs are kept.
 
 The first time Home Timer sees a power station, it reads the station's earlier runs once from the recorder's history of the sensor, as far as the recorder kept it (10 days by default). For those runs of a station *until it switches off*, when its done rule – as set at that moment – would have rung is worked out from the curve, and labelled as such. Only the history before the first run stored live is read, so no run appears twice. A station's runs are deleted with the station.
 

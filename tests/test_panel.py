@@ -273,7 +273,8 @@ def test_panel_texts_complete() -> None:
     edit = (FRONTEND.parent / "panel" / "edit.py").read_text(encoding="utf-8") + (FRONTEND.parent / "panel" / "ws.py").read_text(encoding="utf-8")
     built |= {f"error.{code}" for code in re.findall(r'= "([a-z_]+)"$', edit, re.M) if code not in ("panel",)}
     built |= {"error.already_configured", "error.unknown_area"}
-    built |= {f"runs.rang.{x}" for x in ("rule", "off", "countdown", "unknown")} | {"tab.settings", "tab.runs"}
+    built |= {f"outcome.{x}" for x in ("rule", "off", "never", "cancelled")} | {f"mark.{x}" for x in ("rule", "off", "never", "cancelled")}
+    built |= {f"preview.n.{x}" for x in ("rings", "warns", "cancelled", "no_ring", "no_warning", "blip", "rule", "off", "never")}
     assert sorted(built - set(en)) == []
     # every value of a rule appears in its sentence, in both languages
     for lang in (en, de):

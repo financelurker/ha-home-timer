@@ -7,7 +7,7 @@
 
 **Timers per room.** Home Timer gives every area its own timers. A timer can belong to a **station** – a hob, the rice cooker, the bathtub – and stations have **presets**: "Rice" is 10 minutes, "Fill the bathtub" 14, one button each. When a timer runs out it rings until you acknowledge it, and your automations decide where to tell you – phone, speaker or light.
 
-![The Home Timer panel: the kitchen's stations with what each does right now – a countdown, a ringing kettle, the moka pot brewing](https://raw.githubusercontent.com/financelurker/ha-home-timer/main/docs/images/panel.png?v=285948c57f)
+![The Home Timer panel: the kitchen's stations with what each does right now – a countdown, a ringing kettle, the moka pot brewing](https://raw.githubusercontent.com/financelurker/ha-home-timer/main/docs/images/panel.png?v=eff833b037)
 
 ## What it does
 

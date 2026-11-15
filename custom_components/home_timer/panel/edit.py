@@ -176,3 +176,31 @@ def _check_power(raw: dict[str, Any], presets: list[dict[str, Any]], sensor_exis
     power["done"], rule_errors = check_rule(raw.get("done"))
     errors.update(rule_errors)
     return power, errors
+
+
+def draft_power(raw: Any, saved: dict[str, Any]) -> dict[str, Any]:
+    """Power settings as being edited, for the preview: each value that cannot be used
+    (a field being typed, out of range) falls back to the saved one – never an error."""
+    raw = raw if isinstance(raw, dict) else {}
+    power = {**POWER_DEFAULTS, **saved}
+    for key, (lo, hi) in POWER_RANGES.items():
+        value = _in_range(raw.get(key), lo, hi)
+        if value is not None:
+            power[key] = value
+    if raw.get("kind") in KINDS:
+        power["kind"] = raw["kind"]
+    if "preset" in raw:
+        power["preset"] = raw["preset"] if isinstance(raw["preset"], str) else None
+    if isinstance(raw.get("cancel_on_off"), bool):
+        power["cancel_on_off"] = raw["cancel_on_off"]
+    done = raw.get("done") if isinstance(raw.get("done"), dict) else {}
+    rule_type = done.get("type") if done.get("type") in RULE_TYPES else (power.get("done") or {}).get("type", RULE_OFF)
+    before = power.get("done") if isinstance(power.get("done"), dict) and power["done"].get("type") == rule_type else {}
+    rule: dict[str, Any] = {"type": rule_type}
+    for key, lo, hi, _step, _unit in RULE_FIELDS.get(rule_type, []):
+        value = _in_range(done.get(key), lo, hi)
+        if value is None:
+            value = _in_range(before.get(key), lo, hi)
+        rule[key] = value if value is not None else RULE_DEFAULTS[rule_type].get(key)
+    power["done"] = rule
+    return power
