@@ -11,7 +11,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import HomeTimerConfigEntry
 from .const import DOMAIN
 from .engine import AreaTimers, TimerError
-from .entity import AreaEntity, StationEntity
+from .entity import AreaEntity, StationEntity, remove_orphans
 
 KEY = "custom_minutes"
 
@@ -21,8 +21,12 @@ async def async_setup_entry(
 ) -> None:
     engine = entry.runtime_data
     async_add_entities([AreaCustomMinutes(engine, KEY)])
+    wanted = {f"{engine.entry.entry_id}_{KEY}"}
     for station in engine.stations.values():
-        async_add_entities([StationCustomMinutes(engine, station, KEY)], config_subentry_id=station.id)
+        if station.manual_controls:
+            async_add_entities([StationCustomMinutes(engine, station, KEY)], config_subentry_id=station.id)
+            wanted.add(f"{station.id}_{KEY}")
+    remove_orphans(hass, entry.entry_id, "number", wanted)
 
 
 class _CustomMinutes(NumberEntity):

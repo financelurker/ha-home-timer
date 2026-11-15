@@ -18,6 +18,7 @@
 - **[Stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md):** hob 1, rice cooker, bathtub … each a device in the area with one timer at a time, its state and end as sensors, and buttons for pause, +1 minute and stop.
 - **[Presets](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#adding-a-station):** known durations per station, one button each – no card needed; [created while cooking](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#creating-presets-while-cooking) from a custom timer.
 - **[Dashboard controls](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#starting-timers-from-a-dashboard)** for timers without a station: quick timers (one tap), a custom duration, "save as preset".
+- **[Power stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md):** a power sensor starts the timer – it rings when the appliance is done (e.g. a moka pot), starts a preset when switched on, or warns if it runs too long.
 - **[Device triggers](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md#device-triggers)** per station and per area: started, finished, reminder, acknowledged.
 
 ## Installation
@@ -53,6 +54,7 @@ Without the button: HACS → ⋮ → **Custom repositories** → add `https://gi
 |---|---|
 | [Setup](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md) | adding an area, its device, options, removing it |
 | [Stations and presets](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md) | adding a station, presets, its device and entities, one timer per station |
+| [Power stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md) | stations started by a power sensor: kinds, done rules, entities |
 | [Timers](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md) | dashboard controls and quick timers, life cycle, ringing, to-do list, options, restarts |
 | [Automations](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md) | actions, events and device triggers, with YAML examples |
 | [Reference](https://github.com/financelurker/ha-home-timer/blob/main/docs/reference.md) | entities and attributes |

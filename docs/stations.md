@@ -8,7 +8,8 @@ A **station** is anything a timer belongs to: a hob, the rice cooker, the oven, 
 
 Settings → Devices & services → Home Timer → the area's entry → **Add station**.
 
-1. **Name and icon:** e.g. *Hob 1* with `mdi:stove`. The dialog keeps names unique within the area (renaming a station with ⋮ → *Rename* does not check this; Home Timer logs a warning if two stations share a name). With an icon, the station's timer shows it in every state instead of the state icons.
+1. **Name, icon and how it starts:** *By hand* (as described here) or *By power* (see [Power stations](power.md)).
+   **Name and icon:** e.g. *Hob 1* with `mdi:stove`. The dialog keeps names unique within the area (renaming a station with ⋮ → *Rename* does not check this; Home Timer logs a warning if two stations share a name). With an icon, the station's timer shows it in every state instead of the state icons.
 2. **Presets** (a menu, as often as you like):
    - **Add preset:** name (*Rice*), duration (10 min), optional note (*level 6, then 3*). The note goes with the timer's events, e.g. into a notification.
    - **Change or delete a preset.**

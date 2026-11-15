@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity import Entity
 
@@ -43,3 +45,13 @@ class StationEntity(Entity):
 
     async def async_added_to_hass(self) -> None:
         self.async_on_remove(self.engine.async_add_listener(self.async_write_ha_state))
+
+
+@callback
+def remove_orphans(hass: HomeAssistant, entry_id: str, domain: str, wanted: set[str]) -> None:
+    """Remove this entry's entities of a platform that it no longer has (deleted preset,
+    a station switched between by hand and by power …)."""
+    registry = er.async_get(hass)
+    for entity in er.async_entries_for_config_entry(registry, entry_id):
+        if entity.domain == domain and entity.platform == DOMAIN and entity.unique_id not in wanted:
+            registry.async_remove(entity.entity_id)

@@ -52,9 +52,9 @@ A target names either stations or areas, not both (only `acknowledge` takes both
 | `home_timer_paused` | it is paused | |
 | `home_timer_resumed` | it is resumed | |
 | `home_timer_time_changed` | time is added or subtracted | `change` (seconds, negative when subtracted; at most what was left) |
-| `home_timer_finished` | it runs out | `late` (`true`: it ran out during a restart) |
+| `home_timer_finished` | it runs out | `late` (`true`: it ran out during a restart); for [power stations](power.md) `trigger`: `rule` or `off` |
 | `home_timer_reminder` | while it rings, every few minutes | `overtime` (seconds since it ran out) |
-| `home_timer_cancelled` | it is cancelled | `reason`: `manual`, `replaced` (a new or assigned timer on the station) or `station_removed` (then `device_id` is the area's device; `station_name` is still the station's) |
+| `home_timer_cancelled` | it is cancelled | `reason`: `manual`, `replaced` (a new or assigned timer on the station) or `station_removed`, `power_off` (a power station's appliance was switched off) (then `device_id` is the area's device; `station_name` is still the station's) |
 | `home_timer_acknowledged` | a ringing timer is acknowledged | `by`: `button`, `action`, `todo` (checked off in the to-do list) or `timeout`; `overtime` |
 | `home_timer_assigned` | it is attached to a station (`home_timer.assign`) | `previous_station`, `previous_station_name` (when it moved from another station, else empty) |
 

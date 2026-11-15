@@ -6,13 +6,12 @@ from __future__ import annotations
 from homeassistant.components.button import ButtonEntity
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import HomeTimerConfigEntry
 from .const import BY_BUTTON, DOMAIN, STATUS_ACTIVE, STATUS_PAUSED, STATUS_RINGING
 from .engine import TimerError
-from .entity import AreaEntity, StationEntity
+from .entity import AreaEntity, StationEntity, remove_orphans
 from .stations import Preset
 
 PRESET_KEY = "start_preset"
@@ -30,20 +29,18 @@ async def async_setup_entry(
     async_add_entities(area_buttons)
     wanted: set[str] = {b.unique_id for b in area_buttons if b.unique_id}
     for station in engine.stations.values():
-        buttons: list[ButtonEntity] = [PresetButton(engine, station, p) for p in station.presets]
-        buttons += [
-            StationStartCustomButton(engine, station, "start_custom"),
-            PauseResumeButton(engine, station, "pause_resume"),
-            AddMinuteButton(engine, station, "add_minute"),
-            StopButton(engine, station, "stop"),
-        ]
+        buttons: list[ButtonEntity] = []
+        if station.manual_controls:
+            buttons += [PresetButton(engine, station, p) for p in station.presets]
+            buttons += [
+                StationStartCustomButton(engine, station, "start_custom"),
+                PauseResumeButton(engine, station, "pause_resume"),
+                AddMinuteButton(engine, station, "add_minute"),
+            ]
+        buttons.append(StopButton(engine, station, "stop"))
         wanted.update(b.unique_id for b in buttons if b.unique_id)
         async_add_entities(buttons, config_subentry_id=station.id)
-    # buttons of deleted presets
-    registry = er.async_get(hass)
-    for entity in er.async_entries_for_config_entry(registry, entry.entry_id):
-        if entity.domain == "button" and entity.platform == DOMAIN and entity.unique_id not in wanted:
-            registry.async_remove(entity.entity_id)
+    remove_orphans(hass, entry.entry_id, "button", wanted)
 
 
 def _run(func, *args, **kwargs) -> None:

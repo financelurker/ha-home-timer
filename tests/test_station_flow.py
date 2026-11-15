@@ -83,3 +83,52 @@ async def test_reconfigure_station(hass: HomeAssistant, kitchen) -> None:
     assert [(p["id"], p["name"], p["duration"]) for p in subentry.data["presets"]] == [(rice_id, "Basmati", 720)]
     assert hass.states.get("sensor.kitchen_hob_1") is not None  # entity id stays, name follows
     assert hass.states.get("button.kitchen_hob_1_start_pasta") is None
+
+
+async def test_add_power_station(hass: HomeAssistant, kitchen) -> None:
+    result = await hass.config_entries.subentries.async_init((kitchen.entry_id, "station"), context={"source": SOURCE_USER})
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], {"name": "Moka pot", "mode": "power"})
+    assert result["step_id"] == "power"
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"sensor": "sensor.moka_power", "on_above": 20, "off_after": 30, "kind": "until_off"}
+    )
+    assert result["step_id"] == "done_rule"
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], {"type": "drop"})
+    assert result["step_id"] == "done_params"
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"percent": 10, "window": 60, "ignore": 120}
+    )
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["settings", "power", "done"]
+    result = await _menu(hass, result["flow_id"], "done")
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    await hass.async_block_till_done()
+    data = next(iter(kitchen.subentries.values())).data
+    assert data["mode"] == "power"
+    assert data["power"]["sensor"] == "sensor.moka_power"
+    assert data["power"]["done"] == {"type": "drop", "percent": 10.0, "window": 60.0, "ignore": 120.0}
+    assert hass.states.get("binary_sensor.kitchen_moka_pot_running") is not None
+    assert hass.states.get("sensor.kitchen_moka_pot").attributes["done_rule"] == "falls by ≥ 10 % within 60 s (first 120 s ignored)"
+
+
+async def test_power_station_starting_a_preset(hass: HomeAssistant, kitchen) -> None:
+    result = await hass.config_entries.subentries.async_init((kitchen.entry_id, "station"), context={"source": SOURCE_USER})
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], {"name": "Rice cooker", "mode": "power"})
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"sensor": "sensor.rice_power", "on_above": 20, "off_after": 30, "kind": "start_preset"}
+    )
+    assert result["errors"] == {"base": "no_presets"}
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], {})
+    assert "add_preset" in result["menu_options"]
+    result = await _menu(hass, result["flow_id"], "add_preset")
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], {"name": "Rice", "duration": {"minutes": 20}})
+    result = await _menu(hass, result["flow_id"], "power")
+    result = await hass.config_entries.subentries.async_configure(
+        result["flow_id"], {"sensor": "sensor.rice_power", "on_above": 20, "off_after": 30, "kind": "start_preset"}
+    )
+    preset_id = result["data_schema"].schema["preset"].config["options"][0]["value"]
+    result = await hass.config_entries.subentries.async_configure(result["flow_id"], {"preset": preset_id, "cancel_on_off": False})
+    result = await _menu(hass, result["flow_id"], "done")
+    await hass.async_block_till_done()
+    data = next(iter(kitchen.subentries.values())).data
+    assert (data["power"]["kind"], data["power"]["preset"], data["power"]["cancel_on_off"]) == ("start_preset", preset_id, False)
