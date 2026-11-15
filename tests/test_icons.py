@@ -23,3 +23,13 @@ def test_every_action_has_an_icon_and_translation():
     assert set(ICONS["services"]) == set(SERVICES) == set(STRINGS["services"])
     for name, spec in SERVICES.items():
         assert set(spec.get("fields", {})) == set(STRINGS["services"][name].get("fields", {})), name
+
+
+def test_services_yaml_selectors_are_valid():
+    from homeassistant.helpers import selector
+
+    for spec in SERVICES.values():
+        if "target" in spec:
+            selector.TargetSelector.CONFIG_SCHEMA(spec["target"])
+        for field in spec.get("fields", {}).values():
+            selector.validate_selector(field["selector"])

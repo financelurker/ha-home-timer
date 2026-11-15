@@ -1,6 +1,7 @@
 start:
   target:
-    area: {}
+    entity:
+      integration: home_timer
     device:
       integration: home_timer
   fields:
@@ -55,7 +56,8 @@ cancel:
 
 acknowledge:
   target:
-    area: {}
+    entity:
+      integration: home_timer
     device:
       integration: home_timer
   fields:
