@@ -247,6 +247,7 @@ class AreaTimers:
             return
         self._running = True
         now = dt_util.utcnow()
+        before = self._data()
         known = self.stations
         for timer in list(self.timers.values()):
             if timer.id not in self.timers:
@@ -263,7 +264,10 @@ class AreaTimers:
                 self.acknowledge(timer.id, by=BY_TIMEOUT)
             else:
                 self._schedule(timer)
-        self._changed()
+        if self._data() != before:
+            self._changed()  # missed timers reported, removed, acknowledged: store it
+        else:
+            self._notify()
 
     async def async_unload(self) -> None:
         self._running = False

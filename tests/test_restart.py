@@ -160,6 +160,7 @@ async def test_storage_that_is_not_a_dict(hass: HomeAssistant, hass_storage) -> 
     hass_storage[storage_key(entry.entry_id)] = {"version": STORAGE_VERSION, "key": storage_key(entry.entry_id), "data": []}
     entry.add_to_hass(hass)
     assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
     assert entry.runtime_data.timers == {}
 
 
