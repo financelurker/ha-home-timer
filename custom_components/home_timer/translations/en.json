@@ -1,0 +1,24 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Home Timer",
+        "description": "One entry per area.",
+        "data": {
+          "area_id": "Area",
+          "name": "Name"
+        },
+        "data_description": {
+          "area_id": "Each area can be set up only once.",
+          "name": "Prefix for the area's devices, e.g. \"Kitchen: Hob 1\". Default: the area's name at setup time; rename the entry to change it."
+        }
+      }
+    },
+    "error": {
+      "unknown_area": "This area does not exist (anymore)."
+    },
+    "abort": {
+      "already_configured": "This area is already set up."
+    }
+  }
+}

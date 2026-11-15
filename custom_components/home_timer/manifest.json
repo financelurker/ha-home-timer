@@ -1,0 +1,15 @@
+{
+  "domain": "home_timer",
+  "name": "Home Timer",
+  "codeowners": [
+    "@financelurker"
+  ],
+  "config_flow": true,
+  "dependencies": [],
+  "documentation": "https://github.com/financelurker/ha-home-timer",
+  "integration_type": "hub",
+  "iot_class": "calculated",
+  "issue_tracker": "https://github.com/financelurker/ha-home-timer/issues",
+  "requirements": [],
+  "version": "0.0.0"
+}
