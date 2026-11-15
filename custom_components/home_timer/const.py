@@ -47,6 +47,7 @@ REASON_STATION_REMOVED: Final = "station_removed"
 BY_ACTION: Final = "action"
 BY_BUTTON: Final = "button"
 BY_TIMEOUT: Final = "timeout"
+BY_TODO: Final = "todo"
 
 # actions
 SERVICE_START: Final = "start"
@@ -66,3 +67,6 @@ ATTR_SOURCE: Final = "source"
 ATTR_PRESET: Final = "preset"
 
 STORAGE_VERSION: Final = 1
+
+# dispatched whenever the timers of any area change (the to-do list listens)
+SIGNAL_TIMERS_CHANGED: Final = f"{DOMAIN}_timers_changed"

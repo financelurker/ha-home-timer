@@ -128,6 +128,11 @@
       "stop": {
         "name": "Stopp / Bestätigen"
       }
+    },
+    "todo": {
+      "ringing_timers": {
+        "name": "Home Timer: klingelnde Timer"
+      }
     }
   },
   "services": {
@@ -296,6 +301,9 @@
     },
     "other_area": {
       "message": "Timer und Station gehören zu verschiedenen Bereichen."
+    },
+    "todo_check_off_only": {
+      "message": "Klingelnde Timer können hier nur abgehakt werden; das bestätigt sie."
     }
   },
   "config_subentries": {

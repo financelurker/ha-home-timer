@@ -23,6 +23,7 @@ async def test_area_named_after_the_area(hass: HomeAssistant) -> None:
     assert result["title"] == "Kitchen"
     assert result["data"] == {CONF_AREA_ID: kitchen.id}
     assert result["result"].unique_id == kitchen.id
+    await hass.async_block_till_done()
 
 
 async def test_area_only_once(hass: HomeAssistant) -> None:
@@ -32,6 +33,7 @@ async def test_area_only_once(hass: HomeAssistant) -> None:
         result = await hass.config_entries.flow.async_configure(result["flow_id"], {CONF_AREA_ID: kitchen.id})
         assert result["type"] is expected
     assert result["reason"] == "already_configured"
+    await hass.async_block_till_done()
 
 
 async def test_unknown_area(hass: HomeAssistant) -> None:

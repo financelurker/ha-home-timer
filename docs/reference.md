@@ -37,6 +37,12 @@ Each entry of `timers`:
 | `note`, `source` | as given at the start |
 | `station`, `preset` | the station's id and the preset's name, or empty |
 
+## Home Timer as a whole
+
+| Entity | Description |
+|---|---|
+| `todo.home_timer_ringing_timers` | one to-do list for all areas: the ringing timers; checking one off acknowledges it (see [Timers](timers.md#to-do-list)) |
+
 ## Station
 
 On the station's device.

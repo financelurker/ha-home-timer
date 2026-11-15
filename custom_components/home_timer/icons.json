@@ -45,6 +45,11 @@
       "stop": {
         "default": "mdi:stop-circle-outline"
       }
+    },
+    "todo": {
+      "ringing_timers": {
+        "default": "mdi:bell-ring-outline"
+      }
     }
   },
   "services": {

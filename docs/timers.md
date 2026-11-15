@@ -34,6 +34,14 @@ Home Timer makes no sound itself. "Ringing" is a state, and events tell your aut
 
 What happens then is up to you: a phone notification, an announcement, a light. See [Automations](automations.md).
 
+## To-do list
+
+Home Timer has one to-do list for all areas, *Home Timer: ringing timers* (`todo.home_timer_ringing_timers` on an English system): every ringing timer is an open to-do – "Rice · Hob 1 · Kitchen" (or "Dough · Kitchen" without a station), due since it ran out, with its note as the description. **Checking one off acknowledges the timer** (`by: todo`); it then leaves the list. Use it in the to-do panel, on a dashboard (to-do list card) or with the `todo` actions. The list belongs to Home Timer as a whole, so it has no device and no area.
+
+The list only offers checking off: items cannot be added, renamed, deleted or moved, so it only ever holds ringing timers. Active and paused timers do not appear; acknowledged ones are gone (no history).
+
+You find it in the to-do panel and under Settings → Entities (not on an area's entry or device). Like every to-do list it is exposed to Assist by default: "complete <item> on Home Timer: ringing timers" acknowledges a timer (the item's text must match); adding or removing items is refused. It is removed with the last area; setting up an area brings it back.
+
 ## Options
 
 Per area: Settings → Devices & services → Home Timer → the area's entry → **Configure**. Saving reloads the area; running timers go on.
