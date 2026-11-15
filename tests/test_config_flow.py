@@ -48,22 +48,44 @@ async def test_options(hass: HomeAssistant) -> None:
 
     entry = await setup_area(hass, "Kitchen")
     result = await hass.config_entries.options.async_init(entry.entry_id)
+    assert result["type"] is FlowResultType.MENU
+    assert result["menu_options"] == ["behaviour", "add_preset", "done"]
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "behaviour"})
     assert result["type"] is FlowResultType.FORM
     result = await hass.config_entries.options.async_configure(
         result["flow_id"],
-        {
-            "ring_until_acknowledged": False,
-            "reminder_minutes": 5.0,
-            "auto_dismiss_minutes": 0,
-            "report_missed": False,
-        },
+        {"ring_until_acknowledged": False, "reminder_minutes": 5.0, "auto_dismiss_minutes": 0, "report_missed": False},
     )
+    assert result["type"] is FlowResultType.MENU
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "add_preset"})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"name": "Tea", "duration": {"minutes": 4}}
+    )
+    assert result["menu_options"] == ["behaviour", "add_preset", "edit_preset", "done"]
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "done"})
     await hass.async_block_till_done()
     assert result["type"] is FlowResultType.CREATE_ENTRY
-    assert entry.options == {
+    options = dict(entry.options)
+    presets = options.pop("presets")
+    assert options == {
         "ring_until_acknowledged": False,
         "reminder_minutes": 5,
         "auto_dismiss_minutes": 0,
         "report_missed": False,
     }
+    assert [(p["name"], p["duration"]) for p in presets] == [("Tea", 240)]
     assert entry.runtime_data.option("reminder_minutes") == 5
+    assert hass.states.get("button.kitchen_home_timer_start_tea") is not None
+
+    # delete it again
+    result = await hass.config_entries.options.async_init(entry.entry_id)
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "edit_preset"})
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"preset": presets[0]["id"]})
+    result = await hass.config_entries.options.async_configure(
+        result["flow_id"], {"name": "Tea", "duration": {"minutes": 4}, "delete": True}
+    )
+    result = await hass.config_entries.options.async_configure(result["flow_id"], {"next_step_id": "done"})
+    await hass.async_block_till_done()
+    assert entry.options["presets"] == []
+    assert entry.options["reminder_minutes"] == 5
+    assert hass.states.get("button.kitchen_home_timer_start_tea") is None

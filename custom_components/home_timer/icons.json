@@ -44,11 +44,24 @@
       },
       "stop": {
         "default": "mdi:stop-circle-outline"
+      },
+      "start_custom": {
+        "default": "mdi:timer-play-outline"
       }
     },
     "todo": {
       "ringing_timers": {
         "default": "mdi:bell-ring-outline"
+      }
+    },
+    "number": {
+      "custom_minutes": {
+        "default": "mdi:timer-cog-outline"
+      }
+    },
+    "text": {
+      "save_preset": {
+        "default": "mdi:content-save-outline"
       }
     }
   },

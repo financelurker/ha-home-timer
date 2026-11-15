@@ -4,8 +4,9 @@ The area is the entry's unique id, so each area can be set up only once; the ent
 is named after the area. Devices are not prefixed with the area's name: Home
 Assistant puts the area into entity ids and shows it next to device names.
 Stations are config subentries of the area ("Add station" on the entry): a name, an
-icon and presets, edited in a menu. The options set how the area's timers behave
-when they run out.
+icon and presets, edited in a menu. The options are a menu too: how the area's
+timers behave when they run out, and the area's quick timers (presets without a
+station).
 """
 
 from __future__ import annotations
@@ -90,30 +91,6 @@ def _minutes(maximum: int) -> sel.NumberSelector:
     )
 
 
-class HomeTimerOptionsFlow(OptionsFlow):
-    """How the area's timers behave when they run out; saving reloads the area (update listener)."""
-
-    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
-        if user_input is not None:
-            data = {
-                CONF_RING_UNTIL_ACK: bool(user_input[CONF_RING_UNTIL_ACK]),
-                CONF_REMINDER_MINUTES: round(user_input[CONF_REMINDER_MINUTES]),
-                CONF_AUTO_DISMISS_MINUTES: round(user_input[CONF_AUTO_DISMISS_MINUTES]),
-                CONF_REPORT_MISSED: bool(user_input[CONF_REPORT_MISSED]),
-            }
-            return self.async_create_entry(data=data)
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_RING_UNTIL_ACK): sel.BooleanSelector(),
-                vol.Required(CONF_REMINDER_MINUTES): _minutes(60),
-                vol.Required(CONF_AUTO_DISMISS_MINUTES): _minutes(240),
-                vol.Required(CONF_REPORT_MISSED): sel.BooleanSelector(),
-            }
-        )
-        current = {**DEFAULT_OPTIONS, **self.config_entry.options}
-        return self.async_show_form(step_id="init", data_schema=self.add_suggested_values_to_schema(schema, current))
-
-
 def _duration_seconds(value: dict[str, Any]) -> float:
     return cv.time_period_dict(value).total_seconds()
 
@@ -131,7 +108,153 @@ def _format(seconds: float) -> str:
     return f"{minutes}:{secs:02d} min"
 
 
-class StationFlow(ConfigSubentryFlow):
+class PresetSteps:
+    """Steps to add, change and delete presets in ``self._presets``, back to ``menu``.
+
+    Shared by the station flow (a station's presets) and the options flow (the
+    area's quick timers). ``self._label`` names what the presets belong to.
+    """
+
+    _presets: list[dict[str, Any]]
+    _editing: str | None
+    _label: str
+
+    def _listing(self) -> str:
+        return "\n".join(f"- {p['name']} · {_format(p['duration'])}" for p in self._presets) or "–"
+
+    async def async_step_add_preset(self, user_input: dict[str, Any] | None = None) -> Any:
+        return await self._preset_form("add_preset", user_input, None)
+
+    async def async_step_edit_preset(self, user_input: dict[str, Any] | None = None) -> Any:
+        if user_input is not None:
+            self._editing = user_input[CONF_PRESET]
+            return await self.async_step_preset()
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_PRESET): sel.SelectSelector(
+                    sel.SelectSelectorConfig(
+                        options=[
+                            sel.SelectOptionDict(value=p["id"], label=f"{p['name']} · {_format(p['duration'])}")
+                            for p in self._presets
+                        ],
+                        mode=sel.SelectSelectorMode.LIST,
+                    )
+                )
+            }
+        )
+        return self.async_show_form(step_id="edit_preset", data_schema=schema)  # type: ignore[attr-defined]
+
+    async def async_step_preset(self, user_input: dict[str, Any] | None = None) -> Any:
+        current = next((p for p in self._presets if p["id"] == self._editing), None)
+        if current is None:
+            return await self.async_step_menu()  # type: ignore[attr-defined]
+        if user_input is not None and user_input.get(CONF_DELETE):
+            self._presets.remove(current)
+            return await self.async_step_menu()  # type: ignore[attr-defined]
+        return await self._preset_form("preset", user_input, current)
+
+    async def _preset_form(
+        self, step_id: str, user_input: dict[str, Any] | None, current: dict[str, Any] | None
+    ) -> Any:
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            name = user_input[CONF_NAME].strip()
+            seconds = _duration_seconds(user_input[CONF_DURATION])
+            taken = any(p["name"].casefold() == name.casefold() and p is not current for p in self._presets)
+            if not name:
+                errors[CONF_NAME] = "name_required"
+            elif taken:
+                errors[CONF_NAME] = "preset_exists"
+            elif seconds <= 0:
+                errors[CONF_DURATION] = "invalid_duration"
+            else:
+                preset = current if current is not None else {"id": ulid_now()}
+                preset.update({CONF_NAME: name, CONF_DURATION: seconds})
+                note = (user_input.get(CONF_NOTE) or "").strip()
+                if note:
+                    preset[CONF_NOTE] = note
+                else:
+                    preset.pop(CONF_NOTE, None)
+                if current is None:
+                    self._presets.append(preset)
+                return await self.async_step_menu()  # type: ignore[attr-defined]
+        fields: dict[Any, Any] = {
+            vol.Required(CONF_NAME): sel.TextSelector(),
+            vol.Required(CONF_DURATION): sel.DurationSelector(sel.DurationSelectorConfig(enable_day=False)),
+            vol.Optional(CONF_NOTE): sel.TextSelector(),
+        }
+        if current is not None:
+            fields[vol.Optional(CONF_DELETE, default=False)] = sel.BooleanSelector()
+        suggested = user_input or (
+            {
+                CONF_NAME: current["name"],
+                CONF_DURATION: _duration_dict(current["duration"]),
+                CONF_NOTE: current.get(CONF_NOTE, ""),
+            }
+            if current is not None
+            else {}
+        )
+        return self.async_show_form(  # type: ignore[attr-defined]
+            step_id=step_id,
+            data_schema=self.add_suggested_values_to_schema(vol.Schema(fields), suggested),  # type: ignore[attr-defined]
+            errors=errors,
+            description_placeholders={"station": self._label},
+        )
+
+
+class HomeTimerOptionsFlow(PresetSteps, OptionsFlow):
+    """Options of an area as a menu: behaviour, quick timers; saving reloads the area."""
+
+    def __init__(self) -> None:
+        self._behaviour: dict[str, Any] = {}
+        self._presets: list[dict[str, Any]] = []
+        self._editing: str | None = None
+        self._label = ""
+
+    async def async_step_init(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        options = self.config_entry.options
+        self._behaviour = {key: options.get(key, default) for key, default in DEFAULT_OPTIONS.items()}
+        self._presets = [dict(p) for p in options.get(CONF_PRESETS, [])]
+        self._label = self.config_entry.title
+        return await self.async_step_menu()
+
+    async def async_step_menu(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        options = ["behaviour", "add_preset"]
+        if self._presets:
+            options.append("edit_preset")
+        options.append("done")
+        return self.async_show_menu(
+            step_id="menu",
+            menu_options=options,
+            description_placeholders={"area": self._label, "presets": self._listing()},
+        )
+
+    async def async_step_behaviour(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        if user_input is not None:
+            self._behaviour = {
+                CONF_RING_UNTIL_ACK: bool(user_input[CONF_RING_UNTIL_ACK]),
+                CONF_REMINDER_MINUTES: round(user_input[CONF_REMINDER_MINUTES]),
+                CONF_AUTO_DISMISS_MINUTES: round(user_input[CONF_AUTO_DISMISS_MINUTES]),
+                CONF_REPORT_MISSED: bool(user_input[CONF_REPORT_MISSED]),
+            }
+            return await self.async_step_menu()
+        schema = vol.Schema(
+            {
+                vol.Required(CONF_RING_UNTIL_ACK): sel.BooleanSelector(),
+                vol.Required(CONF_REMINDER_MINUTES): _minutes(60),
+                vol.Required(CONF_AUTO_DISMISS_MINUTES): _minutes(240),
+                vol.Required(CONF_REPORT_MISSED): sel.BooleanSelector(),
+            }
+        )
+        return self.async_show_form(
+            step_id="behaviour", data_schema=self.add_suggested_values_to_schema(schema, self._behaviour)
+        )
+
+    async def async_step_done(self, user_input: dict[str, Any] | None = None) -> ConfigFlowResult:
+        return self.async_create_entry(data={**self._behaviour, CONF_PRESETS: self._presets})
+
+
+class StationFlow(PresetSteps, ConfigSubentryFlow):
     """Add or change a station: name and icon, then its presets in a menu.
 
     Nothing is saved before "Done"; adding a station ends with creating it,
@@ -143,6 +266,10 @@ class StationFlow(ConfigSubentryFlow):
         self._icon: str | None = None
         self._presets: list[dict[str, Any]] = []
         self._editing: str | None = None
+
+    @property
+    def _label(self) -> str:  # type: ignore[override]
+        return self._name
 
     # ----------------------------------------------------------- entry points
 
@@ -189,43 +316,11 @@ class StationFlow(ConfigSubentryFlow):
         if self._presets:
             options.append("edit_preset")
         options.append("done")
-        listing = "\n".join(f"- {p['name']} · {_format(p['duration'])}" for p in self._presets) or "–"
         return self.async_show_menu(
             step_id="menu",
             menu_options=options,
-            description_placeholders={"station": self._name, "presets": listing},
+            description_placeholders={"station": self._name, "presets": self._listing()},
         )
-
-    async def async_step_add_preset(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
-        return await self._preset_form("add_preset", user_input, None)
-
-    async def async_step_edit_preset(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
-        if user_input is not None:
-            self._editing = user_input[CONF_PRESET]
-            return await self.async_step_preset()
-        schema = vol.Schema(
-            {
-                vol.Required(CONF_PRESET): sel.SelectSelector(
-                    sel.SelectSelectorConfig(
-                        options=[
-                            sel.SelectOptionDict(value=p["id"], label=f"{p['name']} · {_format(p['duration'])}")
-                            for p in self._presets
-                        ],
-                        mode=sel.SelectSelectorMode.LIST,
-                    )
-                )
-            }
-        )
-        return self.async_show_form(step_id="edit_preset", data_schema=schema)
-
-    async def async_step_preset(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
-        current = next((p for p in self._presets if p["id"] == self._editing), None)
-        if current is None:
-            return await self.async_step_menu()
-        if user_input is not None and user_input.get(CONF_DELETE):
-            self._presets.remove(current)
-            return await self.async_step_menu()
-        return await self._preset_form("preset", user_input, current)
 
     async def async_step_done(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
         data = {CONF_ICON: self._icon, CONF_PRESETS: self._presets}
@@ -233,58 +328,6 @@ class StationFlow(ConfigSubentryFlow):
             return self.async_create_entry(title=self._name, data=data)
         return self.async_update_and_abort(
             self._get_entry(), self._get_reconfigure_subentry(), title=self._name, data=data
-        )
-
-    # ---------------------------------------------------------------- helpers
-
-    async def _preset_form(
-        self, step_id: str, user_input: dict[str, Any] | None, current: dict[str, Any] | None
-    ) -> SubentryFlowResult:
-        errors: dict[str, str] = {}
-        if user_input is not None:
-            name = user_input[CONF_NAME].strip()
-            seconds = _duration_seconds(user_input[CONF_DURATION])
-            taken = any(
-                p["name"].casefold() == name.casefold() and p is not current for p in self._presets
-            )
-            if not name:
-                errors[CONF_NAME] = "name_required"
-            elif taken:
-                errors[CONF_NAME] = "preset_exists"
-            elif seconds <= 0:
-                errors[CONF_DURATION] = "invalid_duration"
-            else:
-                preset = current if current is not None else {"id": ulid_now()}
-                preset.update({CONF_NAME: name, CONF_DURATION: seconds})
-                note = (user_input.get(CONF_NOTE) or "").strip()
-                if note:
-                    preset[CONF_NOTE] = note
-                else:
-                    preset.pop(CONF_NOTE, None)
-                if current is None:
-                    self._presets.append(preset)
-                return await self.async_step_menu()
-        fields: dict[Any, Any] = {
-            vol.Required(CONF_NAME): sel.TextSelector(),
-            vol.Required(CONF_DURATION): sel.DurationSelector(sel.DurationSelectorConfig(enable_day=False)),
-            vol.Optional(CONF_NOTE): sel.TextSelector(),
-        }
-        if current is not None:
-            fields[vol.Optional(CONF_DELETE, default=False)] = sel.BooleanSelector()
-        suggested = user_input or (
-            {
-                CONF_NAME: current["name"],
-                CONF_DURATION: _duration_dict(current["duration"]),
-                CONF_NOTE: current.get(CONF_NOTE, ""),
-            }
-            if current is not None
-            else {}
-        )
-        return self.async_show_form(
-            step_id=step_id,
-            data_schema=self.add_suggested_values_to_schema(vol.Schema(fields), suggested),
-            errors=errors,
-            description_placeholders={"station": self._name},
         )
 
     def _name_taken(self, name: str) -> bool:

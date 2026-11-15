@@ -4,6 +4,21 @@
 
 A timer belongs to an area and, optionally, to one of its [stations](stations.md). It has a name ("Let dough rest"), a duration, and optionally a note and source data of whoever started it. An area can have any number of timers without a station at once; a station has one timer at a time.
 
+## Starting timers from a dashboard
+
+The area's *Home Timer* device has controls for timers without a station, so a dashboard that shows the area's entities (e.g. the built-in area view or Overview Plus) can start them without a custom card:
+
+| Entity | Use |
+|---|---|
+| *Start <quick timer>* | one button per quick timer of the area: one tap starts it. Several can run at once. |
+| *Custom timer* | a duration in minutes (−/+ or typing), kept for next time |
+| *Start custom timer* | starts a timer "Timer" with that duration |
+| *Save as preset* | enter a name: the last custom timer becomes a quick timer of that name (and the running timer is renamed); without a running custom timer, the custom duration is saved |
+
+**Example:** set *Custom timer* to 4, press *Start custom timer*; while it runs, enter "Tea" in *Save as preset*. From now on there is a button *Start Tea*, and the running timer is called "Tea". A quick timer of the same name gets the new duration instead of a duplicate. If several custom timers run, the last one started is meant.
+
+Quick timers are kept in the area's options (**Configure** → *Add quick timer* / *Change or delete a quick timer*), where saved ones can be changed or deleted like any other. Saving reloads the area; running timers go on. Stations have the same controls for their own presets, see [Stations](stations.md#creating-presets-while-cooking).
+
 ## Life cycle
 
 ```
@@ -44,7 +59,7 @@ You find it in the to-do panel and under Settings → Entities (not on an area's
 
 ## Options
 
-Per area: Settings → Devices & services → Home Timer → the area's entry → **Configure**. Saving reloads the area; running timers go on.
+Per area: Settings → Devices & services → Home Timer → the area's entry → **Configure** → *When a timer runs out*, then **Save**. Saving reloads the area; running timers go on.
 
 | Option | Default | Description |
 |---|---|---|

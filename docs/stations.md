@@ -30,8 +30,15 @@ The station's device carries its name and lies in the area (move it if you like)
 | `button.kitchen_hob_1_pause_resume` | pauses or resumes the timer |
 | `button.kitchen_hob_1_1_minute` | +1 minute; a ringing timer starts again with one minute |
 | `button.kitchen_hob_1_stop_acknowledge` | acknowledges a ringing timer, cancels a running or paused one |
+| `number.kitchen_hob_1_custom_timer` | custom duration in minutes, kept for next time |
+| `button.kitchen_hob_1_start_custom_timer` | starts a timer "Timer" with the custom duration (replacing the station's timer) |
+| `text.kitchen_hob_1_save_as_preset` | enter a name: saves the custom timer as a preset (see below) |
 
 Renaming a preset keeps its button (its entity id stays); deleting a preset removes it.
+
+## Creating presets while cooking
+
+Presets do not have to be set up beforehand: set *Custom timer* (e.g. 9 minutes), press *Start custom timer*, and while it runs enter "Pasta" in *Save as preset*. The station gets a preset *Pasta* (9 min) with its button *Start Pasta*, and its running timer is renamed "Pasta". A preset of the same name gets the new duration; without a running custom timer the custom duration is saved. Saved presets show up in **Configure station**, where they can be changed or deleted. Saving reloads the area; the timer goes on.
 
 ## One timer per station
 
