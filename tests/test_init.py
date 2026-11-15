@@ -46,3 +46,35 @@ async def test_unload_and_remove(hass: HomeAssistant) -> None:
     await hass.config_entries.async_remove(entry.entry_id)
     await hass.async_block_till_done()
     assert dr.async_get(hass).async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id) is None
+
+
+async def test_device_taken_out_of_the_area_stays_out(hass: HomeAssistant) -> None:
+    kitchen = ar.async_get(hass).async_create("Kitchen")
+    entry = await _setup(hass, kitchen.id)
+    devices = dr.async_get(hass)
+    device = devices.async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
+    devices.async_update_device(device.id, area_id=None)
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert devices.async_get(device.id).area_id is None
+
+
+async def test_deleted_area_is_not_written_back(hass: HomeAssistant, caplog) -> None:
+    areas = ar.async_get(hass)
+    kitchen = areas.async_create("Kitchen")
+    entry = await _setup(hass, kitchen.id)
+    devices = dr.async_get(hass)
+    device = devices.async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
+    areas.async_delete(kitchen.id)
+    await hass.async_block_till_done()
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert devices.async_get(device.id).area_id is None
+    assert "no longer exists" in caplog.text
+
+
+async def test_area_gone_before_the_first_setup(hass: HomeAssistant) -> None:
+    entry = await _setup(hass, "gone")
+    device = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, entry.entry_id), entry.entry_id)
+    assert device is not None
+    assert device.area_id is None

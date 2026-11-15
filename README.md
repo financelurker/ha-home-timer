@@ -5,7 +5,7 @@
 [![CI](https://github.com/financelurker/ha-home-timer/actions/workflows/ci.yml/badge.svg)](https://github.com/financelurker/ha-home-timer/actions/workflows/ci.yml)
 [![License](https://img.shields.io/github/license/financelurker/ha-home-timer)](https://github.com/financelurker/ha-home-timer/blob/main/LICENSE)
 
-**Timers per room.** Home Timer gives every area its own timers. A timer can belong to a **station** – a hob, the rice cooker, the bathtub, the washing machine – and stations have **presets**: "Rice" is 10 minutes, "Fill the bathtub" 14. When a timer runs out it rings until you acknowledge it, and your automations decide where to tell you.
+**Timers per room.** Home Timer will give every area its own timers. A timer can belong to a **station** – a hob, the rice cooker, the bathtub, the washing machine – and stations have **presets**: "Rice" is 10 minutes, "Fill the bathtub" 14. When a timer runs out it will ring until you acknowledge it, and your automations decide where to tell you.
 
 > **Status: in development.** This version sets up areas. The timer engine, stations, presets and entities follow in the next releases.
 

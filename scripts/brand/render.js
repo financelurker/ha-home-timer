@@ -11,7 +11,7 @@ const OUT = path.join(__dirname, '..', '..', 'custom_components', 'home_timer', 
   fs.mkdirSync(OUT, { recursive: true });
   const browser = await chromium.launch();
   const svg = fs.readFileSync(SRC, 'utf8');
-  for (const [file, size] of [['icon.png', 256], ['icon@2x.png', 512], ['logo.png', 512]]) {
+  for (const [file, size] of [['icon.png', 256], ['icon@2x.png', 512], ['logo.png', 256], ['logo@2x.png', 512]]) {
     const page = await browser.newPage({ viewport: { width: size, height: size }, deviceScaleFactor: 1 });
     const sized = svg.replace('width="256" height="256"', `width="${size}" height="${size}"`);
     await page.setContent(`<html><body style="margin:0;background:transparent">${sized}</body></html>`);
