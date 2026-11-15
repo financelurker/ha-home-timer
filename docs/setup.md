@@ -28,4 +28,4 @@ The cog of the area (Settings → Devices & services → Home Timer) opens the [
 
 ## Removing an area
 
-In the [panel](panel.md): **Area options** → *Remove Home Timer from this area*, or Settings → Devices & services → Home Timer → the area's entry → ⋮ → **Delete**. Its devices (the area's and its stations') and its stored timers go with it.
+In the [panel](panel.md): ⋮ → *Remove Home Timer from this area*, or Settings → Devices & services → Home Timer → the area's entry → ⋮ → **Delete**. Its devices (the area's and its stations') and its stored timers go with it.
