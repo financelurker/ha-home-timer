@@ -147,16 +147,48 @@
           },
           "presets": {
             "name": "Vorlagen"
+          },
+          "by_power": {
+            "name": "Über Leistung"
+          },
+          "running": {
+            "name": "Läuft"
+          },
+          "power_sensor": {
+            "name": "Leistungssensor"
+          },
+          "done_rule": {
+            "name": "Fertig-Regel"
+          },
+          "elapsed": {
+            "name": "Verstrichen"
           }
         }
       },
       "ends": {
         "name": "Timer-Ende"
+      },
+      "runs": {
+        "name": "Läufe"
+      },
+      "usual_duration": {
+        "name": "Übliche Dauer",
+        "state_attributes": {
+          "last": {
+            "name": "Letzter Lauf"
+          },
+          "durations": {
+            "name": "Dauern"
+          }
+        }
       }
     },
     "binary_sensor": {
       "ringing": {
         "name": "Klingelt"
+      },
+      "appliance_running": {
+        "name": "Läuft"
       }
     },
     "button": {
@@ -375,6 +407,9 @@
     },
     "unknown_quick_timer": {
       "message": "Der Bereich {area} hat keinen Schnell-Timer „{preset}“."
+    },
+    "open_timer": {
+      "message": "Der Timer „{name}“ läuft, bis sein Gerät fertig ist; er lässt sich nicht pausieren und seine Zeit nicht ändern."
     }
   },
   "config_subentries": {
@@ -390,21 +425,24 @@
           "description": "Bereich {area}. Eine Station ist alles, woran ein Timer hängt: ein Kochfeld, ein Gerät, ein Wasserhahn. Sie bekommt ein eigenes Gerät mit jeweils einem Timer.",
           "data": {
             "name": "Name",
-            "icon": "Symbol"
+            "icon": "Symbol",
+            "mode": "Startet"
           },
           "data_description": {
             "name": "Z. B. „Kochfeld 1“, „Reiskocher“, „Badewanne“.",
-            "icon": "Optional; wird beim Timer der Station angezeigt."
+            "icon": "Optional; wird beim Timer der Station angezeigt.",
+            "mode": "Per Hand: Vorlagen und Buttons. Über Leistung: Ein Leistungssensor zeigt, wann das Gerät läuft."
           }
         },
         "menu": {
           "title": "{station}",
-          "description": "Vorlagen:\n{presets}",
+          "description": "Vorlagen:\n{presets}\n\nLeistung: {power}",
           "menu_options": {
             "settings": "Name und Symbol",
             "add_preset": "Vorlage hinzufügen",
             "edit_preset": "Vorlage ändern oder löschen",
-            "done": "Fertig"
+            "done": "Fertig",
+            "power": "Leistungseinstellungen"
           }
         },
         "add_preset": {
@@ -438,13 +476,71 @@
             "name": "Wird zum Namen des Timers, z. B. „Reis“.",
             "note": "Optional; geht mit den Ereignissen des Timers mit."
           }
+        },
+        "power": {
+          "title": "{station}: über Leistung",
+          "description": "Vorerst schlichte Einstellungen; eine eigene Konfigurationsoberfläche löst sie ab.",
+          "data": {
+            "sensor": "Leistungssensor",
+            "on_above": "Gilt als laufend über",
+            "off_after": "Aus nach",
+            "kind": "Wenn es läuft"
+          },
+          "data_description": {
+            "on_above": "Über dieser Leistung gilt das Gerät als laufend.",
+            "off_after": "So lange höchstens bei „gilt als laufend über“: Es ist aus (kurze Einbrüche werden ignoriert). Läufe unter 10 s zählen nicht."
+          }
+        },
+        "done_rule": {
+          "title": "{station}: Wann ist es fertig?",
+          "description": "Wann der Lauf als fertig gilt; dann klingelt es.",
+          "data": {
+            "type": "Fertig-Regel"
+          }
+        },
+        "done_params": {
+          "title": "{station}: Fertig-Regel",
+          "description": "{rule}",
+          "data": {
+            "below": "Unter",
+            "seconds": "Für / nach",
+            "level": "„An“ ab",
+            "window": "Zeitfenster",
+            "share": "„An“-Anteil unter",
+            "percent": "Fällt um mindestens",
+            "factor": "Fällt schneller um",
+            "baseline": "Verglichen mit den",
+            "ignore": "Ignoriere die ersten",
+            "wh": "Nach Energie"
+          },
+          "data_description": {
+            "ignore": "Einschaltspitzen werden in dieser Zeit ignoriert.",
+            "window": "Die Zeitspanne, die die Regel betrachtet.",
+            "baseline": "… Sekunden vor dem Zeitfenster (Knick)."
+          }
+        },
+        "power_preset": {
+          "title": "{station}: Vorlage beim Einschalten",
+          "description": "Einschalten des Geräts startet diese Vorlage.",
+          "data": {
+            "preset": "Vorlage",
+            "cancel_on_off": "Ausschalten bricht den Timer ab"
+          }
+        },
+        "warn": {
+          "title": "{station}: warnen",
+          "description": "Klingelt, wenn das Gerät länger läuft; bestätigt, während es noch läuft, warnt es nach derselben Zeit erneut.",
+          "data": {
+            "warn_after": "Warnen nach"
+          }
         }
       },
       "error": {
         "name_required": "Gib einen Namen ein.",
         "station_exists": "Dieser Bereich hat bereits eine Station mit diesem Namen.",
         "preset_exists": "Diese Station hat bereits eine Vorlage mit diesem Namen.",
-        "invalid_duration": "Die Dauer muss größer als null sein."
+        "invalid_duration": "Die Dauer muss größer als null sein.",
+        "no_presets": "Lege zuerst eine Vorlage an (Menü → Vorlage hinzufügen) und wähle sie dann hier."
       }
     }
   },
@@ -455,6 +551,32 @@
       "reminder": "Timer erinnert (klingelt noch)",
       "acknowledged": "Timer bestätigt",
       "assigned": "Timer der Station zugeordnet"
+    }
+  },
+  "selector": {
+    "mode": {
+      "options": {
+        "manual": "Per Hand",
+        "power": "Über Leistung"
+      }
+    },
+    "kind": {
+      "options": {
+        "until_off": "Bis es von selbst ausgeht – zählt hoch, klingelt, wenn fertig",
+        "start_preset": "Startet eine Vorlage – Einschalten startet den Countdown",
+        "warn": "Nur warnen, wenn es zu lange läuft"
+      }
+    },
+    "rule": {
+      "options": {
+        "off": "Beim Ausschalten",
+        "pause": "Erste Pause – Leistung eine Weile unter einem Wert",
+        "cycling": "Takten – ein Thermostat schaltet ein und aus",
+        "drop": "Abfall – Leistung fällt um einen Anteil innerhalb einer Zeit",
+        "knee": "Knick – Leistung fällt viel schneller als vorher",
+        "time": "Nach einer Zeit",
+        "energy": "Nach einer Energiemenge"
+      }
     }
   }
 }

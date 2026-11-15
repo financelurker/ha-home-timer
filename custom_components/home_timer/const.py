@@ -44,10 +44,12 @@ EVENT_ASSIGNED: Final = f"{DOMAIN}_assigned"
 REASON_MANUAL: Final = "manual"
 REASON_REPLACED: Final = "replaced"
 REASON_STATION_REMOVED: Final = "station_removed"
+REASON_POWER_OFF: Final = "power_off"
 BY_ACTION: Final = "action"
 BY_BUTTON: Final = "button"
 BY_TIMEOUT: Final = "timeout"
 BY_TODO: Final = "todo"
+BY_POWER: Final = "power"
 
 # actions
 SERVICE_START: Final = "start"

@@ -19,6 +19,12 @@
       },
       "ends": {
         "default": "mdi:timer-alert-outline"
+      },
+      "runs": {
+        "default": "mdi:counter"
+      },
+      "usual_duration": {
+        "default": "mdi:timer-sand-complete"
       }
     },
     "binary_sensor": {
@@ -26,6 +32,12 @@
         "default": "mdi:bell-outline",
         "state": {
           "on": "mdi:bell-ring"
+        }
+      },
+      "appliance_running": {
+        "default": "mdi:power-plug-outline",
+        "state": {
+          "on": "mdi:power-plug"
         }
       }
     },

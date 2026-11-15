@@ -95,6 +95,7 @@ class Timer:
     preset: str | None = None
     note: str | None = None
     source: dict[str, Any] = field(default_factory=dict)
+    open: bool = False  # runs until something finishes it (a power station), no end time
 
     def remaining(self, now: datetime) -> float:
         if self.status == STATUS_ACTIVE and self.ends_at is not None:
@@ -117,7 +118,9 @@ class Timer:
             "preset": self.preset,
             "status": self.status,
             "duration": round(self.duration),
-            "remaining": round(self.remaining(now)),
+            "remaining": None if self.open and self.status == STATUS_ACTIVE else round(self.remaining(now)),
+            "elapsed": round((now - self.started_at).total_seconds()),
+            "open": self.open,
             "started_at": self.started_at.isoformat(),
             "ends_at": self.ends_at.isoformat() if self.ends_at else None,
             "finished_at": self.finished_at.isoformat() if self.finished_at else None,
@@ -145,6 +148,7 @@ class Timer:
             "preset": self.preset,
             "note": self.note,
             "source": self.source,
+            "open": self.open,
         }
 
     @classmethod
@@ -178,8 +182,9 @@ class Timer:
             preset=data.get("preset"),
             note=data.get("note"),
             source=data.get("source") or {},
+            open=bool(data.get("open", False)),
         )
-        if status == STATUS_ACTIVE and timer.ends_at is None:
+        if status == STATUS_ACTIVE and timer.ends_at is None and not timer.open:
             raise ValueError("active timer without end")
         if status == STATUS_PAUSED and timer.paused_remaining is None:
             raise ValueError("paused timer without remaining time")
@@ -203,6 +208,9 @@ class AreaTimers:
         # per scope (AREA or a station id): the custom duration and the last custom timer started
         self.custom_seconds: dict[str, float] = {}
         self._last_custom: dict[str, dict[str, Any]] = {}
+        # per power station: {"runs": n, "durations": [seconds, …] (last 20), "last": seconds}
+        self.power_stats: dict[str, dict[str, Any]] = {}
+        self._watchers: list[Any] = []
 
     # ------------------------------------------------------------- settings
 
@@ -244,6 +252,9 @@ class AreaTimers:
                 self.custom_seconds = {
                     str(k): float(v) for k, v in custom.items() if isinstance(v, (int, float)) and v > 0
                 }
+            stats = data.get("power_stats")
+            if isinstance(stats, dict):
+                self.power_stats = {str(k): v for k, v in stats.items() if isinstance(v, dict)}
             last = data.get("last_custom")
             if isinstance(last, dict):
                 self._last_custom = {
@@ -268,9 +279,12 @@ class AreaTimers:
         self._running = True
         now = dt_util.utcnow()
         known = self.stations
-        for scope in [s for s in (*self.custom_seconds, *self._last_custom) if s != AREA and s not in known]:
+        for scope in [
+            s for s in (*self.custom_seconds, *self._last_custom, *self.power_stats) if s != AREA and s not in known
+        ]:
             self.custom_seconds.pop(scope, None)  # a station deleted meanwhile
             self._last_custom.pop(scope, None)
+            self.power_stats.pop(scope, None)
         before = self._data()
         for timer in list(self.timers.values()):
             if timer.id not in self.timers:
@@ -291,9 +305,19 @@ class AreaTimers:
             self._changed()  # missed timers reported, removed, acknowledged: store it
         else:
             self._notify()
+        from .watcher import PowerWatcher  # noqa: PLC0415 - watcher imports the engine
+
+        for station in known.values():
+            if station.power is not None:
+                watcher = PowerWatcher(self, station)
+                self._watchers.append(watcher)
+                watcher.start()
 
     async def async_unload(self) -> None:
         self._running = False
+        for watcher in self._watchers:
+            watcher.stop()
+        self._watchers.clear()
         for timer_id in list(self._scheduled):
             self._unschedule(timer_id)
         self._listeners.clear()
@@ -312,8 +336,10 @@ class AreaTimers:
         preset: str | None = None,
         note: str | None = None,
         source: dict[str, Any] | None = None,
+        open_ended: bool = False,
     ) -> Timer:
-        if duration <= 0:
+        """Start a timer; ``open_ended``: no duration, it runs until ``finish`` (power stations)."""
+        if duration <= 0 and not open_ended:
             raise TimerError("invalid_duration")
         known = self.stations
         if station is not None and station not in known:
@@ -330,10 +356,11 @@ class AreaTimers:
         timer = Timer(
             id=ulid_now(),
             name=name,
-            duration=float(duration),
+            duration=0.0 if open_ended else float(duration),
             status=STATUS_ACTIVE,
             started_at=now,
-            ends_at=now + timedelta(seconds=duration),
+            ends_at=None if open_ended else now + timedelta(seconds=duration),
+            open=open_ended,
             station=station,
             station_name=known[station].name if station is not None else None,
             preset=preset,
@@ -385,6 +412,42 @@ class AreaTimers:
             note=note if note is not None else preset.note,
             source=source,
         )
+
+    # -------------------------------------------------------- power stations
+
+    @callback
+    def notify_power(self) -> None:
+        """A power station started or stopped running (its entities update)."""
+        self._notify()
+
+    def watcher(self, station_id: str) -> Any:
+        return next((w for w in self._watchers if w.station.id == station_id), None)
+
+    @callback
+    def record_power_run(self, station_id: str, seconds: float) -> None:
+        """A power station's run (until done, or until it stopped): for the statistics."""
+        stats = self.power_stats.setdefault(station_id, {"runs": 0, "durations": []})
+        stats["runs"] = int(stats.get("runs", 0)) + 1
+        stats["last"] = round(seconds, 1)
+        stats["durations"] = [*stats.get("durations", []), round(seconds, 1)][-20:]
+        self._changed()
+
+    def usual_duration(self, station_id: str) -> float | None:
+        """Median of the last runs, or None before the first."""
+        durations = sorted(self.power_stats.get(station_id, {}).get("durations", []))
+        if not durations:
+            return None
+        middle = len(durations) // 2
+        return durations[middle] if len(durations) % 2 else (durations[middle - 1] + durations[middle]) / 2
+
+    def expected_end(self, timer: Timer) -> datetime | None:
+        """End of an active timer: its end, or for an open one the start plus the station's usual duration."""
+        if timer.status != STATUS_ACTIVE:
+            return None
+        if not timer.open:
+            return timer.ends_at
+        usual = self.usual_duration(timer.station) if timer.station else None
+        return timer.started_at + timedelta(seconds=usual) if usual else None
 
     # ------------------------------------------------------- custom timers
 
@@ -460,8 +523,32 @@ class AreaTimers:
             )
 
     @callback
+    def finish(self, timer_id: str, *, at: datetime | None = None, **extra: Any) -> Timer:
+        """Finish an active timer (e.g. a power station's run is done); it rings.
+
+        ``at``: when it really ended (default now). An open timer gets its duration and
+        is a normal timer from then on (snoozing it counts down).
+        """
+        timer = self.get(timer_id)
+        if timer.status != STATUS_ACTIVE:
+            raise TimerError("not_active", name=timer.name)
+        now = dt_util.utcnow()
+        end = min(at, now) if at is not None else now
+        end = max(end, timer.started_at)
+        if timer.open:
+            timer.duration = (end - timer.started_at).total_seconds()
+            timer.open = False
+        timer.ends_at = end
+        self._unschedule(timer.id)
+        self._finish(timer, **extra)
+        self._changed()
+        return timer
+
+    @callback
     def pause(self, timer_id: str) -> Timer:
         timer = self.get(timer_id)
+        if timer.open:
+            raise TimerError("open_timer", name=timer.name)
         if timer.status != STATUS_ACTIVE:
             raise TimerError("not_active", name=timer.name)
         timer.paused_remaining = timer.remaining(dt_util.utcnow())
@@ -495,6 +582,8 @@ class AreaTimers:
         if seconds == 0:
             raise TimerError("invalid_duration")
         timer = self.get(timer_id)
+        if timer.open and timer.status == STATUS_ACTIVE:
+            raise TimerError("open_timer", name=timer.name)
         now = dt_util.utcnow()
         if timer.status == STATUS_RINGING:
             if seconds < 0:
@@ -595,7 +684,7 @@ class AreaTimers:
 
     # ------------------------------------------------------------- internals
 
-    def _finish(self, timer: Timer, *, late: bool = False) -> None:
+    def _finish(self, timer: Timer, *, late: bool = False, **extra: Any) -> None:
         now = dt_util.utcnow()
         timer.finished_at = min(timer.ends_at or now, now)
         timer.ring_anchor = now if late else timer.finished_at
@@ -604,9 +693,9 @@ class AreaTimers:
         timer.status = STATUS_RINGING
         if not self.option(CONF_RING_UNTIL_ACK):
             self._remove(timer)
-            self._fire(EVENT_FINISHED, timer, late=late)
+            self._fire(EVENT_FINISHED, timer, late=late, **extra)
             return
-        self._fire(EVENT_FINISHED, timer, late=late)
+        self._fire(EVENT_FINISHED, timer, late=late, **extra)
         self._schedule(timer)
 
     def _remove(self, timer: Timer) -> None:
@@ -703,6 +792,7 @@ class AreaTimers:
             "timers": [t.to_store() for t in self.timers.values()],
             "custom": dict(self.custom_seconds),
             "last_custom": {k: dict(v) for k, v in self._last_custom.items()},
+            "power_stats": {k: dict(v) for k, v in self.power_stats.items()},
         }
 
     def _changed(self) -> None:

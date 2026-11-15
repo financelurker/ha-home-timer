@@ -39,7 +39,32 @@ from .const import (
     DEFAULT_OPTIONS,
     DOMAIN,
 )
-from .stations import CONF_ICON, CONF_PRESETS, SUBENTRY_STATION
+from .power import (
+    RULE_CYCLING,
+    RULE_DEFAULTS,
+    RULE_DROP,
+    RULE_ENERGY,
+    RULE_KNEE,
+    RULE_OFF,
+    RULE_PAUSE,
+    RULE_TIME,
+    RULE_TYPES,
+    DoneRule,
+)
+from .stations import (
+    CONF_ICON,
+    CONF_MODE,
+    CONF_POWER,
+    CONF_PRESETS,
+    KIND_START_PRESET,
+    KIND_UNTIL_OFF,
+    KIND_WARN,
+    KINDS,
+    MODE_MANUAL,
+    MODE_POWER,
+    POWER_DEFAULTS,
+    SUBENTRY_STATION,
+)
 
 CONF_DURATION = "duration"
 CONF_NOTE = "note"
@@ -273,11 +298,47 @@ class HomeTimerOptionsFlow(PresetSteps, OptionsFlow):
         return result
 
 
+def _number(minimum: float, maximum: float, step: float, unit: str) -> sel.NumberSelector:
+    return sel.NumberSelector(
+        sel.NumberSelectorConfig(min=minimum, max=maximum, step=step, mode=sel.NumberSelectorMode.BOX, unit_of_measurement=unit)
+    )
+
+
+def _choice(options: list[str], key: str) -> sel.SelectSelector:
+    return sel.SelectSelector(
+        sel.SelectSelectorConfig(options=options, translation_key=key, mode=sel.SelectSelectorMode.LIST)
+    )
+
+
+# fields of each done rule type: (key, min, max, step, unit)
+RULE_FIELDS: dict[str, list[tuple[str, float, float, float, str]]] = {
+    RULE_OFF: [],
+    RULE_PAUSE: [("below", 0, 5000, 1, "W"), ("seconds", 1, 3600, 1, "s"), ("ignore", 0, 3600, 5, "s")],
+    RULE_CYCLING: [
+        ("level", 0, 5000, 1, "W"),
+        ("window", 10, 3600, 5, "s"),
+        ("share", 1, 100, 1, "%"),
+        ("ignore", 0, 3600, 5, "s"),
+    ],
+    RULE_DROP: [("percent", 1, 100, 1, "%"), ("window", 10, 3600, 5, "s"), ("ignore", 0, 3600, 5, "s")],
+    RULE_KNEE: [
+        ("factor", 1.5, 20, 0.5, "×"),
+        ("window", 10, 3600, 5, "s"),
+        ("baseline", 30, 7200, 10, "s"),
+        ("ignore", 0, 3600, 5, "s"),
+    ],
+    RULE_TIME: [("seconds", 1, 86400, 1, "s")],
+    RULE_ENERGY: [("wh", 0.1, 100000, 0.1, "Wh")],
+}
+
+
 class StationFlow(PresetSteps, ConfigSubentryFlow):
-    """Add or change a station: name and icon, then its presets in a menu.
+    """Add or change a station: name, icon and how it starts (by hand or by power), then
+    its presets and power settings in a menu.
 
     Nothing is saved before "Done"; adding a station ends with creating it,
-    configuring one with updating it (which reloads the area).
+    configuring one with updating it (which reloads the area). Power stations are set
+    up here in a plain way for now; an own configuration panel will replace this.
     """
 
     def __init__(self) -> None:
@@ -285,10 +346,15 @@ class StationFlow(PresetSteps, ConfigSubentryFlow):
         self._icon: str | None = None
         self._presets: list[dict[str, Any]] = []
         self._editing: str | None = None
+        self._mode = MODE_MANUAL
+        self._power: dict[str, Any] = {}
 
     @property
     def _label(self) -> str:  # type: ignore[override]
         return self._name
+
+    def _manual_controls(self) -> bool:
+        return self._mode == MODE_MANUAL or self._power.get("kind") == KIND_START_PRESET
 
     # ----------------------------------------------------------- entry points
 
@@ -300,6 +366,8 @@ class StationFlow(PresetSteps, ConfigSubentryFlow):
         self._name = subentry.title
         self._icon = subentry.data.get(CONF_ICON)
         self._presets = [dict(p) for p in subentry.data.get(CONF_PRESETS, [])]
+        self._mode = subentry.data.get(CONF_MODE, MODE_MANUAL)
+        self._power = dict(subentry.data.get(CONF_POWER) or {})
         return await self.async_step_menu()
 
     # ------------------------------------------------------------------ steps
@@ -315,14 +383,18 @@ class StationFlow(PresetSteps, ConfigSubentryFlow):
             else:
                 self._name = name
                 self._icon = user_input.get(CONF_ICON) or None
+                self._mode = user_input.get(CONF_MODE, MODE_MANUAL)
+                if self._mode == MODE_POWER and not self._power.get("sensor"):
+                    return await self.async_step_power()
                 return await self.async_step_menu()
         schema = vol.Schema(
             {
                 vol.Required(CONF_NAME): sel.TextSelector(),
                 vol.Optional(CONF_ICON): sel.IconSelector(),
+                vol.Optional(CONF_MODE, default=MODE_MANUAL): _choice([MODE_MANUAL, MODE_POWER], "mode"),
             }
         )
-        suggested = user_input or {CONF_NAME: self._name, CONF_ICON: self._icon or ""}
+        suggested = user_input or {CONF_NAME: self._name, CONF_ICON: self._icon or "", CONF_MODE: self._mode}
         return self.async_show_form(
             step_id="settings",
             data_schema=self.add_suggested_values_to_schema(schema, suggested),
@@ -331,23 +403,148 @@ class StationFlow(PresetSteps, ConfigSubentryFlow):
         )
 
     async def async_step_menu(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
-        options = ["settings", "add_preset"]
-        if self._presets:
-            options.append("edit_preset")
+        options = ["settings"]
+        if self._mode == MODE_POWER:
+            options.append("power")
+        if self._manual_controls():
+            options.append("add_preset")
+            if self._presets:
+                options.append("edit_preset")
         options.append("done")
         return self.async_show_menu(
             step_id="menu",
             menu_options=options,
-            description_placeholders={"station": self._name, "presets": self._listing()},
+            description_placeholders={"station": self._name, "presets": self._listing(), "power": self._power_text()},
+        )
+
+    async def async_step_power(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        """Power sensor, when the appliance counts as running, and what then happens."""
+        if user_input is not None:
+            self._power.update(
+                sensor=user_input["sensor"],
+                on_above=float(user_input["on_above"]),
+                off_after=float(user_input["off_after"]),
+                kind=user_input["kind"],
+            )
+            return await {
+                KIND_UNTIL_OFF: self.async_step_done_rule,
+                KIND_START_PRESET: self.async_step_power_preset,
+                KIND_WARN: self.async_step_warn,
+            }[user_input["kind"]]()
+        schema = vol.Schema(
+            {
+                vol.Required("sensor"): sel.EntitySelector(
+                    sel.EntitySelectorConfig(domain="sensor", device_class="power")
+                ),
+                vol.Required("on_above"): _number(0, 5000, 1, "W"),
+                vol.Required("off_after"): _number(1, 3600, 1, "s"),
+                vol.Required("kind"): _choice(list(KINDS), "kind"),
+            }
+        )
+        current = {**POWER_DEFAULTS, **self._power}
+        return self.async_show_form(
+            step_id="power",
+            data_schema=self.add_suggested_values_to_schema(schema, current),
+            description_placeholders={"station": self._name},
+        )
+
+    async def async_step_done_rule(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        if user_input is not None:
+            rule_type = user_input["type"]
+            if (self._power.get("done") or {}).get("type") != rule_type:
+                self._power["done"] = {"type": rule_type, **RULE_DEFAULTS[rule_type]}
+            if not RULE_FIELDS[rule_type]:
+                return await self.async_step_menu()
+            return await self.async_step_done_params()
+        schema = vol.Schema({vol.Required("type"): _choice(list(RULE_TYPES), "rule")})
+        current = {"type": (self._power.get("done") or {}).get("type", RULE_OFF)}
+        return self.async_show_form(
+            step_id="done_rule",
+            data_schema=self.add_suggested_values_to_schema(schema, current),
+            description_placeholders={"station": self._name},
+        )
+
+    async def async_step_done_params(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        done = dict(self._power.get("done") or {"type": RULE_OFF})
+        fields = RULE_FIELDS[done["type"]]
+        if user_input is not None:
+            done.update({key: float(user_input[key]) for key, *_ in fields})
+            self._power["done"] = done
+            return await self.async_step_menu()
+        schema = vol.Schema({vol.Required(key): _number(lo, hi, step, unit) for key, lo, hi, step, unit in fields})
+        current = {**RULE_DEFAULTS[done["type"]], **done}
+        return self.async_show_form(
+            step_id="done_params",
+            data_schema=self.add_suggested_values_to_schema(schema, current),
+            description_placeholders={"station": self._name, "rule": DoneRule.from_data(done).describe()},
+        )
+
+    async def async_step_power_preset(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        if not self._presets:
+            return self.async_show_form(
+                step_id="power_preset",
+                data_schema=vol.Schema({}),
+                errors={"base": "no_presets"},
+                description_placeholders={"station": self._name},
+            ) if user_input is None else await self.async_step_menu()
+        if user_input is not None:
+            self._power.update(preset=user_input["preset"], cancel_on_off=bool(user_input["cancel_on_off"]))
+            return await self.async_step_menu()
+        schema = vol.Schema(
+            {
+                vol.Required("preset"): sel.SelectSelector(
+                    sel.SelectSelectorConfig(
+                        options=[
+                            sel.SelectOptionDict(value=p["id"], label=f"{p['name']} · {_format(p['duration'])}")
+                            for p in self._presets
+                        ],
+                        mode=sel.SelectSelectorMode.LIST,
+                    )
+                ),
+                vol.Required("cancel_on_off"): sel.BooleanSelector(),
+            }
+        )
+        current = {"preset": self._power.get("preset") or self._presets[0]["id"], **POWER_DEFAULTS, **self._power}
+        current["preset"] = current["preset"] or self._presets[0]["id"]
+        return self.async_show_form(
+            step_id="power_preset",
+            data_schema=self.add_suggested_values_to_schema(schema, current),
+            description_placeholders={"station": self._name},
+        )
+
+    async def async_step_warn(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
+        if user_input is not None:
+            self._power["warn_after"] = float(user_input["warn_after"])
+            return await self.async_step_menu()
+        schema = vol.Schema({vol.Required("warn_after"): _number(1, 1440, 1, "min")})
+        return self.async_show_form(
+            step_id="warn",
+            data_schema=self.add_suggested_values_to_schema(schema, {**POWER_DEFAULTS, **self._power}),
+            description_placeholders={"station": self._name},
         )
 
     async def async_step_done(self, user_input: dict[str, Any] | None = None) -> SubentryFlowResult:
-        data = {CONF_ICON: self._icon, CONF_PRESETS: self._presets}
+        if self._mode == MODE_POWER and not self._power.get("sensor"):
+            return await self.async_step_power()
+        data: dict[str, Any] = {CONF_ICON: self._icon, CONF_PRESETS: self._presets, CONF_MODE: self._mode}
+        if self._mode == MODE_POWER:
+            data[CONF_POWER] = self._power
         if self.source == SOURCE_USER:
             return self.async_create_entry(title=self._name, data=data)
         return self.async_update_and_abort(
             self._get_entry(), self._get_reconfigure_subentry(), title=self._name, data=data
         )
+
+    # ---------------------------------------------------------------- helpers
+
+    def _power_text(self) -> str:
+        if self._mode != MODE_POWER or not self._power.get("sensor"):
+            return "–"
+        kind = self._power.get("kind", KIND_UNTIL_OFF)
+        text = f"{self._power['sensor']} · > {self._power.get('on_above', 10):g} W · {kind}"
+        if kind == KIND_UNTIL_OFF:
+            text += f" · {DoneRule.from_data(self._power.get('done')).describe()}"
+        return text
 
     def _name_taken(self, name: str) -> bool:
         own = self._get_reconfigure_subentry().subentry_id if self.source != SOURCE_USER else None
