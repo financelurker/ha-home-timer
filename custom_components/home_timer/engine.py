@@ -27,6 +27,7 @@ from typing import Any
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_point_in_utc_time
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
@@ -53,6 +54,7 @@ from .const import (
     REASON_MANUAL,
     REASON_REPLACED,
     REASON_STATION_REMOVED,
+    SIGNAL_TIMERS_CHANGED,
     STATUS_ACTIVE,
     STATUS_PAUSED,
     STATUS_RINGING,
@@ -197,6 +199,11 @@ class AreaTimers:
 
     # ------------------------------------------------------------- settings
 
+    @property
+    def running(self) -> bool:
+        """Started (timers scheduled) and not unloaded."""
+        return self._running
+
     def option(self, key: str) -> Any:
         return self.entry.options.get(key, DEFAULT_OPTIONS[key])
 
@@ -263,6 +270,7 @@ class AreaTimers:
         for timer_id in list(self._scheduled):
             self._unschedule(timer_id)
         self._listeners.clear()
+        async_dispatcher_send(self.hass, SIGNAL_TIMERS_CHANGED)  # no longer running: leaves the to-do list
         await self._store.async_save(self._data())
 
     # ---------------------------------------------------------- operations
@@ -583,6 +591,7 @@ class AreaTimers:
     def _notify(self) -> None:
         for listener in list(self._listeners):
             listener()
+        async_dispatcher_send(self.hass, SIGNAL_TIMERS_CHANGED)
 
 
 def _copy(value: dict[str, Any]) -> dict[str, Any]:

@@ -19,6 +19,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import area_registry as ar
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
+from homeassistant.helpers.discovery import async_load_platform
 from homeassistant.helpers.start import async_at_started
 from homeassistant.helpers.storage import Store
 from homeassistant.helpers.typing import ConfigType
@@ -30,7 +31,7 @@ from .stations import stations
 
 _LOGGER = logging.getLogger(__name__)
 
-PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR, Platform.TODO]
+PLATFORMS = [Platform.BINARY_SENSOR, Platform.BUTTON, Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 type HomeTimerConfigEntry = ConfigEntry[AreaTimers]
@@ -38,6 +39,8 @@ type HomeTimerConfigEntry = ConfigEntry[AreaTimers]
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     async_register_services(hass)
+    # one to-do list for all areas, not tied to an area's entry
+    hass.async_create_task(async_load_platform(hass, Platform.TODO, DOMAIN, {}, config), eager_start=False)
     return True
 
 

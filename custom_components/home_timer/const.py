@@ -67,3 +67,6 @@ ATTR_SOURCE: Final = "source"
 ATTR_PRESET: Final = "preset"
 
 STORAGE_VERSION: Final = 1
+
+# dispatched whenever the timers of any area change (the to-do list listens)
+SIGNAL_TIMERS_CHANGED: Final = f"{DOMAIN}_timers_changed"
