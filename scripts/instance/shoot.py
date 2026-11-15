@@ -90,13 +90,31 @@ def main() -> None:
                 fields.nth(0).fill("8")  # at least 8 % …
                 fields.nth(1).fill("45")  # … within 45 s
                 page.wait_for_timeout(2500)
-            changed = page.locator("home-timer-panel .runrow .dl")
-            check("a draft shows its preview", page.locator("home-timer-panel .preview").count() == 1 and changed.count() >= 1)
-            if changed.count():  # show a run the draft changes
-                changed.first.click()
-                page.wait_for_timeout(1500)
-                check("the curve shows the draft's ring", page.locator("home-timer-panel svg.chart line.mark.dash").count() == 1)
+            check("a draft shows its preview", page.locator("home-timer-panel .preview").count() == 1)
+            # show a run the draft changes (its dashed ring)
+            rows = page.locator("home-timer-panel .runrow").filter(has_not_text=re.compile("Running"))
+            for i in range(rows.count()):
+                rows.nth(i).click()
+                page.wait_for_timeout(700)
+                if page.locator("home-timer-panel svg.chart line.mark.dash").count():
+                    break
+            check("the curve shows the draft's ring", page.locator("home-timer-panel svg.chart line.mark.dash").count() == 1)
             page.screenshot(path=OUT / "panel-runs.png")
+            page.set_viewport_size({"width": 1366, "height": 860})
+        if want("panel-learn"):
+            # learning: a marked run, and the suggestions from the marked runs
+            page.set_viewport_size({"width": 1366, "height": 1900})
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            seeded = page.locator("home-timer-panel .runrow").filter(has_not_text=re.compile("Today|Running"))
+            if seeded.count():
+                seeded.first.click()
+                page.wait_for_timeout(1500)
+            check("a marked run shows its mark", page.locator("home-timer-panel svg.chart line.done").count() == 1)
+            page.locator("home-timer-panel .sugrow button").first.click()
+            page.wait_for_selector("home-timer-panel .sug", timeout=60000)
+            check("suggestions from the marked runs", page.locator("home-timer-panel .sug").count() >= 2)
+            page.wait_for_timeout(800)
+            page.screenshot(path=OUT / "panel-learn.png")
             page.set_viewport_size({"width": 1366, "height": 860})
         if want("panel-station"):
             go(page, f"/home-timer/station/{ref['entry']}/{ref['hob']['id']}")

@@ -160,6 +160,9 @@
       },
       "start_custom": {
         "name": "Start custom timer"
+      },
+      "done_now": {
+        "name": "Done now"
       }
     },
     "todo": {
@@ -361,6 +364,9 @@
     },
     "open_timer": {
       "message": "The timer \"{name}\" runs until its appliance is done; it cannot be paused or changed in time."
+    },
+    "not_running": {
+      "message": "The appliance is not running – nothing to mark as done."
     }
   },
   "device_automation": {

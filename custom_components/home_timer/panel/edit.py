@@ -38,7 +38,12 @@ NOTE_LENGTH = 200
 
 # (min, max) of each number
 OPTION_RANGES: dict[str, tuple[float, float]] = {CONF_REMINDER_MINUTES: (0, 60), CONF_AUTO_DISMISS_MINUTES: (0, 240)}
-POWER_RANGES: dict[str, tuple[float, float]] = {"on_above": (0, 5000), "off_after": (1, 3600), "warn_after": (1, 1440)}
+POWER_RANGES: dict[str, tuple[float, float]] = {
+    "on_above": (0, 5000),
+    "off_after": (1, 3600),
+    "warn_after": (1, 1440),
+    "tolerance": (5, 900),
+}
 
 Errors = dict[str, str]
 

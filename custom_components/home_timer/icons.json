@@ -59,6 +59,9 @@
       },
       "start_custom": {
         "default": "mdi:timer-play-outline"
+      },
+      "done_now": {
+        "default": "mdi:check-circle-outline"
       }
     },
     "todo": {

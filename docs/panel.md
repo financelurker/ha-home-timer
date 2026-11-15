@@ -61,7 +61,7 @@ Everything is on one page, so a change shows at once what it does with the stati
 - **Runs:** newest first, with duration and when it rings – saved → draft while you change something; click one to see its curve. The bin icon deletes a run (it asks first). Runs read from the history, or recorded with another sensor, are marked.
 - **Sensor:** how often it reports and how much its readings scatter.
 
-The preview compares; it cannot tell *too early* or *too late* yet – that needs to know when runs were really done (learning, next). A new station shows its runs once it is saved. On a phone, the page goes curve, what the timer should do, runs, then *On and off* (folded) – the panel remembers what is folded per device.
+**Learning:** mark in a few runs when the appliance was really done – click the curve, drag the mark, or *Done now* while it runs – and *Suggest from my runs* offers rules that fit (see [Power stations › Learning](power.md#learning)). With marks, the preview says *on time*, *too early* or *too late* per run and in the summary; a run whose mark looks off is shown with *Check the mark*, *Leave this run out* and *Keep it*. A new station shows its runs once it is saved. On a phone, the page goes curve, what the timer should do, runs, then *On and off* (folded) – the panel remembers what is folded per device.
 
 <img src="images/phone-power.png" alt="The moka pot on a phone: its curve" width="300"> <img src="images/phone-runs.png" alt="What the timer should do and the runs on a phone" width="300">
 

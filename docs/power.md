@@ -33,7 +33,7 @@ The station only drives the timers it started itself (they carry `source: {home_
 
 ## Done rules
 
-For *until it switches off by itself*, the **done rule** says when the run counts as done:
+For *ring when it's done*, the **done rule** (*it is done when …*) says when the run counts as done:
 
 | Rule | Done when … | Fits |
 |---|---|---|
@@ -42,6 +42,9 @@ For *until it switches off by itself*, the **done rule** says when the run count
 | Cycling | the share of time "on" within a window falls below a value | thermostat appliances |
 | Drop | power falls by at least a share within a time | e.g. a moka pot: when the water is gone the power falls faster |
 | Knee | power falls a factor faster than before | the same, independent of the power level |
+| Below its trend | power falls clearly below the line of its slow fall before; "clearly" follows the sensor's scatter | e.g. a moka pot – usually the earliest |
+| Above its trend | power rises clearly above the line of its course before | something switches on at the end: a pump, a fan |
+| Plateau | power stays at one level for a while after it changed | settles at a level, e.g. a rice cooker on keep warm |
 | After a time / energy | a time has passed / energy has been used | only for very regular runs |
 
 Every rule except *when it switches off* **ignores the first seconds** of a run (switch-on spikes). Example for an electric moka pot: *Drop · falls by ≥ 10 % within 60 s · first 120 s ignored* – it rang about 30 s after the coffee was ready, and never before.
@@ -57,6 +60,7 @@ Every rule except *when it switches off* **ignores the first seconds** of a run 
 | `sensor.<area>_<station>_runs` | how often it ran |
 | `sensor.<area>_<station>_usual_duration` | median of the last 20 runs (until done, or until it stopped) |
 | `button.<area>_<station>_stop_acknowledge` | acknowledges the ringing timer, or cancels the running one (the run itself goes on) |
+| `button.<area>_<station>_done_now` | *ring when it's done* only: marks the run going on as done now – for [learning](#learning); it does not ring or stop anything |
 
 Events carry `trigger: rule` or `trigger: off` when a run finishes, `reason: power_off` when switching off cancels a timer, and `by: power` when switching off acknowledges a ringing warning.
 
@@ -69,6 +73,18 @@ Every run is stored with its power curve when the appliance switches off (runs s
 The first time Home Timer sees a power station, it reads the station's earlier runs once from the recorder's history of the sensor, as far as the recorder kept it (10 days by default). For those runs of a station *until it switches off*, when its done rule – as set at that moment – would have rung is worked out from the curve, and labelled as such. Only the history before the first run stored live is read, so no run appears twice. A station's runs are deleted with the station.
 
 The tab also shows how often the sensor reports and how much its readings scatter. Both limit every rule: a sensor that reports every 10 s notices a change up to 10 s late, and scatter hides small changes.
+
+## Learning
+
+Which rule and values fit your appliance is easiest to learn from your own runs:
+
+1. **Mark when it was done** – in a few runs, on the station's page: click the curve where the coffee was ready (or use *Mark done here*), then move the mark (drag it, ← → 1 s, Shift 10 s, or the −10/−1/+1/+10 s buttons; on a phone a tap sets it). While a run goes on, *Done now* marks it – also from a dashboard with the station's *Done now* button.
+2. **Suggest from my runs** (from 3 marked runs): Home Timer tries every rule with many values on all marked runs. A suggestion must ring after each run's mark – never before comes first – and at most the **tolerance** after it (60 s by default, a setting of the station). The best of each rule type is offered (at most three), with how many runs it fits and its median and longest delay. It uses the newest 12 marked runs; a search takes a few seconds.
+3. **Use** puts a suggestion into the draft; the preview shows it on all runs, and **Save** makes it the station's rule.
+
+![Learning: a marked moka pot run with its on-time band, the saved settings judged on seven marked runs, and three suggestions](images/panel-learn.png)
+
+With marks, the preview judges each run: *on time*, *too early* or *too late*. A run that the best suggestion misses while it fits the others is flagged *mark looks off*: check its mark, leave the run out of learning (it stays stored), or keep it. Marked runs are kept without limit (they are never dropped from the stored runs); a mark set with *Done now* survives a restart or a reload while the run goes on.
 
 ## Restarts
 

@@ -63,7 +63,8 @@ function path(m) {
 // labels: {aria, stopped, unknown, ignored}; hover: seconds or null; unit: "W"
 // marks: [{t, label, dash, color}] (the first label above the plot, the next inside);
 // window: {from, to, label} shaded; level: {w, label} a dotted line
-export function renderChart(run, m, { labels, hover, unit = "W", marks = [], window = null, level = null }) {
+// done: {t, label, tol, tolLabel} – the user's mark (learning) with the "on time" band after it
+export function renderChart(run, m, { labels, hover, unit = "W", marks = [], window = null, level = null, done = null }) {
   const left = PAD.left;
   const right = m.width - PAD.right;
   const bottom = PAD.top + m.plotH;
@@ -96,6 +97,12 @@ export function renderChart(run, m, { labels, hover, unit = "W", marks = [], win
           <text class="zone lvl" x=${right - 4} y=${m.y(level.w) - 4} text-anchor="end">${level.label}</text>` : nothing}
       ${marks.map((k, i) => svg`<line class="mark ${k.dash ? "dash" : ""}" style=${k.color ? `stroke:${k.color}` : ""} x1=${m.x(k.t)} x2=${m.x(k.t)} y1=${PAD.top} y2=${bottom}></line>
           <text class="mk ring ${k.dash ? "it" : ""}" style=${k.color ? `fill:${k.color}` : ""} x=${flip(k) ? m.x(k.t) - 4 : m.x(k.t) + 4} y=${i ? PAD.top + 12 : PAD.top - 6} text-anchor=${flip(k) ? "end" : "start"}>${k.label}</text>`)}
+      ${done ? svg`${done.tol ? svg`<rect class="tol" x=${m.x(done.t)} y=${PAD.top} width=${Math.max(1, m.x(done.t + done.tol) - m.x(done.t))} height=${m.plotH}></rect>
+            <text class="zone tolt" x=${(m.x(done.t) + m.x(done.t + done.tol)) / 2} y=${bottom - 6} text-anchor="middle">${done.tolLabel || ""}</text>` : nothing}
+          <line class="done" x1=${m.x(done.t)} x2=${m.x(done.t)} y1=${PAD.top} y2=${bottom}></line>
+          <circle class="grip" cx=${m.x(done.t)} cy=${PAD.top + m.plotH / 2} r="9"></circle>
+          <path class="gripl" d="M${m.x(done.t) - 3},${PAD.top + m.plotH / 2 - 4}v8M${m.x(done.t) + 3},${PAD.top + m.plotH / 2 - 4}v8"></path>
+          <text class="mk donet" x=${m.x(done.t) - 6} y=${PAD.top - 6} text-anchor="end">${done.label}</text>` : nothing}
       ${hover != null && hv != null ? svg`<line class="hover" x1=${m.x(hover)} x2=${m.x(hover)} y1=${PAD.top} y2=${bottom}></line>
           <circle class="dot" cx=${m.x(hover)} cy=${m.y(hv)} r="4"></circle>` : nothing}
       <line class="axis" x1=${left} x2=${right} y1=${bottom} y2=${bottom}></line>

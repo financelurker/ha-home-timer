@@ -44,6 +44,7 @@ class HomeTimerPanel extends LitElement {
     _confirm: { state: true },
     _fold: { state: true },
     _preview: { state: true },
+    _suggest: { state: true },
   };
 
   constructor() {
@@ -835,7 +836,7 @@ class HomeTimerPanel extends LitElement {
 
   // the power settings as the preview compares them (what decides runs and rings)
   static powerSig(power, presets) {
-    const { sensor, ...rest } = power || {};
+    const { sensor, tolerance, ...rest } = power || {}; // the tolerance only judges, it changes no ring
     return JSON.stringify([rest, (presets || []).map((p) => [p.id, p.duration])]);
   }
 
@@ -945,11 +946,16 @@ class HomeTimerPanel extends LitElement {
     const ignore = rule && rule.ignore ? Number(rule.ignore) : 0;
     const winSec = rule && ["drop", "knee", "cycling"].includes(rule.type) ? Number(rule.window || 0) : 0;
     const ring = pv?.draft?.trigger === "rule" ? pv.draft.start + pv.draft.rang : null;
-    const window = winSec && ring != null ? { from: Math.max(0, ring - winSec), to: ring, label: `${winSec} s` } : null;
+    const window = winSec && ring != null ? { from: Math.max(0, ring - winSec), to: ring, label: this._learning(d) && run.marks?.done != null ? "" : `${winSec} s` } : null;
     const levelW = rule?.type === "pause" ? rule.below : rule?.type === "cycling" ? rule.level : null;
     const unit = this._unit(station);
     const level = levelW != null ? { w: Number(levelW), label: `${levelW} ${unit}` } : null;
-    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 250, onAbove: Number(p.on_above || 0), ignore: ignore ? ignore + (pv?.draft?.start || 0) : 0, extra: marks.map((k) => k.t) });
+    const learning = this._learning(d) && !run.running;
+    const tol = Number(p.tolerance ?? 60);
+    const markT = this._learning(d) ? run.marks?.done ?? null : null;
+    const done = learning && markT != null ? { t: markT, label: t("mark.mark", { time: formatDuration(markT) }), tol, tolLabel: `${tol} s` } : null;
+    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 250, onAbove: Number(p.on_above || 0), ignore: ignore ? ignore + (pv?.draft?.start || 0) : 0, extra: [...marks.map((k) => k.t), ...(done ? [done.t + tol] : [])] });
+    const outlier = this._isOutlier(key, run.id);
     const hv = this._hover != null ? valueAt(run, this._hover) : null;
     const labels = { aria: t("runs.chart.aria"), stopped: t("runs.chart.stopped"), unknown: t("runs.chart.unknown"), ignored: t("runs.chart.ignored") };
     const actual = run.rang != null && !run.running ? t(run.simulated ? "runs.actual_history" : "runs.actual", { time: formatDuration(run.rang) }) : "";
@@ -958,12 +964,18 @@ class HomeTimerPanel extends LitElement {
       <div class="runh2"><span>${run.running ? t("runs.now") : this._runWhen(run)} <span class="chs">· ${formatDuration(run.duration)}</span>
         ${run.source === "history" ? html`<span class="tag">${t("runs.tag.history")}</span>` : nothing}
         ${this._otherSensor(run, station) ? html`<span class="tag">${t("runs.tag.other_sensor")}</span>` : nothing}</span>
-        ${run.running ? html`<span class="tag live">${t("runs.tag.running")}</span>` : this._renderDeleteRun(area, station, run)}
+        <span class="runacts">${learning ? html`<button class="btn sm" @click=${() => this._setSkip(area, station, run, !run.skip)}>${t(run.skip ? "learn.take_back" : "learn.leave_out")}</button>` : nothing}
+        ${run.running ? html`<span class="tag live">${t("runs.tag.running")}</span>` : this._renderDeleteRun(area, station, run)}</span>
       </div>
-      <div class="chartbox" @pointermove=${(e) => this._pointer(m, e)} @pointerleave=${() => (cancelAnimationFrame(this._frame), (this._hover = null))}>
-        ${renderChart(run, m, { labels, hover: this._hover, unit, marks, window, level })}
+      ${learning && run.skip ? html`<div class="note">${t("learn.left_out")}</div>` : nothing}
+      <div class="chartbox ${learning ? "marking" : ""}" tabindex=${learning && markT != null ? "0" : "-1"} aria-label=${t("runs.chart.aria")}
+        @pointermove=${(e) => this._pointer(m, e)} @pointerleave=${() => (cancelAnimationFrame(this._frame), (this._hover = null))}
+        @pointerdown=${(e) => learning && this._dragStart(e, m, area, station, run)} @pointerup=${(e) => this._dragEnd(e)} @pointercancel=${(e) => this._dragEnd(e, true)}
+        @keydown=${(e) => learning && markT != null && this._markKey(e, area, station, run, markT)}>
+        ${renderChart(run, m, { labels, hover: this._hover, unit, marks, window, level, done })}
       </div>
       <div class="readout">${this._hover != null && hv != null ? `${formatDuration(this._hover)} · ${Math.round(hv * 10) / 10} ${unit}` : html`&nbsp;`}</div>
+      ${this._learning(d) ? this._renderMarkBar(area, station, run, pv, outlier) : nothing}
       <div class="legend">
         <span><i class="sw curve"></i>${t("runs.legend.power")}</span>
         ${p.on_above != null ? html`<span><i class="sw thr"></i>${t("runs.legend.threshold", { watts: p.on_above, unit })}</span>` : nothing}
@@ -971,16 +983,256 @@ class HomeTimerPanel extends LitElement {
         ${marks.length ? html`<span><i class="sw rang"></i>${t(differs ? "runs.legend.saved" : "runs.legend.ring")}</span>` : nothing}
         ${differs && marks.some((k) => k.dash) ? html`<span><i class="sw rang dash"></i>${t("runs.legend.draft")}</span>` : nothing}
         ${window ? html`<span><i class="sw win"></i>${t("runs.legend.window")}</span>` : nothing}
+        ${done ? html`<span><i class="sw done"></i>${t("runs.legend.mark")}</span><span><i class="sw tol"></i>${t("runs.legend.tol", { s: tol })}</span>` : nothing}
       </div>
       <div class="runinfo">
         ${pv ? html`<div>${differs
             ? html`${t("runs.this_run")} <b>${this._outcome(pv.saved, savedKind)}</b> ${t("runs.saved_word")} → <b>${this._outcome(pv.draft, p.kind)}</b> ${t("runs.draft_word")}${this._delta(pv) ? ` (${this._delta(pv)})` : ""}.`
             : html`${t("runs.this_run")} <b>${this._outcome(pv.saved, savedKind)}</b>.`}
             ${actual ? html`<span class="chs">${actual}</span>` : nothing}</div>` : html`<div class="chs">${this._preview?.key === key && this._preview.error ? `${t("preview.failed")}: ${this._preview.error}` : t("loading")}</div>`}
+        ${done && pv && !run.skip ? html`<div>${t("learn.your_mark", { time: formatDuration(markT) })} – ${t("runs.legend.saved")}: ${this._verdictHtml(this._verdict(pv.saved, markT, tol))}${differs ? html` · ${t("runs.legend.draft")}: ${this._verdictHtml(this._verdict(pv.draft, markT, tol))}` : nothing}</div>` : nothing}
         ${run.from > 0 ? html`<div class="chs">${t("runs.picked_up", { time: formatDuration(run.from) })}</div>` : nothing}
         ${run.running ? html`<div class="chs">${t("runs.running", { time: formatDuration(run.duration) })}</div>` : nothing}
       </div>
     </div></div>`;
+  }
+
+  // ------------------------------------------------------------------ learning: marks
+  // A mark says when a run was really done (seconds on its curve). Marks are data,
+  // saved at once (not with the save bar); the draft's tolerance decides "on time".
+
+  _learning(d) {
+    return d.power.kind === "until_off";
+  }
+
+  // on time / too early / too late of a ring against the user's mark
+  _verdict(res, mark, tol) {
+    if (mark == null || !res) return null;
+    if (res.blip || res.rang == null) return { kind: "late", delta: null };
+    const delta = res.start + res.rang - mark;
+    return { kind: delta < -0.5 ? "early" : delta > tol ? "late" : "on_time", delta };
+  }
+
+  _deltaText(delta) {
+    const a = Math.abs(Math.round(delta));
+    return `${delta < 0 ? "−" : "+"}${a >= 60 ? formatDuration(a) : `${a} s`}`;
+  }
+
+  _verdictHtml(v) {
+    if (!v) return nothing;
+    const text = v.delta == null ? this._t("verdict.none") : this._t(`verdict.${v.kind}`, { delta: this._deltaText(v.delta) });
+    return html`<span class="v ${v.kind}">${text}</span>`;
+  }
+
+  // the last suggestions, while what they were made from is unchanged
+  _freshSuggest(key) {
+    const s = this._suggest?.key === key ? this._suggest : null;
+    if (!s?.data || !s.sig) return null;
+    const d = this._drafts[`station:${this._route.entry}:${this._route.station}`];
+    return !d || this._suggestSig(key, d) === s.sig ? s.data : null;
+  }
+
+  _isOutlier(key, runId) {
+    const s = this._freshSuggest(key);
+    return !!s?.outliers?.includes(runId) && !this._kept?.has(`${key}:${runId}`);
+  }
+
+  // a mark set, moved or removed: shown at once, saved after a short pause (nudges, drags)
+  _setMark(area, station, run, value, save = true) {
+    const key = this._runsKey(area.entry_id, station.id);
+    const done = value == null ? null : Math.max(0, Math.round(value * 10) / 10);
+    const marks = done == null ? {} : { done };
+    if (this._run?.key === key && this._run.id === run.id) this._run = { ...this._run, data: { ...this._run.data, marks } };
+    const list = this._runs[key];
+    if (list) this._runs = { ...this._runs, [key]: { ...list, runs: list.runs.map((r) => (r.id === run.id ? { ...r, marks } : r)) } };
+    if (!save) return;
+    this._markSaves = this._markSaves || new Map();
+    const pending = this._markSaves.get(run.id);
+    if (pending) clearTimeout(pending.timer);
+    const send = async () => {
+      this._markSaves.delete(run.id);
+      try {
+        await this.hass.callWS({ type: `${WS}/runs/mark`, entry_id: area.entry_id, station_id: station.id, run_id: run.id, done });
+      } catch (err) {
+        this._notice = { kind: "warn", text: err?.message || String(err) };
+      }
+    };
+    this._markSaves.set(run.id, { timer: setTimeout(send, 400), send });
+  }
+
+  // marks still waiting to be saved go out now (before a reload would show the old ones)
+  async _flushMarks() {
+    const saves = [...(this._markSaves?.values() || [])];
+    for (const x of saves) clearTimeout(x.timer);
+    await Promise.all(saves.map((x) => x.send()));
+  }
+
+  async _setSkip(area, station, run, skip) {
+    const key = this._runsKey(area.entry_id, station.id);
+    try {
+      await this.hass.callWS({ type: `${WS}/runs/skip`, entry_id: area.entry_id, station_id: station.id, run_id: run.id, skip });
+    } catch (err) {
+      this._notice = { kind: "warn", text: err?.message || String(err) };
+      return;
+    }
+    if (this._run?.key === key && this._run.id === run.id) this._run = { ...this._run, data: { ...this._run.data, skip } };
+    const list = this._runs[key];
+    if (list) this._runs = { ...this._runs, [key]: { ...list, runs: list.runs.map((r) => (r.id === run.id ? { ...r, skip } : r)) } };
+  }
+
+  async _doneNow(area, station) {
+    try {
+      await this.hass.callWS({ type: `${WS}/runs/mark`, entry_id: area.entry_id, station_id: station.id, run_id: "current" });
+      await this._loadRun(area.entry_id, station.id, "current");
+    } catch (err) {
+      this._notice = { kind: "warn", text: err?.message || String(err) };
+    }
+  }
+
+  // clicking (or tapping) the curve sets the mark there; dragging moves it
+  // a mouse sets the mark at once and drags it; a finger only on a tap (a swipe scrolls the page)
+  _dragStart(e, m, area, station, run) {
+    const svgEl = e.currentTarget.querySelector("svg");
+    const at = secondsAt(m, svgEl, e.clientX);
+    if (at == null) return;
+    const touch = e.pointerType === "touch";
+    this._drag = { m, svgEl, area, station, run, touch, x: e.clientX, y: e.clientY, at, prev: run.marks?.done ?? null };
+    if (touch) return;
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+    this._setMark(area, station, run, this._clampMark(run, at), false);
+  }
+
+  _dragEnd(e, cancelled = false) {
+    const drag = this._drag;
+    if (!drag) return;
+    this._drag = null;
+    if (cancelled) {
+      this._setMark(drag.area, drag.station, drag.run, drag.prev, false); // back to before (it was a scroll)
+      return;
+    }
+    if (drag.touch) {
+      if (e && Math.hypot(e.clientX - drag.x, e.clientY - drag.y) < 10) this._setMark(drag.area, drag.station, drag.run, this._clampMark(drag.run, drag.at));
+      return;
+    }
+    const mark = this._run?.data?.marks?.done;
+    if (mark != null) this._setMark(drag.area, drag.station, drag.run, mark);
+  }
+
+  // a mark stays on the curve: from where it is known to its last reading
+  _clampMark(run, t) {
+    const last = Math.max(run.duration || 0, (run.t || [0]).slice(-1)[0] || 0);
+    return Math.min(Math.max(run.from || 0, t), last);
+  }
+
+  _markKey(e, area, station, run, mark) {
+    const step = { ArrowLeft: -1, ArrowRight: 1 }[e.key];
+    if (!step) return;
+    e.preventDefault();
+    this._setMark(area, station, run, this._clampMark(run, mark + step * (e.shiftKey ? 10 : 1)));
+  }
+
+  _renderMarkBar(area, station, run, pv, outlier) {
+    const t = this._t;
+    const mark = run.marks?.done;
+    if (run.running) {
+      return html`<div class="mbar">${mark != null
+          ? html`<b>✓ ${t("learn.marked_now", { time: formatDuration(mark) })}</b><span class="chs">${t("learn.now_hint")}</span>`
+          : html`<span>${t("learn.ready")}</span><span class="sp"></span><button class="btn filled ok" @click=${() => this._doneNow(area, station)}><ha-icon icon="mdi:check"></ha-icon>${t("learn.done_now")}</button>`}</div>`;
+    }
+    if (mark == null) {
+      const guess = this._lastHover ?? (pv?.saved?.rang != null ? pv.saved.start + pv.saved.rang : (run.duration || 0) / 2);
+      return html`<div class="mbar ask"><span>${t("learn.ask")} <span class="chs">${t("learn.ask_hint")}</span></span><span class="sp"></span>
+        <button class="btn ok" @click=${() => this._setMark(area, station, run, guess)}><ha-icon icon="mdi:check"></ha-icon>${t("learn.mark_here")}</button></div>`;
+    }
+    const nudge = (s) => this._setMark(area, station, run, this._clampMark(run, mark + s));
+    return html`<div class="mbar ${outlier ? "bad" : ""}"><b>✓ ${t("learn.done_at", { time: formatDuration(mark) })}</b><span class="chs">– ${outlier ? t("runs.tag.outlier") : t("learn.drag_hint")}</span><span class="sp"></span>
+      ${[-10, -1, 1, 10].map((x) => html`<button class="btn sm ok" @click=${() => nudge(x)}>${x > 0 ? "+" : "−"}${Math.abs(x)} s</button>`)}
+      <button class="btn sm" @click=${() => this._setMark(area, station, run, null)}>${t("learn.remove")}</button></div>`;
+  }
+
+  // "Suggest from my runs": the tolerance, the button, the suggestions
+  _renderSuggest(key, d, set, station) {
+    const t = this._t;
+    if (!this._learning(d)) return nothing;
+    if (!station || station.mode !== "power") return nothing;
+    const area = this._area(this._route.entry);
+    const rkey = this._runsKey(area.entry_id, station.id);
+    const data = this._runs[rkey];
+    if (!data || data.error) return nothing;
+    const need = data.min_marked ?? 3;
+    const marked = (data.runs || []).filter((r) => r.marks?.done != null && !r.skip).length;
+    const spec = this._config.specs.power;
+    const tolField = this._inline(key, "power.tolerance", d.power.tolerance ?? 60, spec.tolerance, "s", (v) => set((x) => (x.power.tolerance = v)));
+    const parts = t("learn.tolerance", { count: marked }).split(/(\{field\})/);
+    const sug = this._suggest?.key === rkey ? this._suggest : null;
+    return html`<div class="suggest">
+      <div class="sugrow">
+        <button class="btn filled" ?disabled=${marked < need || sug?.loading} @click=${() => this._runSuggest(area, station, d)}><ha-icon icon="mdi:auto-fix"></ha-icon>${t("learn.suggest")}</button>
+        <span class="chs">${marked < need ? t("learn.suggest_need", { min: need, count: marked }) : parts.map((x) => (x === "{field}" ? tolField : x))}</span>
+      </div>
+      ${sug?.loading ? html`<div class="chs">${t("learn.searching")}</div>` : nothing}
+      ${sug?.error ? html`<div class="err">${sug.error}</div>` : nothing}
+      ${sug?.data && sug.sig !== this._suggestSig(rkey, d) ? html`<div class="note">${t("learn.stale")}</div>` : nothing}
+      ${sug?.data && !sug.data.suggestions.length ? html`<div class="note">${t(sug.data.marked < need ? "learn.not_usable" : "learn.none")}</div>` : nothing}
+      ${(sug?.data?.suggestions || []).map((x, i) => html`<div class="sug ${i === 0 ? "best" : ""}">
+          <div class="sugh"><span>${this._ruleText(x.rule)}</span>
+            <button class="btn sm" @click=${() => this._useSuggestion(key, set, x.rule)}>${t("learn.use")}</button></div>
+          <div class="chs"><span class=${x.on_time === x.runs ? "v on_time" : "v late"}>${t("learn.fits", { on: x.on_time, n: x.runs })}</span>
+            ${x.median != null ? ` · ${t("learn.median", { s: Math.round(x.median) })}` : ""}${x.max != null ? ` · ${t("learn.max", { s: Math.round(x.max) })}` : ""}
+            ${x.early ? html` · <span class="v early">${t("learn.early", { count: x.early })}</span>` : nothing}${x.late ? html` · <span class="v late">${t("learn.late", { count: x.late })}</span>` : nothing}</div>
+        </div>`)}
+    </div>`;
+  }
+
+  // a rule as its sentence, with the values written in
+  _ruleText(rule) {
+    const t = this._t;
+    const fields = Object.fromEntries((this._config.specs.rules[rule.type]?.fields || []).map((f) => [f.key, f]));
+    return t(`rule_sentence.${rule.type}`).replace(/\{(\w+)\}/g, (m, k) => (k === "type" ? t(`rule_verb.${rule.type}`) : fields[k] ? `${rule[k]} ${fields[k].unit}` : m));
+  }
+
+  // what the suggestions were made from: marks, runs left out, tolerance, on and off
+  _suggestSig(key, d) {
+    const runs = (this._runs[key]?.runs || []).map((r) => [r.id, r.marks?.done ?? null, !!r.skip]);
+    return JSON.stringify([runs, d.power.tolerance, d.power.on_above, d.power.off_after]);
+  }
+
+  async _runSuggest(area, station, d) {
+    const key = this._runsKey(area.entry_id, station.id);
+    await this._flushMarks();
+    const sig = this._suggestSig(key, d);
+    this._suggest = { key, loading: true, data: this._suggest?.key === key ? this._suggest.data : null };
+    try {
+      const data = await this.hass.callWS({ type: `${WS}/runs/suggest`, entry_id: area.entry_id, station_id: station.id, power: clone(d.power) });
+      this._suggest = { key, data, sig };
+    } catch (err) {
+      this._suggest = { key, error: err?.message || String(err) };
+    }
+  }
+
+  _useSuggestion(key, set, rule) {
+    this._errors = { ...this._errors, [key]: Object.fromEntries(Object.entries(this._errors[key] || {}).filter(([k]) => !k.startsWith("power.done."))) };
+    set((x) => {
+      x.power.kind = "until_off";
+      x.power.done = clone(rule);
+    });
+    this._used = { key, rule: clone(rule) };
+  }
+
+  // runs the best suggestion misses while it fits most others: their marks may be off
+  _renderOutliers(area, station, data) {
+    const t = this._t;
+    const key = this._runsKey(area.entry_id, station.id);
+    const ids = this._freshSuggest(key)?.outliers || [];
+    const runs = ids.map((id) => data.runs.find((r) => r.id === id)).filter((r) => r && !r.skip && !this._kept?.has(`${key}:${r.id}`));
+    const draft = this._drafts[`station:${area.entry_id}:${station.id}`];
+    const tol = Number((draft || station).power.tolerance ?? 60);
+    return runs.map((r) => html`<div class="outl"><b>${t("learn.outlier", { when: this._runWhen(r) })}</b> ${t("learn.outlier_hint", { time: formatDuration(r.marks?.done), tol })}
+      <div class="outla">
+        <button class="btn sm" @click=${() => (this._loadRun(area.entry_id, station.id, r.id), this.shadowRoot?.querySelector(".pane")?.scrollTo?.({ top: 0, behavior: "smooth" }))}>${t("learn.check")}</button>
+        <button class="btn sm" @click=${() => this._setSkip(area, station, r, true)}>${t("learn.leave")}</button>
+        <button class="btn sm" @click=${() => (this._kept = new Set([...(this._kept || []), `${key}:${r.id}`]), this.requestUpdate())}>${t("learn.keep")}</button>
+      </div></div>`);
   }
 
   // "21 s earlier" between saved and draft ring, when both ring by the same way
@@ -1056,13 +1308,60 @@ class HomeTimerPanel extends LitElement {
         const f = fields[k.split(".").pop()];
         return html`<div class="err" role="alert">${t(`error.${code}`)} ${t("allowed", { min: f.min, max: f.max, unit: f.unit })}</div>`;
       })}
-      ${rule === "off" ? nothing : this._previewSummary(station, d, preview)}
+      ${this._used?.key === key && same(this._used.rule, d.power.done) ? html`<div class="note">${t("learn.used")}</div>` : nothing}
+      ${rule === "off" && !this._markedCount(station) ? nothing : this._previewSummary(station, d, preview)}
+      ${this._renderSuggest(key, d, set, station)}
       ${this._help(`${t(`rule.${rule}_hint`)} ${t("power.done_hint")}`, t("rule.all_hint"), "rules")}`;
   }
 
   // the draft on all stored runs, counted
+  _markedCount(station) {
+    if (!station) return 0;
+    const area = this._area(this._route.entry);
+    const data = area ? this._runs[this._runsKey(area.entry_id, station.id)] : null;
+    return (data?.runs || []).filter((r) => r.marks?.done != null && !r.skip).length;
+  }
+
+  // the saved settings and the draft judged against the user's marks
+  _markedSummary(station, d, preview) {
+    const t = this._t;
+    const area = this._area(this._route.entry);
+    const data = this._runs[this._runsKey(area.entry_id, station.id)];
+    const tol = Number(d.power.tolerance ?? 60);
+    const byId = Object.fromEntries((data?.runs || []).map((r) => [r.id, r]));
+    const judged = preview.runs.map((r) => ({ r, run: byId[r.id] })).filter((x) => x.run && x.run.marks?.done != null && !x.run.skip);
+    if (!judged.length) return null;
+    const differs = this._draftDiffers(station, d);
+    const count = (which) => {
+      const c = { on_time: [], early: 0, late: 0 };
+      for (const { r, run } of judged) {
+        const v = this._verdict(r[which], run.marks.done, tol);
+        if (v.kind === "on_time") c.on_time.push(v.delta);
+        else c[v.kind]++;
+      }
+      return c;
+    };
+    const med = (a) => {
+      const x = [...a].sort((p, q) => p - q);
+      const k = Math.floor(x.length / 2);
+      return Math.round(x.length % 2 ? x[k] : (x[k - 1] + x[k]) / 2);
+    };
+    const c = count(differs ? "draft" : "saved");
+    const unmarked = preview.runs.length - judged.length;
+    return html`<div class="preview"><b>${t(differs ? "preview.marked_title" : "preview.saved_title", { count: judged.length })}</b>
+      <span class="v on_time">${c.on_time.length ? t("preview.on_time", { count: c.on_time.length, s: med(c.on_time) }) : t("preview.on_time_none")}</span>
+      · <span class=${c.early ? "v early" : ""}>${t("preview.early_n", { count: c.early })}</span>
+      · <span class=${c.late ? "v late" : ""}>${t("preview.late_n", { count: c.late })}</span>
+      ${differs ? html` <span class="chs">${t("preview.saved_on_time", { count: count("saved").on_time.length })}</span>` : nothing}
+      ${unmarked > 0 ? html`<div class="chs">${t("preview.unmarked", { count: unmarked })}</div>` : nothing}</div>`;
+  }
+
   _previewSummary(station, d, preview) {
     const t = this._t;
+    if (station && station.mode === "power" && preview && this._learning(d)) {
+      const marked = this._markedSummary(station, d, preview);
+      if (marked) return marked;
+    }
     if (!station || station.mode !== "power" || !preview || !this._draftDiffers(station, d)) return nothing;
     const runs = preview.runs.filter((r) => r.saved && r.draft);
     if (!runs.length) return nothing;
@@ -1147,6 +1446,7 @@ class HomeTimerPanel extends LitElement {
   // select: the run to show (default: the one shown, else the newest)
   async _loadRuns(entryId, stationId, select) {
     const key = this._runsKey(entryId, stationId);
+    await this._flushMarks();
     try {
       const res = await this.hass.callWS({ type: `${WS}/runs/list`, entry_id: entryId, station_id: stationId });
       this._runs = { ...this._runs, [key]: res };
@@ -1163,7 +1463,7 @@ class HomeTimerPanel extends LitElement {
 
   async _loadRun(entryId, stationId, id) {
     const key = this._runsKey(entryId, stationId);
-    if (this._run?.id !== id) (this._confirm = null), (this._hover = null);
+    if (this._run?.id !== id) (this._confirm = null), (this._hover = null), (this._lastHover = null);
     this._fetching = true;
     try {
       const data = await this.hass.callWS({ type: `${WS}/runs/get`, entry_id: entryId, station_id: stationId, run_id: id });
@@ -1254,8 +1554,14 @@ class HomeTimerPanel extends LitElement {
   _pointer(m, e) {
     const svgEl = e.currentTarget.querySelector("svg");
     const x = e.clientX;
+    const drag = this._drag;
+    if (drag && !drag.touch) {
+      const at = secondsAt(drag.m, drag.svgEl, x); // the scale from when the drag began: it does not shift under the pointer
+      if (at != null) this._setMark(drag.area, drag.station, drag.run, this._clampMark(drag.run, at), false);
+    }
     cancelAnimationFrame(this._frame);
     this._frame = requestAnimationFrame(() => (this._hover = secondsAt(m, svgEl, x)));
+    if (this._hover != null) this._lastHover = this._hover;
   }
 
   _renderDeleteRun(area, station, run) {
@@ -1269,12 +1575,13 @@ class HomeTimerPanel extends LitElement {
   }
 
   // a small bar per run: its length, the saved and the draft ring
-  _strip(run, pv, differs) {
-    const end = Math.max(run.duration || 0, ...(pv ? [pv.saved, pv.draft].filter((x) => x && x.rang != null).map((x) => x.start + x.rang) : []), 1);
+  _strip(run, pv, differs, mark = null) {
+    const end = Math.max(run.duration || 0, mark ?? 0, ...(pv ? [pv.saved, pv.draft].filter((x) => x && x.rang != null).map((x) => x.start + x.rang) : []), 1);
     const x = (s) => Math.min(100, (s / end) * 100);
     const line = (res, dash) => res && res.rang != null && !res.blip
       ? svg`<line x1="${x(res.start + res.rang)}%" x2="${x(res.start + res.rang)}%" y1="1" y2="13" class="${res.trigger === "cancelled" ? "cx" : ""} ${dash ? "dash" : ""}"></line>` : nothing;
     return html`<svg class="strip" width="100%" height="14" aria-hidden="true"><rect x="0" y="5" width="${x(run.duration || 0)}%" height="4" rx="2"></rect>
+      ${mark != null ? svg`<line x1="${x(mark)}%" x2="${x(mark)}%" y1="0" y2="14" class="mk"></line>` : nothing}
       ${pv ? line(pv.saved, false) : nothing}${pv && differs ? line(pv.draft, true) : nothing}</svg>`;
   }
 
@@ -1290,13 +1597,24 @@ class HomeTimerPanel extends LitElement {
     const usual = this._usual(station);
     const closed = `${t("runs.summary", { count: stored })}${usual ? ` · ${t("now.usual", { time: usual })}` : ""}`;
     const pvOf = (r) => (r.running ? preview?.current : preview?.runs.find((x) => x.id === r.id));
-    const text = (pv) => {
+    const learning = this._learning(d);
+    const tol = Number(d.power.tolerance ?? 60);
+    const anyMarked = learning && all.some((r) => r.marks?.done != null);
+    const markOf = (r) => (learning ? r.marks?.done ?? null : null);
+    const text = (r, pv) => {
       if (!pv) return "";
       const one = (res) => (res.blip ? "–" : res.rang != null ? formatDuration(res.start + res.rang) : "–");
-      return differs ? `${one(pv.saved)} → ${one(pv.draft)}` : one(pv.saved);
+      const rings = differs ? `${one(pv.saved)} → ${one(pv.draft)}` : one(pv.saved);
+      return markOf(r) != null ? `${formatDuration(markOf(r))} · ${rings}` : rings;
     };
     const tagOf = (r, pv) => {
       if (r.running) return html`<span class="tag live">${t("runs.tag.running")}</span>`;
+      if (learning && r.skip) return html`<span class="tag">${t("runs.tag.left_out")}</span>`;
+      if (learning && this._isOutlier(key, r.id)) return html`<span class="tag bad">${t("runs.tag.outlier")}</span>`;
+      if (pv && markOf(r) != null) {
+        const v = this._verdict(differs ? pv.draft : pv.saved, markOf(r), tol);
+        return html`<span class="tag ${v.kind}">${t(`runs.tag.${v.kind}`)}</span>`;
+      }
       if (pv && differs) {
         if (pv.draft.blip) return html`<span class="tag warn">${t("runs.tag.blip")}</span>`;
         if (pv.draft.trigger === "never") return html`<span class="tag warn">${t("runs.tag.never")}</span>`;
@@ -1306,11 +1624,12 @@ class HomeTimerPanel extends LitElement {
       }
       if (this._otherSensor(r, station)) return html`<span class="tag">${t("runs.tag.other_sensor")}</span>`;
       if (r.source === "history") return html`<span class="tag">${t("runs.tag.history")}</span>`;
+      if (anyMarked) return html`<span class="tag">${t("runs.tag.mark_it")}</span>`;
       return nothing;
     };
     return html`<div class="card">
       <button class="ch fold" ?disabled=${!this.narrow} aria-expanded=${open ? "true" : "false"} @click=${() => this._setFold("runs", !open)}>
-        <span>${t("runs.title")} <span class="chs">– ${open ? (differs ? t("runs.saved_draft") : t("runs.kept", { count: data.keep ?? 30 })) : closed}</span></span>
+        <span>${t("runs.title")} <span class="chs">– ${open ? (anyMarked ? t(differs ? "runs.mark_saved_draft" : "runs.mark_saved") : differs ? t("runs.saved_draft") : t("runs.kept", { count: data.keep ?? 30 })) : closed}</span></span>
         ${this.narrow ? html`<ha-icon icon=${open ? "mdi:chevron-up" : "mdi:chevron-down"}></ha-icon>` : nothing}
       </button>
       ${open
@@ -1320,12 +1639,13 @@ class HomeTimerPanel extends LitElement {
               return html`<button class="runrow ${r.id === selected ? "sel" : ""}" role="option" aria-selected=${r.id === selected ? "true" : "false"} @click=${() => this._loadRun(area.entry_id, station.id, r.id)}>
                 <span class="rw">${r.running ? t("runs.now") : this._runWhen(r, !this.narrow)}</span>
                 <span class="rd">${formatDuration(r.duration)}</span>
-                <span class="rs">${this._strip(r, pv, differs)}</span>
-                <span class="rr">${text(pv)}</span>
+                <span class="rs">${this._strip(r, pv, differs, markOf(r))}</span>
+                <span class="rr">${text(r, pv)}</span>
                 <span class="rt">${tagOf(r, pv)}</span>
               </button>`;
             })}
-          </div>`
+          </div>
+          ${learning ? html`<div class="outls">${this._renderOutliers(area, station, data)}</div>` : nothing}`
         : nothing}
     </div>`;
   }
@@ -1658,6 +1978,42 @@ class HomeTimerPanel extends LitElement {
     .strip line.cx { stroke: var(--ht-run); }
     .dl { font-size: 12.5px; font-weight: 500; color: var(--ht-ok); white-space: nowrap; }
     .tag.warn { background: color-mix(in srgb, var(--ht-run) 16%, transparent); color: color-mix(in srgb, var(--ht-run) 85%, #000); }
+    .runacts { display: inline-flex; align-items: center; gap: 6px; }
+    .chartbox.marking { cursor: crosshair; }
+    .chartbox:focus-visible { outline: 2px solid var(--ht-ok); outline-offset: 2px; border-radius: 4px; }
+    .chart .done { stroke: var(--ht-ok); stroke-width: 2.5; }
+    .chart .grip { fill: var(--ht-ok); cursor: ew-resize; }
+    .chart .gripl { stroke: #fff; stroke-width: 1.6; }
+    .chart .tol { fill: color-mix(in srgb, var(--ht-ok) 11%, transparent); }
+    .chart .zone.tolt, .chart .mk.donet { fill: var(--ht-ok); }
+    .chart .mk.donet { font-weight: 600; }
+    .sw.done { width: 0; height: 14px; border-top: none; border-left: 2.5px solid var(--ht-ok); }
+    .sw.tol { height: 10px; border: none; background: color-mix(in srgb, var(--ht-ok) 18%, transparent); }
+    .mbar { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: color-mix(in srgb, var(--ht-ok) 10%, transparent); border-radius: 8px; padding: 8px 10px; margin: 4px 0 8px; font-size: 13.5px; }
+    .mbar b { color: color-mix(in srgb, var(--ht-ok) 85%, #000); font-weight: 600; }
+    .mbar.ask { background: var(--ht-fill); }
+    .mbar.bad { background: color-mix(in srgb, var(--ht-err) 10%, transparent); }
+    .mbar.bad b { color: var(--ht-err); }
+    .mbar .sp { flex: 1; }
+    .btn.ok { color: color-mix(in srgb, var(--ht-ok) 85%, #000); border-color: color-mix(in srgb, var(--ht-ok) 45%, transparent); display: inline-flex; align-items: center; gap: 4px; --mdc-icon-size: 16px; }
+    .btn.filled.ok { background: var(--ht-ok); color: #fff; border-color: var(--ht-ok); }
+    .v.on_time { color: color-mix(in srgb, var(--ht-ok) 85%, #000); }
+    .v.early { color: var(--ht-err); }
+    .v.late { color: color-mix(in srgb, var(--ht-run) 85%, #000); }
+    .tag.on_time { background: color-mix(in srgb, var(--ht-ok) 14%, transparent); color: color-mix(in srgb, var(--ht-ok) 85%, #000); }
+    .tag.early, .tag.bad { background: color-mix(in srgb, var(--ht-err) 12%, transparent); color: var(--ht-err); }
+    .tag.late { background: color-mix(in srgb, var(--ht-run) 16%, transparent); color: color-mix(in srgb, var(--ht-run) 85%, #000); }
+    .strip line.mk { stroke: var(--ht-ok); stroke-width: 2; }
+    .suggest { margin-top: 10px; }
+    .sugrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .sugrow .btn { display: inline-flex; align-items: center; gap: 6px; --mdc-icon-size: 18px; }
+    .sugrow .btn[disabled] { opacity: 0.5; cursor: default; }
+    .sug { border: 1px solid var(--ht-d); border-radius: 10px; padding: 10px 12px; margin-top: 8px; background: var(--ht-card); }
+    .sug.best { border: 2px solid var(--ht-ok); }
+    .sugh { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 4px; }
+    .outls { padding: 0 16px; }
+    .outl { border: 1px solid color-mix(in srgb, var(--ht-err) 30%, transparent); background: color-mix(in srgb, var(--ht-err) 5%, transparent); border-radius: 10px; padding: 10px 12px; margin: 10px 0; line-height: 1.45; }
+    .outla { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
     @container (max-width: 920px) {
       .duo { grid-template-columns: 1fr; }
       .duor { order: -1; }

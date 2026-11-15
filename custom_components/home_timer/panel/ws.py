@@ -10,6 +10,9 @@ runs/list         a power station's stored runs (without curves), the current ru
 runs/get          one run with its curve ("current": the run going on)
 runs/delete       delete a stored run
 runs/preview      what saved settings and a draft make of each stored run (and of the current one)
+runs/mark         mark when a run was done (or remove the mark); "current": done now
+runs/skip         leave a run out of learning, or take it back in
+runs/suggest      done rules that fit the marked runs (learn.py)
 settings/save     the panel's own settings (shown in the sidebar)
 
 Saves send the ``version`` they started from; if the stored data changed meanwhile
@@ -29,6 +32,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_AREA_ID, DOMAIN
+from ..learn import MIN_MARKED, search
 from ..runs import CURRENT, KEEP, compact, simulate, summary
 from ..stations import CONF_PRESETS, SUBENTRY_STATION, PowerConfig
 from .edit import check_options, check_presets, check_station, draft_power
@@ -41,7 +45,8 @@ PREFIX = DOMAIN
 @callback
 def async_setup_ws(hass: HomeAssistant) -> None:
     for command in (ws_config_get, ws_area_create, ws_area_save, ws_area_delete, ws_station_save, ws_station_delete, ws_settings_save,
-                    ws_runs_list, ws_runs_get, ws_runs_delete, ws_runs_preview):
+                    ws_runs_list, ws_runs_get, ws_runs_delete, ws_runs_preview,
+                    ws_runs_mark, ws_runs_skip, ws_runs_suggest):
         websocket_api.async_register_command(hass, command)
 
 
@@ -203,6 +208,7 @@ def _current(engine: Any, station_id: str, *, curve: bool) -> dict[str, Any] | N
         "source": "live",
         "running": True,
         "from": round(watcher.trace.start, 1),
+        "marks": {"done": watcher.mark} if watcher.mark is not None else {},
     }
     if curve:
         run["t"], run["w"] = compact(watcher.trace.times, watcher.trace.watts)
@@ -234,6 +240,7 @@ def ws_runs_list(hass: HomeAssistant, connection: websocket_api.ActiveConnection
             "sensor": _sensor(runs),
             "imported": msg["station_id"] in engine.runs.imported,
             "keep": KEEP,
+            "min_marked": MIN_MARKED,
         },
     )
 
@@ -337,3 +344,81 @@ async def ws_runs_preview(hass: HomeAssistant, connection: websocket_api.ActiveC
     result = await hass.async_add_executor_job(_run)
     _SAVED[key] = (sig, cached)
     connection.send_result(msg["id"], result)
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command(
+    {
+        vol.Required("type"): f"{PREFIX}/runs/mark",
+        **RUN_SCHEMA,
+        vol.Required("run_id"): str,
+        vol.Optional("done"): vol.Any(None, vol.All(vol.Coerce(float), vol.Range(min=0, max=86400 * 2))),
+    }
+)
+@callback
+def ws_runs_mark(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Mark when a run was done (``done`` seconds on its curve; None removes it).
+
+    ``run_id`` "current": the run going on – done now (or at ``done``); the mark is
+    kept with the run when it is stored.
+    """
+    if (engine := _engine(hass, connection, msg)) is None:
+        return
+    if msg["run_id"] == CURRENT:
+        watcher = engine.watcher(msg["station_id"])
+        try:
+            done = watcher.mark_done(msg.get("done")) if watcher is not None else None
+        except ValueError:
+            done = None
+        if done is None:
+            connection.send_error(msg["id"], "not_running", "The appliance is not running")
+            return
+        connection.send_result(msg["id"], {"done": done})
+        return
+    run = engine.runs.set_mark(msg["station_id"], msg["run_id"], msg.get("done"))
+    if run is None:
+        connection.send_error(msg["id"], "not_found", "Unknown run")
+        return
+    connection.send_result(msg["id"], {"marks": run["marks"]})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): f"{PREFIX}/runs/skip", **RUN_SCHEMA, vol.Required("run_id"): str, vol.Required("skip"): bool})
+@callback
+def ws_runs_skip(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    if (engine := _engine(hass, connection, msg)) is None:
+        return
+    run = engine.runs.set_skip(msg["station_id"], msg["run_id"], msg["skip"])
+    if run is None:
+        connection.send_error(msg["id"], "not_found", "Unknown run")
+        return
+    connection.send_result(msg["id"], {"skip": run["skip"]})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): f"{PREFIX}/runs/suggest", **RUN_SCHEMA, vol.Optional("power", default=dict): dict})
+@websocket_api.async_response
+async def ws_runs_suggest(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Done rules that fit the marked runs, with the draft's "on and off" and tolerance."""
+    if (engine := _engine(hass, connection, msg)) is None:
+        return
+    subentry = engine.entry.subentries.get(msg["station_id"])
+    station = engine.stations.get(msg["station_id"])
+    if station is None or station.power is None or subentry is None:
+        connection.send_error(msg["id"], "not_found", "Unknown power station")
+        return
+    config = PowerConfig.from_data(draft_power(msg["power"], dict(subentry.data.get("power") or {}))) or station.power
+    runs = list(engine.runs.list(msg["station_id"]))
+    key = f"{engine.entry.entry_id}:{msg['station_id']}"
+    if key in _SEARCHING:
+        connection.send_error(msg["id"], "busy", "A search for this station is running")
+        return
+    _SEARCHING.add(key)
+    try:
+        result = await hass.async_add_executor_job(search, runs, config, config.tolerance)
+    finally:
+        _SEARCHING.discard(key)
+    connection.send_result(msg["id"], result)
+
+
+_SEARCHING: set[str] = set()  # stations whose suggestions are being searched (one at a time)

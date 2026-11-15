@@ -162,6 +162,10 @@ async def checks(ha: Instance, s: aiohttp.ClientSession, ctx: dict) -> None:
     moka = next(st for st in kitchen["stations"] if st["name"] == "Moka pot")
     seeded = await ha.call({"type": "home_timer/runs/list", "entry_id": entry_id, "station_id": moka["id"]})
     check("runs: the moka pot's week (seed_runs.py)", len(seeded["runs"]) >= 8 and seeded["sensor"]["interval"], seeded["sensor"])
+    check("learning: the moka pot has a Done now button", await ha.state("button.kitchen_moka_pot_done_now") is not None)
+    suggest = await ha.call({"type": "home_timer/runs/suggest", "entry_id": entry_id, "station_id": moka["id"], "power": {}})
+    check("learning: suggestions from the marked runs", suggest["marked"] >= 3 and suggest["suggestions"]
+          and suggest["suggestions"][0]["early"] == 0, {k: suggest[k] for k in ("marked", "outliers")})
 
 
 async def _remove_leftovers(ha: Instance) -> None:

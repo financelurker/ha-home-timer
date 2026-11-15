@@ -12,7 +12,7 @@ from . import HomeTimerConfigEntry
 from .const import BY_BUTTON, DOMAIN, STATUS_ACTIVE, STATUS_PAUSED, STATUS_RINGING
 from .engine import TimerError
 from .entity import AreaEntity, StationEntity, remove_orphans
-from .stations import Preset
+from .stations import KIND_UNTIL_OFF, Preset
 
 PRESET_KEY = "start_preset"
 
@@ -38,6 +38,8 @@ async def async_setup_entry(
                 AddMinuteButton(engine, station, "add_minute"),
             ]
         buttons.append(StopButton(engine, station, "stop"))
+        if station.power is not None and station.power.kind == KIND_UNTIL_OFF:
+            buttons.append(DoneNowButton(engine, station, "done_now"))
         wanted.update(b.unique_id for b in buttons if b.unique_id)
         async_add_entities(buttons, config_subentry_id=station.id)
     remove_orphans(hass, entry.entry_id, "button", wanted)
@@ -129,3 +131,19 @@ class StopButton(StationEntity, ButtonEntity):
             _run(self.engine.acknowledge, timer.id, by=BY_BUTTON)
         else:
             _run(self.engine.cancel, timer.id)
+
+
+class DoneNowButton(StationEntity, ButtonEntity):
+    """Learning: the user says the appliance's run is done now (a mark on the run's curve).
+
+    It does not ring or stop anything; the panel uses the marks to suggest done rules.
+    """
+
+    async def async_press(self) -> None:
+        watcher = self.engine.watcher(self.station.id)
+        try:
+            if watcher is None:
+                raise ValueError("no watcher")
+            watcher.mark_done()
+        except ValueError as err:
+            raise HomeAssistantError(translation_domain=DOMAIN, translation_key="not_running") from err

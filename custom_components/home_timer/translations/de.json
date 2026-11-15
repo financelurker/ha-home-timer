@@ -160,6 +160,9 @@
       },
       "start_custom": {
         "name": "Eigenen Timer starten"
+      },
+      "done_now": {
+        "name": "Jetzt fertig"
       }
     },
     "todo": {
@@ -361,6 +364,9 @@
     },
     "open_timer": {
       "message": "Der Timer „{name}“ läuft, bis sein Gerät fertig ist; er lässt sich nicht pausieren und seine Zeit nicht ändern."
+    },
+    "not_running": {
+      "message": "Das Gerät läuft nicht – es gibt nichts als fertig zu markieren."
     }
   },
   "device_automation": {

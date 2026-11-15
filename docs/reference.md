@@ -62,6 +62,7 @@ On the station's device.
 | `button.<area>_<station>_pause_resume` | pauses or resumes the timer |
 | `button.<area>_<station>_1_minute` | +1 minute (a ringing timer starts again) |
 | `button.<area>_<station>_stop_acknowledge` | acknowledges a ringing timer, cancels a running or paused one |
+| `button.<area>_<station>_done_now` | power stations that ring when done: marks the run going on as done (learning) |
 | `number.<area>_<station>_custom_timer` | custom duration in minutes (1–600) |
 | `button.<area>_<station>_start_custom_timer` | starts a timer "Timer" with the custom duration |
 | `text.<area>_<station>_save_as_preset` | enter a name: saves the custom timer as a preset of the station; attributes `custom_timer`, `duration` |
