@@ -49,7 +49,7 @@ data:
   timer_id: "{{ timer_id }}"
 ```
 
-It keeps its state and remaining time and from then on shows on the station's entities; a timer the station had is replaced. The station must be in the timer's area. Event: `home_timer_assigned`.
+It keeps its state and remaining time and from then on shows on the station's entities; a timer the station had is replaced. Its preset is kept only if the new station has a preset of that name. The station must be in the timer's area. Event `home_timer_assigned`, device trigger *Timer assigned to the station*.
 
 ## From automations and scripts
 

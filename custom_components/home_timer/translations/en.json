@@ -374,7 +374,8 @@
       "started": "Timer started",
       "finished": "Timer finished",
       "reminder": "Timer reminds (still ringing)",
-      "acknowledged": "Timer acknowledged"
+      "acknowledged": "Timer acknowledged",
+      "assigned": "Timer assigned to the station"
     }
   }
 }

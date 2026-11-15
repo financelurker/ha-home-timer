@@ -83,13 +83,64 @@ async def test_assign_errors(hass: HomeAssistant, kitchen) -> None:
     bathroom = await setup_area(hass, "Bathroom")
     await add_station(hass, bathroom, "Bathtub")
     timer = kitchen.runtime_data.start("Dough", 1800)
-    with pytest.raises(ServiceValidationError):  # unknown timer
-        await assign(hass, "nope", {"entity_id": HOB})
-    with pytest.raises(ServiceValidationError):  # no station
-        await assign(hass, timer.id, {"area_id": kitchen.data["area_id"]})
-    with pytest.raises(ServiceValidationError):  # two stations
-        await assign(hass, timer.id, {"entity_id": [HOB, "sensor.kitchen_oven"]})
-    with pytest.raises(ServiceValidationError):  # another area
-        await assign(hass, timer.id, {"entity_id": "sensor.bathroom_bathtub"})
-    with pytest.raises(ServiceValidationError):  # station and area mixed
-        await assign(hass, timer.id, {"entity_id": HOB, "area_id": bathroom.data["area_id"]})
+    for timer_id, target, key in (
+        ("nope", {"entity_id": HOB}, "unknown_timer"),
+        (timer.id, {"area_id": kitchen.data["area_id"]}, "one_station"),
+        (timer.id, {"entity_id": [HOB, "sensor.kitchen_oven"]}, "one_station"),
+        (timer.id, {"entity_id": "sensor.bathroom_bathtub"}, "other_area"),
+        (timer.id, {"entity_id": HOB, "area_id": bathroom.data["area_id"]}, "mixed_target"),
+    ):
+        with pytest.raises(ServiceValidationError) as err:
+            await assign(hass, timer_id, target)
+        assert err.value.translation_key == key
+
+
+async def test_ringing_timer_keeps_ringing_on_its_new_station(hass: HomeAssistant, kitchen, freezer) -> None:
+    hob = await add_station(hass, kitchen, "Hob 1")
+    ev = events(hass)
+    timer = kitchen.runtime_data.start("Tea", 60)
+    await tick(hass, freezer, 61)
+    await assign(hass, timer.id, {"entity_id": HOB})
+    await hass.async_block_till_done()
+    assert hass.states.get(HOB).state == "ringing"
+    await tick(hass, freezer, 120)
+    device_id = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, hob), kitchen.entry_id).id
+    assert ev["reminder"][0].data["device_id"] == device_id
+    assert ev["reminder"][0].data["station_name"] == "Hob 1"
+    await tick(hass, freezer, 28 * 60)
+    assert ev["acknowledged"][0].data["by"] == "timeout"
+
+
+async def test_paused_timer_moves_with_its_time(hass: HomeAssistant, kitchen, hass_storage) -> None:
+    hob = await add_station(hass, kitchen, "Hob 1", [("Rice", 600)])
+    oven = await add_station(hass, kitchen, "Oven")
+    assigned = async_capture_events(hass, f"{DOMAIN}_assigned")
+    engine = kitchen.runtime_data
+    timer = engine.start_preset(hob, "Rice")
+    engine.pause(timer.id)
+    response = await assign(hass, timer.id, {"entity_id": "sensor.kitchen_oven"})
+    await hass.async_block_till_done()
+    assert response["timer"]["remaining"] == 600
+    assert response["timer"]["preset"] is None  # Rice is not a preset of the oven
+    assert hass.states.get(HOB).state == "idle"
+    assert hass.states.get("sensor.kitchen_oven").state == "paused"
+    data = assigned[0].data
+    assert data["previous_station"] == hob
+    assert data["previous_station_name"] == "Hob 1"
+    assert data["device_id"] == dr.async_get(hass).async_get_device_by_identifier((DOMAIN, oven), kitchen.entry_id).id
+    assert await hass.config_entries.async_unload(kitchen.entry_id)
+    stored = hass_storage[f"{DOMAIN}.{kitchen.entry_id}"]["data"]["timers"][0]
+    assert (stored["station"], stored["station_name"]) == (oven, "Oven")
+
+
+async def test_previous_name_follows_a_rename(hass: HomeAssistant, kitchen) -> None:
+    hob = await add_station(hass, kitchen, "Hob 1")
+    await add_station(hass, kitchen, "Oven")
+    assigned = async_capture_events(hass, f"{DOMAIN}_assigned")
+    timer = kitchen.runtime_data.start("Tea", 600)
+    await assign(hass, timer.id, {"entity_id": HOB})
+    hass.config_entries.async_update_subentry(kitchen, kitchen.subentries[hob], title="Front hob")
+    await hass.async_block_till_done()
+    await assign(hass, timer.id, {"entity_id": "sensor.kitchen_oven"})
+    await hass.async_block_till_done()
+    assert assigned[-1].data["previous_station_name"] == "Front hob"

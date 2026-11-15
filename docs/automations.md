@@ -42,7 +42,7 @@ The other actions take the timer's id – from the response above, from an event
 | `home_timer.acknowledge` | `timer_id`, stations, or areas (area, floor, …) | acknowledges one ringing timer, the ringing timers of the stations, or all ringing timers of the areas |
 | `home_timer.assign` | `timer_id`, one station of the timer's area | attaches the timer to the station: it keeps its state and time; a timer the station has is replaced; a timer of another station moves (response: the timer) |
 
-A target names either stations or areas, not both (only `acknowledge` takes both). With a `timer_id`, the target is not used. Durations must be at least one second. An action that does not fit the timer's state (pause a paused timer, acknowledge one that does not ring) fails with a message saying why.
+A target names either stations or areas, not both (only `acknowledge` takes both). With a `timer_id`, the target is not used (except by `assign`, which needs both). Durations must be at least one second. An action that does not fit the timer's state (pause a paused timer, acknowledge one that does not ring) fails with a message saying why.
 
 ## Events
 
@@ -54,9 +54,9 @@ A target names either stations or areas, not both (only `acknowledge` takes both
 | `home_timer_time_changed` | time is added or subtracted | `change` (seconds, negative when subtracted; at most what was left) |
 | `home_timer_finished` | it runs out | `late` (`true`: it ran out during a restart) |
 | `home_timer_reminder` | while it rings, every few minutes | `overtime` (seconds since it ran out) |
-| `home_timer_cancelled` | it is cancelled | `reason`: `manual`, `replaced` (a new timer on the station) or `station_removed` (then `device_id` is the area's device; `station_name` is still the station's) |
+| `home_timer_cancelled` | it is cancelled | `reason`: `manual`, `replaced` (a new or assigned timer on the station) or `station_removed` (then `device_id` is the area's device; `station_name` is still the station's) |
 | `home_timer_acknowledged` | a ringing timer is acknowledged | `by`: `button`, `action` or `timeout`; `overtime` |
-| `home_timer_assigned` | it is attached to a station (`home_timer.assign`) | `previous_station_name` (when it moved from another station) |
+| `home_timer_assigned` | it is attached to a station (`home_timer.assign`) | `previous_station`, `previous_station_name` (when it moved from another station, else empty) |
 
 Every event carries:
 
@@ -81,6 +81,7 @@ In the automation editor: **When** → *Device* → a station's device or the ar
 | Trigger | Station's device | Area's *Home Timer* device |
 |---|---|---|
 | Timer started | its timer | any timer of the area |
+| Timer assigned to the station | a timer attached to it | any timer attached to a station of the area |
 | Timer finished | its timer | any timer of the area |
 | Timer reminds (still ringing) | its timer | any timer of the area |
 | Timer acknowledged | its timer | any timer of the area |

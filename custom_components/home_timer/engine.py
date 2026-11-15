@@ -85,7 +85,7 @@ class Timer:
     finished_at: datetime | None = None  # ringing: when it ran out
     ring_anchor: datetime | None = None  # ringing: reminders and auto-dismiss count from here
     station: str | None = None
-    station_name: str | None = None  # at the start; kept for events after the station is gone
+    station_name: str | None = None  # when started or assigned; kept for events after the station is gone
     preset: str | None = None
     note: str | None = None
     source: dict[str, Any] = field(default_factory=dict)
@@ -403,7 +403,8 @@ class AreaTimers:
         """Attach a timer to a station of the area; it keeps its state and time.
 
         A timer the station already has is replaced (``reason: replaced``). A timer of
-        another station moves; assigning it to its own station does nothing.
+        another station moves; assigning it to its own station does nothing. Its preset
+        is kept only if the new station has a preset of that name.
         """
         timer = self.get(timer_id)
         station = self.stations.get(station_id)
@@ -413,10 +414,14 @@ class AreaTimers:
             return timer
         if (other := self.timer_at(station_id)) is not None:
             self.cancel(other.id, reason=REASON_REPLACED)
-        previous = timer.station_name if timer.station else None
+        known = self.stations
+        previous_id = timer.station
+        previous_name = (known[previous_id].name if previous_id in known else timer.station_name) if previous_id else None
         timer.station = station_id
         timer.station_name = station.name
-        self._fire(EVENT_ASSIGNED, timer, previous_station_name=previous)
+        if timer.preset is not None and station.preset(timer.preset) is None:
+            timer.preset = None  # not a preset of the new station
+        self._fire(EVENT_ASSIGNED, timer, previous_station=previous_id, previous_station_name=previous_name)
         self._changed()
         return timer
 
