@@ -34,6 +34,8 @@ The station's device carries its name and lies in the area (move it if you like)
 | `button.kitchen_hob_1_start_custom_timer` | starts a timer "Timer" with the custom duration (replacing the station's timer) |
 | `text.kitchen_hob_1_save_as_preset` | enter a name: saves the custom timer as a preset (see below) |
 
+![Hob 1's device: buttons per preset, custom timer, pause, +1 minute, stop](images/device.png)
+
 Renaming a preset keeps its button (its entity id stays); deleting a preset removes it.
 
 ## Creating presets while cooking

@@ -7,6 +7,8 @@
 
 **Timers per room.** Home Timer gives every area its own timers. A timer can belong to a **station** – a hob, the rice cooker, the bathtub – and stations have **presets**: "Rice" is 10 minutes, "Fill the bathtub" 14, one button each. When a timer runs out it rings until you acknowledge it, and your automations decide where to tell you – phone, speaker or light.
 
+![The Home Timer panel: the kitchen's stations with what each does right now – a countdown, a ringing kettle, the moka pot brewing](https://raw.githubusercontent.com/financelurker/ha-home-timer/main/docs/images/panel.png?v=066b33af5f)
+
 ## What it does
 
 - **[One entry per area](https://github.com/financelurker/ha-home-timer/blob/main/docs/setup.md):** kitchen, bathroom, laundry – each area gets its own timers and a *Home Timer* device.
@@ -21,6 +23,10 @@
 - **[Power stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md):** a power sensor starts the timer – it rings when the appliance is done (e.g. a moka pot), starts a preset when switched on, or warns if it runs too long.
 - **[Device triggers](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md#device-triggers)** per station and per area: started, finished, reminder, acknowledged.
 - **[Its own panel](https://github.com/financelurker/ha-home-timer/blob/main/docs/panel.md):** areas, stations, presets and options on one page, with what each station does right now – also on the phone.
+
+No custom card needed – a dashboard of plain tile cards:
+
+![A dashboard: Hob 1 with its presets, appliances on smart plugs, quick timers and the ringing timers as a to-do list](https://raw.githubusercontent.com/financelurker/ha-home-timer/main/docs/images/dashboard.png?v=70f44ac7ac)
 
 ## Installation
 

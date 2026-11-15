@@ -5,3 +5,6 @@ __pycache__/
 venv/
 .coverage
 node_modules/
+
+# local instance (scripts/instance)
+scripts/instance/session.json
