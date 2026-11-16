@@ -111,6 +111,17 @@ async def test_store_keeps_the_newest_and_marked_runs(hass: HomeAssistant) -> No
     assert kept[0]["id"] == runs[0]["id"]  # marked: kept although the oldest
     assert kept[-1]["id"] == runs[-1]["id"]
     assert store.delete("s1", runs[-1]["id"]) and not store.delete("s1", "nope")
+    # named points and ranges (for phases, later) next to "done"; each kept when another changes
+    rid = runs[-2]["id"]
+    store.set_mark("s1", rid, 20)
+    store.set_mark("s1", rid, 5, name="wash_start")
+    store.set_range("s1", rid, "wash", (40, 10))
+    store.set_range("s1", rid, "rinse", (45, 999))
+    assert store.get("s1", rid)["marks"] == {"done": 20.0, "wash_start": 5.0, "ranges": {"wash": [10.0, 40.0], "rinse": [45.0, 60.0]}}
+    store.set_mark("s1", rid, None)
+    store.set_range("s1", rid, "wash", None)
+    store.set_range("s1", rid, "rinse", None)
+    assert store.get("s1", rid)["marks"] == {"wash_start": 5.0} and store.set_mark("s1", rid, 1, name="ranges") is None
     store.mark_imported("s1")
     store.prune({"other"})
     assert store.list("s1") == [] and store.imported == set()

@@ -17,7 +17,7 @@ from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_AREA_ID, DEFAULT_OPTIONS, DOMAIN
-from ..power import RULE_DEFAULTS, RULE_FIELDS, RULE_TYPES
+from ..power import MAX_STEPS, RULE_DEFAULTS, RULE_FIELDS, RULE_TYPES
 from ..stations import CONF_ICON, CONF_MODE, CONF_POWER, CONF_PRESETS, KINDS, MODE_MANUAL, POWER_DEFAULTS, SUBENTRY_STATION
 from .edit import MAX_PRESET_SECONDS, OPTION_RANGES, POWER_RANGES
 
@@ -110,4 +110,5 @@ def specs() -> dict[str, Any]:
             for t in RULE_TYPES
         },
         "max_preset_seconds": MAX_PRESET_SECONDS,
+        "max_steps": MAX_STEPS,
     }

@@ -13,6 +13,8 @@ runs/preview      what saved settings and a draft make of each stored run (and o
 runs/mark         mark when a run was done (or remove the mark); "current": done now
 runs/skip         leave a run out of learning, or take it back in
 runs/suggest      done rules that fit the marked runs (learn.py)
+runs/suggest_status   how far the station's search is (and its last result)
+runs/suggest_cancel   stop the station's search
 settings/save     the panel's own settings (shown in the sidebar)
 
 Saves send the ``version`` they started from; if the stored data changed meanwhile
@@ -22,17 +24,19 @@ and the panel loads the new state. Anything saved reloads the area once.
 
 from __future__ import annotations
 
+from functools import partial
 from types import MappingProxyType
 from typing import Any
 
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigSubentry
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_AREA_ID, DOMAIN
-from ..learn import MIN_MARKED, search
+from ..learn import MIN_MARKED, SEARCHES, Cancelled, forget_searches, search
 from ..runs import CURRENT, KEEP, compact, simulate, summary
 from ..stations import CONF_PRESETS, SUBENTRY_STATION, PowerConfig
 from .edit import check_options, check_presets, check_station, draft_power
@@ -46,8 +50,10 @@ PREFIX = DOMAIN
 def async_setup_ws(hass: HomeAssistant) -> None:
     for command in (ws_config_get, ws_area_create, ws_area_save, ws_area_delete, ws_station_save, ws_station_delete, ws_settings_save,
                     ws_runs_list, ws_runs_get, ws_runs_delete, ws_runs_preview,
-                    ws_runs_mark, ws_runs_skip, ws_runs_suggest):
+                    ws_runs_mark, ws_runs_skip, ws_runs_suggest, ws_runs_suggest_status, ws_runs_suggest_cancel):
         websocket_api.async_register_command(hass, command)
+    # searches running in the executor stop with Home Assistant
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, lambda _event: forget_searches())
 
 
 def _entry(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> ConfigEntry | None:
@@ -396,10 +402,16 @@ def ws_runs_skip(hass: HomeAssistant, connection: websocket_api.ActiveConnection
 
 
 @websocket_api.require_admin
-@websocket_api.websocket_command({vol.Required("type"): f"{PREFIX}/runs/suggest", **RUN_SCHEMA, vol.Optional("power", default=dict): dict})
+@websocket_api.websocket_command(
+    {vol.Required("type"): f"{PREFIX}/runs/suggest", **RUN_SCHEMA, vol.Optional("power", default=dict): dict, vol.Optional("sig"): str}
+)
 @websocket_api.async_response
 async def ws_runs_suggest(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """Done rules that fit the marked runs, with the draft's "on and off" and tolerance."""
+    """Done rules that fit the marked runs, with the draft's "on and off" and tolerance.
+
+    One search per station at a time; ``runs/suggest_status`` tells how far it is (``sig``,
+    the panel's note of what it searched with, comes back there), ``runs/suggest_cancel``
+    stops it (this command then answers ``cancelled``)."""
     if (engine := _engine(hass, connection, msg)) is None:
         return
     subentry = engine.entry.subentries.get(msg["station_id"])
@@ -410,15 +422,49 @@ async def ws_runs_suggest(hass: HomeAssistant, connection: websocket_api.ActiveC
     config = PowerConfig.from_data(draft_power(msg["power"], dict(subentry.data.get("power") or {}))) or station.power
     runs = list(engine.runs.list(msg["station_id"]))
     key = f"{engine.entry.entry_id}:{msg['station_id']}"
-    if key in _SEARCHING:
+    if SEARCHES.get(key, {}).get("busy"):
         connection.send_error(msg["id"], "busy", "A search for this station is running")
         return
-    _SEARCHING.add(key)
+    state: dict[str, Any] = {"busy": True, "progress": 0.0, "stage": "rules", "cancel": False, "sig": msg.get("sig")}
+    SEARCHES[key] = state
+
+    def report(share: float, stage: str) -> bool:  # in the executor: plain writes and a read
+        state["progress"], state["stage"] = round(share, 3), stage
+        return not state["cancel"]
+
     try:
-        result = await hass.async_add_executor_job(search, runs, config, config.tolerance)
-    finally:
-        _SEARCHING.discard(key)
+        result = await hass.async_add_executor_job(partial(search, runs, config, config.tolerance, report=report))
+    except Cancelled:
+        state.update(busy=False, cancelled=True)
+        connection.send_error(msg["id"], "cancelled", "The search was cancelled")
+        return
+    except Exception:
+        state.update(busy=False, failed=True)
+        raise
+    state.update(busy=False, progress=1.0, result=result)
     connection.send_result(msg["id"], result)
 
 
-_SEARCHING: set[str] = set()  # stations whose suggestions are being searched (one at a time)
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): f"{PREFIX}/runs/suggest_status", **RUN_SCHEMA})
+@callback
+def ws_runs_suggest_status(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """How far the station's search is; when it is over, its result (or that it was cancelled)."""
+    state = SEARCHES.get(f"{msg['entry_id']}:{msg['station_id']}")
+    if state is None:
+        connection.send_result(msg["id"], {"busy": False})
+        return
+    connection.send_result(msg["id"], {k: v for k, v in state.items() if k != "cancel"})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): f"{PREFIX}/runs/suggest_cancel", **RUN_SCHEMA})
+@callback
+def ws_runs_suggest_cancel(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """Stop the station's search (at its next step)."""
+    state = SEARCHES.get(f"{msg['entry_id']}:{msg['station_id']}")
+    running = bool(state and state.get("busy"))
+    if running:
+        state["cancel"] = True
+    connection.send_result(msg["id"], {"cancelled": running})
+

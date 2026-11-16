@@ -131,6 +131,66 @@ async def test_marks_skip_suggest_and_done_now(hass: HomeAssistant, kitchen, fre
     await client.send_json_auto_id({"type": "home_timer/runs/suggest", **base, "power": {"tolerance": 60}})
     res = (await client.receive_json())["result"]
     assert res["marked"] == 4 and res["suggestions"] and res["suggestions"][0]["on_time"] == 4
+    await client.send_json_auto_id({"type": "home_timer/runs/suggest_status", **base})
+    status = (await client.receive_json())["result"]
+    assert status["busy"] is False and status["progress"] == 1.0 and status["result"] == res
+
+
+async def test_a_search_shows_its_progress_and_can_be_cancelled(hass: HomeAssistant, kitchen, hass_ws_client, monkeypatch) -> None:
+    import threading
+
+    from custom_components.home_timer.learn import Cancelled
+    from custom_components.home_timer.panel import ws
+
+    started = threading.Event()
+
+    def slow_search(runs, config, tolerance, report):
+        for i in range(1000):
+            if not report(i / 1000, "rules" if i < 500 else "steps"):
+                raise Cancelled
+            if i == 3:
+                started.set()
+            threading.Event().wait(0.01)
+        return {"marked": 0, "suggestions": [], "outliers": []}
+
+    monkeypatch.setattr(ws, "search", slow_search)
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Moka pot", "until_off")
+    client = await hass_ws_client(hass)
+    base = {"entry_id": kitchen.entry_id, "station_id": station}
+    await client.send_json({"id": 1, "type": "home_timer/runs/suggest_status", **base})
+    assert (await client.receive_json())["result"] == {"busy": False}
+    await client.send_json({"id": 50, "type": "home_timer/runs/suggest", **base, "sig": "abc"})
+    search_id = 50
+    await hass.async_add_executor_job(started.wait, 5)
+    await client.send_json({"id": 102, "type": "home_timer/runs/suggest_status", **base})
+    status = (await client.receive_json())["result"]
+    assert status["busy"] is True and 0 < status["progress"] < 1 and status["stage"] == "rules" and status["sig"] == "abc"
+    await client.send_json({"id": 103, "type": "home_timer/runs/suggest", **base})
+    assert (await client.receive_json())["error"]["code"] == "busy"
+    await client.send_json({"id": 104, "type": "home_timer/runs/suggest_cancel", **base})
+    assert (await client.receive_json())["result"] == {"cancelled": True}
+    reply = await client.receive_json()
+    assert reply["id"] == search_id and reply["error"]["code"] == "cancelled"
+    await client.send_json({"id": 105, "type": "home_timer/runs/suggest_status", **base})
+    status = (await client.receive_json())["result"]
+    assert status["busy"] is False and status["cancelled"] is True
+    await client.send_json({"id": 106, "type": "home_timer/runs/suggest_cancel", **base})
+    assert (await client.receive_json())["result"] == {"cancelled": False}
+
+
+def test_search_reports_progress_and_stops() -> None:
+    from custom_components.home_timer.learn import Cancelled
+
+    runs = marked_runs(4)
+    seen: list[tuple[float, str]] = []
+    search(runs, PowerConfig(sensor=SENSOR), 60, report=lambda share, stage: seen.append((share, stage)) or True)
+    assert seen[0][1] == "rules" and seen[-1][1] == "steps" and 0.95 < seen[-1][0] <= 1
+    assert all(a[0] <= b[0] for a, b in zip(seen, seen[1:], strict=False))
+    calls: list[float] = []
+    with pytest.raises(Cancelled):
+        search(runs, PowerConfig(sensor=SENSOR), 60, report=lambda share, stage: calls.append(share) or len(calls) < 5)
+    assert len(calls) == 5
 
 
 async def test_tolerance_is_a_station_setting(hass: HomeAssistant, kitchen, hass_ws_client) -> None:

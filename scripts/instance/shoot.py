@@ -110,6 +110,24 @@ def main() -> None:
                 seeded.first.click()
                 page.wait_for_timeout(1500)
             check("a marked run shows its mark", page.locator("home-timer-panel svg.chart line.done").count() == 1)
+            # a search shows its progress (the bar from the click on) and can be cancelled …
+            page.locator("home-timer-panel .sugrow button").first.click()
+            try:
+                page.wait_for_selector("home-timer-panel .sprog [role=progressbar]", timeout=3000)
+                bar = True
+            except Exception:  # noqa: BLE001
+                bar = False
+            check("a search shows its progress bar", bar)
+            cancel = page.locator("home-timer-panel .sprog button")
+            if cancel.count():
+                try:
+                    cancel.click(timeout=1000)
+                except Exception:  # noqa: BLE001 – it finished meanwhile
+                    pass
+            page.wait_for_selector("home-timer-panel .sprog", state="detached", timeout=60000)
+            cancelled = page.locator("home-timer-panel .suggest .note").filter(has_text="cancelled").count() == 1
+            check("Cancel stops the search (or it finished first)", cancelled or page.locator("home-timer-panel .sug").count() > 0)
+            # … and the next one runs to its end
             page.locator("home-timer-panel .sugrow button").first.click()
             page.wait_for_selector("home-timer-panel .sug", timeout=60000)
             check("suggestions from the marked runs", page.locator("home-timer-panel .sug").count() >= 2)
@@ -120,7 +138,7 @@ def main() -> None:
             select = page.locator("home-timer-panel select.inlsel").first
             saved = select.input_value()
             sugs = page.locator("home-timer-panel .sug")
-            target = next((i for i in range(sugs.count()) if sugs.nth(i).get_attribute("data-type") not in (None, saved)), None)
+            target = next((i for i in range(sugs.count()) if sugs.nth(i).get_attribute("data-type") not in (None, saved, "steps")), None)
             if target is None:
                 check("Use: a suggestion of another rule to try", False)
             else:
@@ -137,6 +155,39 @@ def main() -> None:
                     discard.click()
                     page.wait_for_timeout(600)
                 check("Discard: the select shows the saved rule again", select.input_value() == saved, (saved, select.input_value()))
+            page.set_viewport_size({"width": 1366, "height": 860})
+        if want("panel-steps"):
+            # steps: add one, move it up, the pins on the curve, remove it again
+            page.set_viewport_size({"width": 1366, "height": 1500})
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            seeded = page.locator("home-timer-panel .runrow").filter(has_not_text=re.compile("Today|Running"))
+            if seeded.count():
+                seeded.first.click()
+                page.wait_for_timeout(1500)
+            first = page.locator("home-timer-panel .step select.inlsel").first.input_value()
+            page.locator("home-timer-panel .addstep button").click()
+            page.wait_for_timeout(2500)
+            steps = page.locator("home-timer-panel .steps.many .step")
+            check("+ Add a step: two steps joined by then", steps.count() == 2 and page.locator("home-timer-panel .then").count() == 1, steps.count())
+            check("steps: the curve pins where a step was met", page.locator("home-timer-panel svg.chart g.pin").count() >= 1)
+            page.screenshot(path=OUT / "panel-steps.png")
+            steps.nth(1).locator(".tools button").first.click()  # ▲
+            page.wait_for_timeout(600)
+            moved = [steps.nth(i).locator("select.inlsel").input_value() for i in range(2)]
+            check("▲ moves a step up", moved == ["trend", first], moved)
+            # dragging the handle onto the other step moves it back
+            steps.nth(1).locator(".handle").drag_to(steps.nth(0))
+            page.wait_for_timeout(600)
+            dragged = [steps.nth(i).locator("select.inlsel").input_value() for i in range(2)]
+            check("dragging moves a step", dragged == [first, "trend"], dragged)
+            check("a sequence offers no \"switches off\"", steps.nth(1).locator("option[value=off]").count() == 0)
+            steps.nth(1).locator(".tools button").nth(2).click()  # ×
+            page.wait_for_timeout(600)
+            check("× removes a step: one rule again", page.locator("home-timer-panel .steps.one .step").count() == 1)
+            discard = page.locator("home-timer-panel .savebar button").first
+            if discard.count():
+                discard.click()
+                page.wait_for_timeout(600)
             page.set_viewport_size({"width": 1366, "height": 860})
         if want("panel-station"):
             go(page, f"/home-timer/station/{ref['entry']}/{ref['hob']['id']}")

@@ -113,6 +113,8 @@ class StationTimerSensor(StationEntity, SensorEntity):
         }
         if power.kind == "until_off":
             attrs["done_rule"] = power.done.describe()
+            if len(power.done.steps) > 1:
+                attrs["steps_met"] = watcher.step if watcher and watcher.running else 0
         return attrs
 
 

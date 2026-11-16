@@ -13,7 +13,9 @@ A run (JSON)::
      "from": s – the curve is known from here (later than 0 for a run picked up after a restart),
      "interval": median s between readings, "noise": W,
      "t": [s, …], "w": [W, …]  (a step curve: each reading holds until the next),
-     "marks": {"done": s on the curve – when it was really done, marked by the user},
+     "marks": {"done": s on the curve – when it was really done, marked by the user;
+               other names: further points (phase starts and ends, B14);
+               "ranges": {name: [from, to]} – stretches of the curve, e.g. a phase (B14)},
      "skip": True to leave it out of learning}
 
 The first time a power station is seen, its earlier runs are read once from the
@@ -25,6 +27,7 @@ station's settings at that moment ("simulated").
 from __future__ import annotations
 
 import logging
+from bisect import bisect_right
 from datetime import datetime, timedelta
 from statistics import median
 from typing import TYPE_CHECKING, Any
@@ -35,7 +38,7 @@ from homeassistant.util import dt as dt_util
 from homeassistant.util.ulid import ulid_now
 
 from .const import DOMAIN
-from .power import RULE_ENERGY, RULE_OFF, RULE_TIME, DoneRule, Trace
+from .power import RULE_ENERGY, RULE_OFF, RULE_TIME, DoneRule, DoneSteps, Trace
 from .stations import KIND_START_PRESET, KIND_UNTIL_OFF, KIND_WARN, PowerConfig
 
 if TYPE_CHECKING:
@@ -118,22 +121,48 @@ def noise(watts: list[float], above: float) -> float | None:
     return round(1.4826 * median(abs(s - mid) for s in steps) / 2**0.5, 2)
 
 
-def first_fire(rule: DoneRule, trace: Trace, until: float) -> float | None:
-    """When the rule would have rung in this run (checked at each reading and every ``TICK`` s)."""
-    checks = [t for t in sorted({*trace.times, *(trace.start + TICK * i for i in range(int((until - trace.start) / TICK) + 1))}) if t <= until]
+def _checks(trace: Trace, until: float) -> list[float]:
+    """The moments a running station checks its rule: each reading and every ``TICK`` s."""
+    return [t for t in sorted({*trace.times, *(trace.start + TICK * i for i in range(int((until - trace.start) / TICK) + 1))}) if t <= until]
+
+
+def _first(rule: DoneRule, trace: Trace, checks: list[float], after: float | None) -> float | None:
+    """The first check (after ``after``, the step before) at which the rule is met."""
+    begin = 0.0
+    if after is not None:
+        checks = checks[bisect_right(checks, after) :]
+        begin = after
     if rule.type in MONOTONE:  # once it fires it stays fired: bisect instead of trying each check
         lo, hi = 0, len(checks)
         while lo < hi:
             mid = (lo + hi) // 2
-            if rule.fires(trace, checks[mid]):
+            if rule.fires(trace, checks[mid], begin=begin):
                 hi = mid
             else:
                 lo = mid + 1
         return checks[lo] if lo < len(checks) else None
-    for t in checks:
-        if rule.fires(trace, t):
-            return t
-    return None
+    return next((t for t in checks if rule.fires(trace, t, begin=begin)), None)
+
+
+def step_times(done: DoneRule | DoneSteps, trace: Trace, until: float) -> list[float | None]:
+    """When each step was met (None from the first one that was not)."""
+    steps = done.steps if isinstance(done, DoneSteps) else (done,)
+    checks = _checks(trace, until)
+    out: list[float | None] = []
+    after: float | None = None
+    for rule in steps:
+        at = _first(rule, trace, checks, after) if (after is not None or not out) else None
+        out.append(at)
+        if at is None:
+            out.extend([None] * (len(steps) - len(out)))
+            break
+        after = at
+    return out
+
+
+def first_fire(done: DoneRule | DoneSteps, trace: Trace, until: float) -> float | None:
+    """When the rule – or the last of its steps – would have rung in this run."""
+    return step_times(done, trace, until)[-1]
 
 
 def make_run(
@@ -227,7 +256,8 @@ def simulate(run: dict[str, Any], config: PowerConfig, preset_seconds: float | N
     beyond its curve the power stays where it ended. ``ended``: False for the run
     going on.
 
-    Returns {start, duration, rang, trigger, blip, split, open}: ``start`` in seconds
+    Returns {start, duration, rang, trigger, blip, split, open} (and ``steps``: when each
+    step was met, for more than one): ``start`` in seconds
     of the stored curve, ``rang`` in seconds after that start (or None), ``trigger``
     one of rule, off (done when it switched off), never (the rule did not fire: it
     rings at switch-off), countdown, cancelled, none. ``open``: the run does not stop
@@ -252,7 +282,10 @@ def simulate(run: dict[str, Any], config: PowerConfig, preset_seconds: float | N
         for t, w in zip(times[found["first"] :], watts[found["first"] :], strict=True):
             trace.add(t - start, w)
         until = noticed - 1e-6 if noticed is not None else duration  # the stop check comes first
-        rang = first_fire(config.done, trace, until)
+        times = step_times(config.done, trace, until)
+        if len(times) > 1:
+            out["steps"] = [None if x is None else round(x, 1) for x in times]
+        rang = times[-1]
         if rang is not None:
             out.update(rang=round(rang, 1), trigger="rule")
         elif noticed is not None:
@@ -284,7 +317,8 @@ class RunStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, runs_key(entry_id))
         self.runs: dict[str, list[dict[str, Any]]] = {}  # station id → runs, oldest first
         self.imported: set[str] = set()  # stations whose history was read
-        self.pending: dict[str, dict[str, Any]] = {}  # station id → {"start", "done"}: a mark on the run going on
+        # station id → {"start", "done", "steps"}: a mark on the run going on, steps met in it
+        self.pending: dict[str, dict[str, Any]] = {}
 
     async def async_load(self) -> None:
         data = await self._store.async_load()
@@ -298,7 +332,10 @@ class RunStore:
         self.imported = {str(s) for s in data.get("imported", []) if isinstance(s, str)}
         pending = data.get("pending")
         if isinstance(pending, dict):
-            self.pending = {str(k): v for k, v in pending.items() if isinstance(v, dict) and isinstance(v.get("done"), (int, float))}
+            self.pending = {
+                str(k): v for k, v in pending.items()
+                if isinstance(v, dict) and (isinstance(v.get("done"), int | float) or isinstance(v.get("steps"), dict))
+            }
 
     def list(self, station_id: str) -> list[dict[str, Any]]:
         return self.runs.get(station_id, [])
@@ -323,20 +360,46 @@ class RunStore:
         self._save()
         return True
 
-    def set_mark(self, station_id: str, run_id: str, done: float | None) -> dict[str, Any] | None:
-        """Mark when the run was done (seconds on its curve), or remove the mark."""
+    def set_mark(self, station_id: str, run_id: str, done: float | None, name: str = "done") -> dict[str, Any] | None:
+        """Mark a point – when the run was done (seconds on its curve) – or remove the mark.
+        Other marks of the run are kept."""
+        run = self.get(station_id, run_id)
+        if run is None or name == "ranges":
+            return None
+        marks = dict(run.get("marks") or {})
+        if done is None:
+            marks.pop(name, None)
+        else:
+            marks[name] = self._on_curve(run, done)
+        run["marks"] = marks
+        self._save()
+        return run
+
+    def set_range(self, station_id: str, run_id: str, name: str, span: tuple[float, float] | None) -> dict[str, Any] | None:
+        """Mark a stretch of the curve by name (a phase, later), or remove it."""
         run = self.get(station_id, run_id)
         if run is None:
             return None
         marks = dict(run.get("marks") or {})
-        if done is None:
-            marks.pop("done", None)
-        else:  # on the curve: from where it is known to its last reading
-            last = (run.get("t") or [0.0])[-1]
-            marks["done"] = round(min(max(float(run.get("from") or 0.0), float(done)), max(last, float(run.get("duration") or 0.0))), 1)
+        ranges = dict(marks.get("ranges") or {})
+        if span is None:
+            ranges.pop(name, None)
+        else:
+            a, b = sorted(self._on_curve(run, x) for x in span)
+            ranges[name] = [a, b]
+        if ranges:
+            marks["ranges"] = ranges
+        else:
+            marks.pop("ranges", None)
         run["marks"] = marks
         self._save()
         return run
+
+    @staticmethod
+    def _on_curve(run: dict[str, Any], seconds: float) -> float:
+        """A moment on the run's curve: from where it is known to its last reading."""
+        last = (run.get("t") or [0.0])[-1]
+        return round(min(max(float(run.get("from") or 0.0), float(seconds)), max(last, float(run.get("duration") or 0.0))), 1)
 
     def set_skip(self, station_id: str, run_id: str, skip: bool) -> dict[str, Any] | None:
         """Leave a run out of learning (it stays stored), or take it back in."""
@@ -348,17 +411,45 @@ class RunStore:
         return run
 
     def set_pending(self, station_id: str, start: str, done: float | None) -> None:
-        """"Done now" during a run: kept here until the run is stored – also across a reload."""
-        if done is None:
+        """"Done now" during a run: kept here until the run is stored – also across a reload.
+        An empty ``start`` forgets all of the station's (the run is stored)."""
+        if not start:
             if self.pending.pop(station_id, None) is not None:
                 self._save()
             return
-        self.pending[station_id] = {"start": start, "done": done}
+        self._pending_set(station_id, start, "done", done)
+
+    def set_steps_met(self, station_id: str, start: str, step: int, at: float | None, rule: dict[str, Any]) -> None:
+        """Steps met in the run going on (how many, when the last) – picked up after a reload
+        while the steps are the same (``rule``: the done rule's data)."""
+        self._pending_set(station_id, start, "steps", {"met": step, "at": at, "rule": rule} if step else None)
+
+    def _pending_set(self, station_id: str, start: str, key: str, value: Any) -> None:
+        entry = self.pending.get(station_id)
+        entry = dict(entry) if entry and entry.get("start") == start else {"start": start}
+        if value is None:
+            entry.pop(key, None)
+        else:
+            entry[key] = value
+        if len(entry) > 1:
+            self.pending[station_id] = entry
+        else:
+            self.pending.pop(station_id, None)
         self._save()
 
     def pending_mark(self, station_id: str, start: str) -> float | None:
-        mark = self.pending.get(station_id)
-        return mark["done"] if mark and mark.get("start") == start else None
+        entry = self.pending.get(station_id)
+        done = entry.get("done") if entry and entry.get("start") == start else None
+        return float(done) if isinstance(done, int | float) and not isinstance(done, bool) else None
+
+    def steps_met(self, station_id: str, start: str, rule: dict[str, Any]) -> tuple[int, float | None]:
+        """Steps met before a reload – none when the steps changed since."""
+        entry = self.pending.get(station_id)
+        steps = entry.get("steps") if entry and entry.get("start") == start else None
+        if not isinstance(steps, dict) or steps.get("rule") != rule or not isinstance(steps.get("met"), int) or steps["met"] < 1:
+            return 0, None
+        at = steps.get("at")
+        return steps["met"], float(at) if isinstance(at, int | float) and not isinstance(at, bool) else None
 
     def fill_sensor(self, station_id: str, sensor: str) -> None:
         """Runs stored before runs knew their sensor: they were recorded with the station's."""

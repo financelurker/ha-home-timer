@@ -63,6 +63,7 @@ from .const import (
     STATUSES,
     STORAGE_VERSION,
 )
+from .learn import forget_searches
 from .runs import RunStore, async_import_history
 from .stations import CONF_PRESETS, Preset, Station, area_presets, find_preset, stations
 
@@ -292,6 +293,7 @@ class AreaTimers:
             self._last_custom.pop(scope, None)
             self.power_stats.pop(scope, None)
         self.runs.prune(set(known))
+        forget_searches(self.entry.entry_id, set(known))  # of stations deleted meanwhile
         before = self._data()
         for timer in list(self.timers.values()):
             if timer.id not in self.timers:
