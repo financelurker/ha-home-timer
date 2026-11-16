@@ -84,8 +84,10 @@ PAIR_IGNORES = (0, 30, 60, 120)  # the last step's "ignore" (from the first step
 EXACT = 12  # pairs judged exactly  # steps: candidates kept per rule type for each place in a pair
 
 
-PAIRS_SHARE = 0.15  # of the progress: the pairs at the end
-BEND_WEIGHT = 4  # a window and baseline of the bends: about as much work as this many grid entries
+PAIRS_SHARE = 0.03  # of the progress: the pairs at the end
+# the work of one grid entry per rule type (measured, roughly): the progress moves evenly in time
+WEIGHTS = {RULE_TREND: 35, RULE_RISE: 32, RULE_PLATEAU: 45, RULE_DROP: 5, RULE_CYCLING: 6, RULE_PAUSE: 3, RULE_TIME: 0.3, RULE_ENERGY: 1}
+BEND_WEIGHT = 25  # a window and baseline of the bends, all directions and factors
 
 
 class Cancelled(Exception):
@@ -211,7 +213,7 @@ def search(
     marked = usable[-MAX_RUNS:]
     if len(marked) < MIN_MARKED:
         return {"marked": len(marked), "suggestions": [], "outliers": []}
-    total = sum(sum(1 for _ in (_flat(rule, marked) if rule in (RULE_TIME, RULE_ENERGY) else _grid(rule, marked))) for rule in ORDER if rule not in BENDS)
+    total = sum(WEIGHTS[rule] * sum(1 for _ in (_flat(rule, marked) if rule in (RULE_TIME, RULE_ENERGY) else _grid(rule, marked))) for rule in ORDER if rule not in BENDS)
     total += BEND_WEIGHT * len(BEND_WINDOWS) * len(BEND_BASELINES)
     done_units = 0
 
@@ -227,9 +229,10 @@ def search(
     def keep(pool: dict[str, list[Any]], rule: str, item: tuple[Any, ...], moments: tuple[Any, ...]) -> None:
         # the same moments in each run (e.g. only "ignore" differs): the first – simplest – one is kept
         seen = pool.setdefault(f"{rule}:seen", set())
-        if moments in seen:
+        digest = hash(moments)  # not the moments themselves: they may be long
+        if digest in seen:
             return
-        seen.add(moments)
+        seen.add(digest)
         items = pool.setdefault(rule, [])
         items.append(item)
         if len(items) > 4 * PER_TYPE:
@@ -264,7 +267,7 @@ def search(
                 fired = [_fire_times(done, run) for run in marked]
                 judge(rule, params, fired)
                 near(rule, params, 0.0, fired)
-                tick()
+                tick(WEIGHTS[rule])
             continue
         for params in _grid(rule, marked):
             done = DoneRule.from_data({"type": rule, **params, "ignore": 0})
@@ -278,7 +281,7 @@ def search(
                 else:
                     # the rule fires at t with this "ignore" when it fires without and looks back no further than it
                     judge(rule, {**params, "ignore": ignore}, [[t for t in times if t - back >= ignore] for times in fired])
-            tick()
+            tick(WEIGHTS[rule])
     per_combo = sum(len(f) for f in BEND_FACTORS.values())
     for rule, params, fired in _bend_fires(marked):
         back = _lookback(rule, params)
@@ -331,19 +334,20 @@ def _best_pair(
                     continue
                 # B fires at t after A when its look back starts after A (+ ignore)
                 rings = [None if at is None else _first_at(times, max(at + 1e-9, at + (ignore or 0) + back)) for times, at in zip(fired, a_rings, strict=True)]
-                if _no_step(rings, a_rings):
+                wait = (ignore or 0) + back  # B may ring from A + this on
+                if _no_step(rings, a_rings, wait):
                     continue
                 score, _ = _score(rings, marked, tolerance)
                 score = (*score, ORDER.index(a["type"]) + ORDER.index(rule))  # on a tie: the simpler pair
                 moments = (tuple(a_rings), tuple(rings))  # the same pair of moments: judged once (the simplest)
                 if moments not in rough or score < rough[moments][0]:
-                    rough[moments] = (score, a, b, a_rings)
+                    rough[moments] = (score, a, b, a_rings, wait)
     best: dict[str, Any] | None = None
-    for n, (_score_rough, a, b, a_rings) in enumerate(sorted(rough.values(), key=lambda x: x[0])[:EXACT]):
+    for n, (_score_rough, a, b, a_rings, wait) in enumerate(sorted(rough.values(), key=lambda x: x[0])[:EXACT]):
         step(0.7 + 0.3 * n / EXACT)
         rule_b = DoneRule.from_data(b)
         rings = [None if at is None else _first(rule_b, run["trace"], run["checks"], at) for run, at in zip(marked, a_rings, strict=True)]
-        if _no_step(rings, a_rings):
+        if _no_step(rings, a_rings, wait):
             continue
         score, delays = _score(rings, marked, tolerance)
         if best is None or score < best["score"]:
@@ -352,12 +356,31 @@ def _best_pair(
     return best if best and best["on_time"] > 0 else None
 
 
-def _no_step(rings: list[float | None], a_rings: list[float | None]) -> bool:
-    """B met right after A in most runs: no step of its own, just A a little later."""
-    soon = sum(1 for ring, at in zip(rings, a_rings, strict=True) if ring is not None and at is not None and ring - at < STEP_GAP)
+def _no_step(rings: list[float | None], a_rings: list[float | None], wait: float = 0.0) -> bool:
+    """B rings in most runs as soon as it may – right after A, or once its own look-back
+    (and "ignore") after A is past: it sees nothing of its own, it is A with a delay."""
+    soon = sum(
+        1 for ring, at in zip(rings, a_rings, strict=True)
+        if ring is not None and at is not None and (ring - at < STEP_GAP or ring - (at + wait) < STEP_GAP)
+    )
     return soon * 2 > len(rings)
 
 
 def _first_at(times: list[float], at: float) -> float | None:
     i = bisect_left(times, at)
     return times[i] if i < len(times) else None
+
+
+# per station ("<entry id>:<station id>"): the search going on or the last one –
+# {busy, progress, stage, cancel, sig, result | cancelled | failed}; the panel's websocket keeps it
+SEARCHES: dict[str, dict[str, Any]] = {}
+
+
+def forget_searches(entry_id: str | None = None, known: set[str] | None = None) -> None:
+    """Stop and forget searches: of an area (``entry_id``; with ``known``, only of its stations
+    not in it any more), or all (Home Assistant stops)."""
+    for key in list(SEARCHES):
+        area, _, station = key.partition(":")
+        if entry_id is not None and (area != entry_id or (known is not None and station in known)):
+            continue
+        SEARCHES.pop(key)["cancel"] = True

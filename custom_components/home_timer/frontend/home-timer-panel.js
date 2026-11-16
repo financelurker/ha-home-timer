@@ -90,6 +90,9 @@ class HomeTimerPanel extends LitElement {
     };
     window.addEventListener("beforeunload", this._beforeUnload);
     if (this.hass && !this._config) this._load();
+    // back on the page while a search is shown going on: ask again how far it is (the result may come from there)
+    const ctx = this._searchCtx;
+    if (ctx && this._suggest?.key === ctx.key && this._suggest.loading && !this._searchPoll) this._pollSearch(ctx.area, ctx.station, ctx.key, true);
   }
 
   disconnectedCallback() {
@@ -1233,17 +1236,24 @@ class HomeTimerPanel extends LitElement {
     const key = this._runsKey(area.entry_id, station.id);
     await this._flushMarks();
     const sig = this._suggestSig(key, d);
-    const before = this._suggest?.key === key ? this._suggest.data : null;
-    this._suggest = { key, loading: true, progress: 0, stage: "rules", data: before };
+    const old = this._suggest?.key === key ? this._suggest : null;
+    const before = old?.data || null;
+    this._suggest = { key, loading: true, progress: 0, stage: "rules", data: before, sig: old?.sig };
     this._pollSearch(area, station, key, false);
     try {
       const data = await this.hass.callWS({ type: `${WS}/runs/suggest`, entry_id: area.entry_id, station_id: station.id, power: clone(d.power), sig });
       if (this._suggest?.key === key) this._suggest = { key, data, sig };
     } catch (err) {
       if (this._suggest?.key !== key) return;
-      this._suggest = err?.code === "cancelled" ? { key, cancelled: true, data: before } : { key, error: err?.message || String(err) };
+      if (err?.code === "busy") {
+        // a search started elsewhere (another tab) is going on: show it and take its result
+        this._suggest = { key, loading: true, progress: 0, stage: "rules", data: before, sig: old?.sig };
+        this._pollSearch(area, station, key, true);
+        return;
+      }
+      this._suggest = err?.code === "cancelled" ? { key, cancelled: true, data: before, sig: old?.sig } : { key, error: err?.message || String(err) };
     } finally {
-      if (this._searchPollKey === key) this._stopPoll();
+      if (this._searchPollKey === key && !this._searchPollAttached) this._stopPoll();
     }
   }
 
@@ -1251,6 +1261,8 @@ class HomeTimerPanel extends LitElement {
   _pollSearch(area, station, key, attached) {
     this._stopPoll();
     this._searchPollKey = key;
+    this._searchPollAttached = attached;
+    this._searchCtx = { area, station, key };
     const ask = async () => {
       let status;
       try {
@@ -1274,13 +1286,14 @@ class HomeTimerPanel extends LitElement {
     clearInterval(this._searchPoll);
     this._searchPoll = null;
     this._searchPollKey = null;
+    this._searchPollAttached = false;
   }
 
   _searchOutcome(key, status) {
     if (status.result) return { key, data: status.result, sig: status.sig };
     if (status.cancelled) return { key, cancelled: true };
-    if (status.failed) return { key, error: this._t("load_failed") };
-    return null;
+    if (status.failed) return { key, error: this._t("learn.failed") };
+    return { key, error: this._t("learn.lost") }; // Home Assistant restarted meanwhile: the search is gone
   }
 
   // on opening a station: a search going on shows its bar, one that is over its result
@@ -1295,7 +1308,7 @@ class HomeTimerPanel extends LitElement {
     if (status.busy) {
       this._suggest = { key, loading: true, progress: status.progress, stage: status.stage, sig: status.sig };
       this._pollSearch(area, station, key, true);
-    } else if (status.result) {
+    } else if (status.result || status.cancelled) {
       this._suggest = this._searchOutcome(key, status);
     }
   }

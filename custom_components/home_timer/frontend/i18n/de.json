@@ -374,5 +374,7 @@
   "learn.stage.rules": "Probiere die Regeln",
   "learn.stage.steps": "Probiere zwei Schritte",
   "learn.cancel": "Abbrechen",
-  "learn.cancelled": "Suche abgebrochen."
+  "learn.cancelled": "Suche abgebrochen.",
+  "learn.failed": "Die Suche ist fehlgeschlagen – siehe das Protokoll von Home Assistant.",
+  "learn.lost": "Die Suche wurde unterbrochen (Home Assistant hat neu gestartet) – starte sie neu."
 }

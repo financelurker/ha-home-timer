@@ -374,5 +374,7 @@
   "learn.stage.rules": "Trying the rules",
   "learn.stage.steps": "Trying two steps",
   "learn.cancel": "Cancel",
-  "learn.cancelled": "Search cancelled."
+  "learn.cancelled": "Search cancelled.",
+  "learn.failed": "The search failed – see the Home Assistant log.",
+  "learn.lost": "The search was interrupted (Home Assistant restarted) – start it again."
 }

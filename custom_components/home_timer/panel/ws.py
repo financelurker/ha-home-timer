@@ -31,11 +31,12 @@ from typing import Any
 import voluptuous as vol
 from homeassistant.components import websocket_api
 from homeassistant.config_entries import ConfigEntry, ConfigEntryState, ConfigSubentry
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_AREA_ID, DOMAIN
-from ..learn import MIN_MARKED, Cancelled, search
+from ..learn import MIN_MARKED, SEARCHES, Cancelled, forget_searches, search
 from ..runs import CURRENT, KEEP, compact, simulate, summary
 from ..stations import CONF_PRESETS, SUBENTRY_STATION, PowerConfig
 from .edit import check_options, check_presets, check_station, draft_power
@@ -51,6 +52,8 @@ def async_setup_ws(hass: HomeAssistant) -> None:
                     ws_runs_list, ws_runs_get, ws_runs_delete, ws_runs_preview,
                     ws_runs_mark, ws_runs_skip, ws_runs_suggest, ws_runs_suggest_status, ws_runs_suggest_cancel):
         websocket_api.async_register_command(hass, command)
+    # searches running in the executor stop with Home Assistant
+    hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, lambda _event: forget_searches())
 
 
 def _entry(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> ConfigEntry | None:
@@ -419,11 +422,11 @@ async def ws_runs_suggest(hass: HomeAssistant, connection: websocket_api.ActiveC
     config = PowerConfig.from_data(draft_power(msg["power"], dict(subentry.data.get("power") or {}))) or station.power
     runs = list(engine.runs.list(msg["station_id"]))
     key = f"{engine.entry.entry_id}:{msg['station_id']}"
-    if _SEARCHES.get(key, {}).get("busy"):
+    if SEARCHES.get(key, {}).get("busy"):
         connection.send_error(msg["id"], "busy", "A search for this station is running")
         return
     state: dict[str, Any] = {"busy": True, "progress": 0.0, "stage": "rules", "cancel": False, "sig": msg.get("sig")}
-    _SEARCHES[key] = state
+    SEARCHES[key] = state
 
     def report(share: float, stage: str) -> bool:  # in the executor: plain writes and a read
         state["progress"], state["stage"] = round(share, 3), stage
@@ -447,7 +450,7 @@ async def ws_runs_suggest(hass: HomeAssistant, connection: websocket_api.ActiveC
 @callback
 def ws_runs_suggest_status(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
     """How far the station's search is; when it is over, its result (or that it was cancelled)."""
-    state = _SEARCHES.get(f"{msg['entry_id']}:{msg['station_id']}")
+    state = SEARCHES.get(f"{msg['entry_id']}:{msg['station_id']}")
     if state is None:
         connection.send_result(msg["id"], {"busy": False})
         return
@@ -459,12 +462,9 @@ def ws_runs_suggest_status(hass: HomeAssistant, connection: websocket_api.Active
 @callback
 def ws_runs_suggest_cancel(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
     """Stop the station's search (at its next step)."""
-    state = _SEARCHES.get(f"{msg['entry_id']}:{msg['station_id']}")
+    state = SEARCHES.get(f"{msg['entry_id']}:{msg['station_id']}")
     running = bool(state and state.get("busy"))
     if running:
         state["cancel"] = True
     connection.send_result(msg["id"], {"cancelled": running})
 
-
-# per station: the search going on or the last one – {busy, progress, stage, cancel, sig, result | cancelled | failed}
-_SEARCHES: dict[str, dict[str, Any]] = {}

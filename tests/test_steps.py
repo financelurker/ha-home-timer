@@ -208,3 +208,25 @@ def test_unknown_steps_are_left_out() -> None:
     steps = DoneSteps.from_data({"steps": [{"type": "pause"}, {"type": "future_rule"}, {}, {"type": "off"}]})
     assert [r.type for r in steps.steps] == ["pause"]
     assert DoneSteps.from_data({"steps": [{"type": "off"}]}).type == "off"
+
+
+def test_a_last_step_that_only_waits_is_no_step() -> None:
+    # B ringing as soon as its look-back after A is past sees nothing of its own: A with a delay
+    from .test_learn import marked_runs
+
+    res = search(marked_runs(8, seed=5), PowerConfig(sensor=SENSOR), 60)
+    assert all("steps" not in s["rule"] for s in res["suggestions"])
+
+
+def test_searches_are_forgotten() -> None:
+    from custom_components.home_timer.learn import SEARCHES, forget_searches
+
+    SEARCHES.clear()
+    states = {key: {"busy": True, "cancel": False} for key in ("e1:a", "e1:b", "e2:a")}
+    SEARCHES.update(states)
+    forget_searches("e1", {"a"})  # station b was deleted
+    assert set(SEARCHES) == {"e1:a", "e2:a"} and states["e1:b"]["cancel"] is True
+    forget_searches("e2")  # the area was deleted
+    assert set(SEARCHES) == {"e1:a"}
+    forget_searches()  # Home Assistant stops
+    assert SEARCHES == {} and states["e1:a"]["cancel"] is True
