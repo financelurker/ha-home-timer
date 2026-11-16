@@ -47,6 +47,7 @@ class HomeTimerPanel extends LitElement {
     _hover: { state: true },
     _chartWidth: { state: true },
     _zoom: { state: true },
+    _yFull: { state: true },
     _reread: { state: true },
     _confirm: { state: true },
     _fold: { state: true },
@@ -979,7 +980,7 @@ class HomeTimerPanel extends LitElement {
     const extra = [...marks.map((k) => k.t), ...(done ? [done.t + tol] : [])];
     const zkey = `${key}:${run.id}:${run.start}`; // the zoom belongs to the run shown (the run going on is always "current")
     const view = this._zoom?.key === zkey ? this._zoom.view : null;
-    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 250, onAbove: Number(p.on_above || 0), ignore: ignore ? ignore + (pv?.draft?.start || 0) : 0, extra, view });
+    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 250, onAbove: Number(p.on_above || 0), ignore: ignore ? ignore + (pv?.draft?.start || 0) : 0, extra, view, fitY: !this._yFull, levels: level ? [level.w] : [] });
     const zoomable = m.zoomed || m.end > 2 * MIN_VIEW;
     const zoom = (factor, at) => (this._zoom = { key: zkey, view: zoomView(view, m.end, factor, at) });
     const pan = (share) => (this._zoom = { key: zkey, view: zoomView({ from: m.from + share * m.span, to: m.to + share * m.span }, m.end, 1, m.from) });
@@ -1008,6 +1009,8 @@ class HomeTimerPanel extends LitElement {
           ${m.zoomed ? html`<span class="chs">${formatDuration(m.from)} – ${formatDuration(m.to)}</span>` : this.narrow ? nothing : html`<span class="chs">${t("zoom.hint")}</span>`}
           <button class="icon sm" aria-label=${t("zoom.out")} title=${t("zoom.out")} ?disabled=${!m.zoomed} @click=${() => (zoom(2, centre()), keepFocus())}><ha-icon icon="mdi:magnify-minus-outline"></ha-icon></button>
           <button class="icon sm" aria-label=${t("zoom.in")} title=${t("zoom.in")} ?disabled=${m.span <= MIN_VIEW + 1e-6} @click=${() => (zoom(0.5, centre()), keepFocus())}><ha-icon icon="mdi:magnify-plus-outline"></ha-icon></button>
+          ${m.zoomed ? html`<button class="icon sm ${this._yFull ? "" : "on"}" aria-pressed=${this._yFull ? "false" : "true"} aria-label=${t("zoom.fit_y")}
+              title=${t(this._yFull ? "zoom.fit_y" : "zoom.full_y")} @click=${() => (this._yFull = !this._yFull)}><ha-icon icon="mdi:arrow-expand-vertical"></ha-icon></button>` : nothing}
           <button class="icon sm" aria-label=${t("zoom.all")} title=${t("zoom.all")} ?disabled=${!m.zoomed} @click=${() => ((this._zoom = null), keepFocus())}><ha-icon icon="mdi:arrow-expand-horizontal"></ha-icon></button>
         </div>` : nothing}
       <div class="chartbox ${learning ? "marking" : ""}" tabindex=${(learning && markT != null) || zoomable ? "0" : "-1"} role="group" aria-label=${t("runs.chart.aria")}
@@ -2218,6 +2221,7 @@ class HomeTimerPanel extends LitElement {
     .zoombar { display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin: 0 0 -4px; --mdc-icon-size: 18px; }
     .zoombar .chs { margin-right: 6px; }
     .zoombar .icon[disabled] { opacity: 0.35; cursor: default; }
+    .zoombar .icon.on { color: var(--primary-color); background: color-mix(in srgb, var(--primary-color) 12%, transparent); }
     .ovbox { width: 100%; touch-action: none; cursor: grab; margin-top: 2px; }
     .ovbox svg { display: block; }
     .overview .ovbg { fill: var(--secondary-background-color); }

@@ -391,5 +391,7 @@
   "runs.reread_no_recorder": "There is no recorder history to read.",
   "runs.reread_other_sensor": "This run was recorded with another sensor.",
   "runs.tag.refilled": "completed from the history",
-  "runs.reread_not_found": "The run is no longer stored."
+  "runs.reread_not_found": "The run is no longer stored.",
+  "zoom.fit_y": "Fit the power scale to the part shown",
+  "zoom.full_y": "The power scale fits the part shown – press for the whole range"
 }
