@@ -59,6 +59,8 @@ class PowerWatcher:
         self.rang: float | None = None  # seconds after the start when the run's timer rang
         self.trigger: str | None = None  # how: rule, off, countdown
         self.mark: float | None = None  # "done now" during the run: seconds after its start
+        self.step = 0  # steps: how many are met
+        self.step_at: float | None = None  # … and when the last of them was
         self._below_since: datetime | None = None
         self._resumed = False  # waiting for the first valid reading after a (re)start
         self._rearm = False  # warn: our timer was acknowledged while the appliance runs
@@ -187,6 +189,18 @@ class PowerWatcher:
         self.engine.notify_power()
         return self.mark
 
+    def _step_met(self, at: float) -> bool:
+        """Steps: the one looked for now is met (later than the one before) – True when it was the last."""
+        steps = self.config.done.steps
+        if self.step >= len(steps):
+            return True
+        begin = self.step_at or 0.0
+        if (self.step_at is None or at > self.step_at) and steps[self.step].fires(self.trace, at, begin=begin):
+            self.step_at = at
+            self.step += 1
+            self.engine.notify_power()
+        return self.step >= len(steps)
+
     def elapsed(self, when: datetime | None = None) -> float:
         if self.run_start is None:
             return 0.0
@@ -209,6 +223,7 @@ class PowerWatcher:
         self._below_since = None
         self.rang = self.trigger = None
         self.mark = None
+        self.step, self.step_at = 0, None
         timer = None
         if self.config.kind == KIND_UNTIL_OFF:
             timer = self.engine.start(
@@ -235,9 +250,7 @@ class PowerWatcher:
             return
         if self.config.kind == KIND_UNTIL_OFF and not self.done:
             timer = self._timer()
-            if timer is not None and timer.status == STATUS_ACTIVE and self.config.done.fires(
-                self.trace, self.elapsed(now)
-            ):
+            if timer is not None and timer.status == STATUS_ACTIVE and self._step_met(self.elapsed(now)):
                 self.done = True
                 self.rang, self.trigger = self.elapsed(now), "rule"
                 self.engine.record_power_run(self.station.id, self.elapsed(now))
@@ -288,6 +301,7 @@ class PowerWatcher:
         self.timer_id = None
         self.rang = self.trigger = None
         self.mark = None
+        self.step, self.step_at = 0, None
         self.engine.runs.set_pending(self.station.id, "", None)
         self.trace = Trace()
         self.engine.notify_power()

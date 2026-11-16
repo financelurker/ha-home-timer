@@ -85,6 +85,6 @@ Attributes of `sensor.<area>_<station>`:
 | `started_at`, `ends_at`, `finished_at` | ISO timestamps |
 | `note`, `source` | as given at the start (`source` is not recorded) |
 | `elapsed` | seconds since it started (not recorded) |
-| `by_power`, `running`, `power_sensor`, `done_rule` | power stations: the kind (`until_off`, `start_preset`, `warn`), whether the appliance runs, its sensor, the done rule in words (`until_off` only) |
+| `by_power`, `running`, `power_sensor`, `done_rule`, `steps_met` | power stations: the kind (`until_off`, `start_preset`, `warn`), whether the appliance runs, its sensor, the done rule in words (`until_off` only), how many of its steps are met in the run going on (with more than one step) |
 
 Actions, events and device triggers: see [Automations](automations.md). States and options: see [Timers](timers.md).

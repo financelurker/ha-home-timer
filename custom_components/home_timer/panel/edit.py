@@ -18,7 +18,7 @@ from ..const import (
     CONF_RING_UNTIL_ACK,
     DEFAULT_OPTIONS,
 )
-from ..power import RULE_DEFAULTS, RULE_FIELDS, RULE_OFF, RULE_TYPES
+from ..power import MAX_STEPS, STEP_KEYS, RULE_DEFAULTS, RULE_FIELDS, RULE_OFF, RULE_TYPES
 from ..stations import (
     CONF_ICON,
     CONF_MODE,
@@ -108,19 +108,45 @@ def check_options(raw: Any) -> tuple[dict[str, Any], Errors]:
     return options, errors
 
 
-def check_rule(raw: Any) -> tuple[dict[str, Any], Errors]:
+def check_rule(raw: Any, prefix: str = "power.done") -> tuple[dict[str, Any], Errors]:
+    """One done rule (or step). Errors are keyed ``<prefix>.<field>``."""
     raw = raw if isinstance(raw, dict) else {}
     rule_type = raw.get("type", RULE_OFF)
     if rule_type not in RULE_TYPES:
-        return {"type": RULE_OFF}, {"power.done.type": "invalid"}
+        return {"type": RULE_OFF}, {f"{prefix}.type": "invalid"}
     errors: Errors = {}
     rule: dict[str, Any] = {"type": rule_type}
     for key, lo, hi, _step, _unit in RULE_FIELDS[rule_type]:
         value = _in_range(raw.get(key, RULE_DEFAULTS[rule_type].get(key)), lo, hi)
         if value is None:
-            errors[f"power.done.{key}"] = "out_of_range"
+            errors[f"{prefix}.{key}"] = "out_of_range"
         rule[key] = value if value is not None else RULE_DEFAULTS[rule_type].get(key)
     return rule, errors
+
+
+def check_done(raw: Any) -> tuple[dict[str, Any], Errors]:
+    """The done rule, or steps: ``{"steps": [rule, …]}`` (errors ``power.done.steps.<i>.<field>``).
+
+    One step is stored as the plain rule. Keys reserved for phases are kept.
+    """
+    steps = raw.get("steps") if isinstance(raw, dict) else None
+    if not isinstance(steps, list):
+        return check_rule(raw)
+    if not steps or len(steps) > MAX_STEPS:
+        return {"type": RULE_OFF}, {"power.done.steps": "invalid"}
+    out: list[dict[str, Any]] = []
+    errors: Errors = {}
+    for i, step in enumerate(steps):
+        rule, errs = check_rule(step, f"power.done.steps.{i}")
+        if rule["type"] == RULE_OFF and len(steps) > 1:  # "it switches off" ends the run: no step of a sequence
+            errs[f"power.done.steps.{i}.type"] = "invalid"
+        if isinstance(step, dict):
+            rule.update({k: step[k] for k in STEP_KEYS if k in step})
+        out.append(rule)
+        errors.update(errs)
+    if len(out) == 1 and not any(k in out[0] for k in STEP_KEYS):
+        return out[0], {k.replace("power.done.steps.0.", "power.done."): v for k, v in errors.items()}
+    return {"steps": out}, errors
 
 
 def check_station(raw: Any, other_names: list[str], sensor_exists: Any = None) -> tuple[str, dict[str, Any], Errors]:
@@ -178,7 +204,7 @@ def _check_power(raw: dict[str, Any], presets: list[dict[str, Any]], sensor_exis
             errors["power.preset"] = "preset_required"
     power["preset"] = preset if isinstance(preset, str) and preset else None
     power["cancel_on_off"] = bool(raw.get("cancel_on_off", POWER_DEFAULTS["cancel_on_off"]))
-    power["done"], rule_errors = check_rule(raw.get("done"))
+    power["done"], rule_errors = check_done(raw.get("done"))
     errors.update(rule_errors)
     return power, errors
 
@@ -198,14 +224,30 @@ def draft_power(raw: Any, saved: dict[str, Any]) -> dict[str, Any]:
         power["preset"] = raw["preset"] if isinstance(raw["preset"], str) else None
     if isinstance(raw.get("cancel_on_off"), bool):
         power["cancel_on_off"] = raw["cancel_on_off"]
-    done = raw.get("done") if isinstance(raw.get("done"), dict) else {}
-    rule_type = done.get("type") if done.get("type") in RULE_TYPES else (power.get("done") or {}).get("type", RULE_OFF)
-    before = power.get("done") if isinstance(power.get("done"), dict) and power["done"].get("type") == rule_type else {}
+    power["done"] = _draft_done(raw.get("done"), power.get("done"))
+    return power
+
+
+def _draft_rule(raw: Any, before: Any) -> dict[str, Any]:
+    raw = raw if isinstance(raw, dict) else {}
+    before = before if isinstance(before, dict) else {}
+    rule_type = raw.get("type") if raw.get("type") in RULE_TYPES else before.get("type", RULE_OFF)
+    if before.get("type") != rule_type:
+        before = {}
     rule: dict[str, Any] = {"type": rule_type}
     for key, lo, hi, _step, _unit in RULE_FIELDS.get(rule_type, []):
-        value = _in_range(done.get(key), lo, hi)
+        value = _in_range(raw.get(key), lo, hi)
         if value is None:
             value = _in_range(before.get(key), lo, hi)
         rule[key] = value if value is not None else RULE_DEFAULTS[rule_type].get(key)
-    power["done"] = rule
-    return power
+    return rule
+
+
+def _draft_done(raw: Any, saved: Any) -> dict[str, Any]:
+    """The done rule or steps as being edited; each value that cannot be used falls back."""
+    saved_steps = saved.get("steps") if isinstance(saved, dict) and isinstance(saved.get("steps"), list) else [saved]
+    steps = raw.get("steps") if isinstance(raw, dict) and isinstance(raw.get("steps"), list) else None
+    if steps is None:
+        return _draft_rule(raw, saved_steps[0] if saved_steps else None)
+    steps = steps[:MAX_STEPS] or [{}]
+    return {"steps": [_draft_rule(step, saved_steps[i] if i < len(saved_steps) else None) for i, step in enumerate(steps)]}

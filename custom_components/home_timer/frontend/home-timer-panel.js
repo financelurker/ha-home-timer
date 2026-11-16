@@ -21,6 +21,9 @@ function loadFold() {
   }
 }
 
+// the done rule as a list of steps (one step is stored as the plain rule)
+const doneSteps = (done) => (done?.steps?.length ? done.steps : [done || { type: "off" }]);
+
 class HomeTimerPanel extends LitElement {
   static properties = {
     hass: { attribute: false },
@@ -933,7 +936,8 @@ class HomeTimerPanel extends LitElement {
     const pv = shown.id === "current" ? preview?.current : preview?.runs.find((r) => r.id === shown.id);
     const differs = this._draftDiffers(station, d);
     const p = d.power;
-    const rule = p.kind === "until_off" ? p.done || { type: "off" } : null;
+    const ruleSteps = p.kind === "until_off" ? doneSteps(p.done) : [];
+    const rule = ruleSteps.length ? ruleSteps[ruleSteps.length - 1] : null; // the ring's own rule: the last step
     const marks = [];
     const savedKind = station.power.kind;
     if (pv?.saved?.rang != null && !pv.saved.blip) {
@@ -943,8 +947,14 @@ class HomeTimerPanel extends LitElement {
     if (differs && pv?.draft?.rang != null && !pv.draft.blip && apart(pv.saved, pv.draft)) {
       marks.push({ t: pv.draft.start + pv.draft.rang, label: `${this._markLabel(pv.draft, p.kind)} ${t("mark.draft")}`, dash: true, color: pv.draft.trigger === "cancelled" ? "var(--ht-run)" : "" });
     }
-    const ignore = rule && rule.ignore ? Number(rule.ignore) : 0;
-    const winSec = rule && ["drop", "knee", "cycling"].includes(rule.type) ? Number(rule.window || 0) : 0;
+    const ignore = ruleSteps[0]?.ignore ? Number(ruleSteps[0].ignore) : 0; // later steps count theirs from the step before
+    const winSec = rule && ["drop", "knee", "flatten", "upturn", "steeper_up", "cycling"].includes(rule.type) ? Number(rule.window || 0) : 0;
+    // where each step was met (the draft's while it differs, else the saved one's)
+    const stepsAt = (differs ? pv?.draft : pv?.saved)?.steps;
+    const shownSteps = differs ? ruleSteps : doneSteps(station.power.done);
+    const pins = p.kind === "until_off" && stepsAt && !(differs ? pv.draft : pv.saved).blip
+      ? stepsAt.map((x, i) => (x == null ? null : { t: (differs ? pv.draft : pv.saved).start + x, n: i + 1, label: `${i + 1}. ${shownSteps[i] ? this._ruleText(shownSteps[i]) : ""} – ${formatDuration(x)}` })).filter(Boolean)
+      : [];
     const ring = pv?.draft?.trigger === "rule" ? pv.draft.start + pv.draft.rang : null;
     const window = winSec && ring != null ? { from: Math.max(0, ring - winSec), to: ring, label: this._learning(d) && run.marks?.done != null ? "" : `${winSec} s` } : null;
     const levelW = rule?.type === "pause" ? rule.below : rule?.type === "cycling" ? rule.level : null;
@@ -972,7 +982,7 @@ class HomeTimerPanel extends LitElement {
         @pointermove=${(e) => this._pointer(m, e)} @pointerleave=${() => (cancelAnimationFrame(this._frame), (this._hover = null))}
         @pointerdown=${(e) => learning && this._dragStart(e, m, area, station, run)} @pointerup=${(e) => this._dragEnd(e)} @pointercancel=${(e) => this._dragEnd(e, true)}
         @keydown=${(e) => learning && markT != null && this._markKey(e, area, station, run, markT)}>
-        ${renderChart(run, m, { labels, hover: this._hover, unit, marks, window, level, done })}
+        ${renderChart(run, m, { labels, hover: this._hover, unit, marks, window, level, done, pins })}
       </div>
       <div class="readout">${this._hover != null && hv != null ? `${formatDuration(this._hover)} · ${Math.round(hv * 10) / 10} ${unit}` : html`&nbsp;`}</div>
       ${this._learning(d) ? this._renderMarkBar(area, station, run, pv, outlier) : nothing}
@@ -981,6 +991,7 @@ class HomeTimerPanel extends LitElement {
         ${p.on_above != null ? html`<span><i class="sw thr"></i>${t("runs.legend.threshold", { watts: p.on_above, unit })}</span>` : nothing}
         ${ignore > 0 ? html`<span><i class="sw ign"></i>${t("runs.legend.ignored")}</span>` : nothing}
         ${marks.length ? html`<span><i class="sw rang"></i>${t(differs ? "runs.legend.saved" : "runs.legend.ring")}</span>` : nothing}
+        ${pins.length ? html`<span><i class="sw pinsw"></i>${t("runs.legend.steps")}</span>` : nothing}
         ${differs && marks.some((k) => k.dash) ? html`<span><i class="sw rang dash"></i>${t("runs.legend.draft")}</span>` : nothing}
         ${window ? html`<span><i class="sw win"></i>${t("runs.legend.window")}</span>` : nothing}
         ${done ? html`<span><i class="sw done"></i>${t("runs.legend.mark")}</span><span><i class="sw tol"></i>${t("runs.legend.tol", { s: tol })}</span>` : nothing}
@@ -1174,7 +1185,7 @@ class HomeTimerPanel extends LitElement {
       ${sug?.error ? html`<div class="err">${sug.error}</div>` : nothing}
       ${sug?.data && sug.sig !== this._suggestSig(rkey, d) ? html`<div class="note">${t("learn.stale")}</div>` : nothing}
       ${sug?.data && !sug.data.suggestions.length ? html`<div class="note">${t(sug.data.marked < need ? "learn.not_usable" : "learn.none")}</div>` : nothing}
-      ${(sug?.data?.suggestions || []).map((x, i) => html`<div class="sug ${i === 0 ? "best" : ""}" data-type=${x.rule.type}>
+      ${(sug?.data?.suggestions || []).map((x, i) => html`<div class="sug ${i === 0 ? "best" : ""}" data-type=${x.rule.steps ? "steps" : x.rule.type}>
           <div class="sugh"><span>${this._ruleText(x.rule)}</span>
             <button class="btn sm" @click=${() => this._useSuggestion(key, set, x.rule)}>${t("learn.use")}</button></div>
           <div class="chs"><span class=${x.on_time === x.runs ? "v on_time" : "v late"}>${t("learn.fits", { on: x.on_time, n: x.runs })}</span>
@@ -1184,9 +1195,10 @@ class HomeTimerPanel extends LitElement {
     </div>`;
   }
 
-  // a rule as its sentence, with the values written in
+  // a rule as its sentence, with the values written in; steps numbered, joined by "then"
   _ruleText(rule) {
     const t = this._t;
+    if (rule?.steps) return rule.steps.map((x, i) => `${i + 1}. ${this._ruleText(x)}`).join(` ${t("steps.then_inline")} `);
     const fields = Object.fromEntries((this._config.specs.rules[rule.type]?.fields || []).map((f) => [f.key, f]));
     return t(`rule_sentence.${rule.type}`).replace(/\{(\w+)\}/g, (m, k) => (k === "type" ? t(`rule_verb.${rule.type}`) : fields[k] ? `${rule[k]} ${fields[k].unit}` : m));
   }
@@ -1284,36 +1296,84 @@ class HomeTimerPanel extends LitElement {
     </div></div>`;
   }
 
-  // "it is done when …": the done rule as a sentence with its values in it, and the preview
+  // "it is done when …": the done rule as a sentence with its values in it – or steps, one after another – and the preview
   _ruleBody(key, d, set, station, preview) {
     const t = this._t;
     const spec = this._config.specs.rules;
-    const rule = d.power.done?.type || "off";
-    const fields = Object.fromEntries(spec[rule].fields.map((f) => [f.key, f]));
+    const steps = doneSteps(d.power.done);
+    const many = steps.length > 1;
     const clearRule = () => (this._errors = { ...this._errors, [key]: Object.fromEntries(Object.entries(this._errors[key] || {}).filter(([k]) => !k.startsWith("power.done."))) });
+    // all changes go through the list of steps; one step is stored as the plain rule
+    const setSteps = (fn) => set((x) => {
+      const list = doneSteps(x.power.done).map(clone);
+      fn(list);
+      x.power.done = list.length === 1 ? list[0] : { steps: list };
+    });
+    const move = (from, to) => {
+      if (from === to || to < 0 || to >= steps.length) return;
+      clearRule();
+      setSteps((list) => list.splice(to, 0, ...list.splice(from, 1)));
+    };
+    const max = this._config.specs.max_steps || 8;
+    const last = steps[steps.length - 1];
+    const body = steps.map((step, i) => html`
+      ${i ? html`<div class="then" aria-hidden="true">${t("steps.then")}</div>` : nothing}
+      ${this._stepRow(key, step, i, steps.length, spec, setSteps, move, clearRule)}`);
+    return html`<div class="ql">${t(many ? "power.done_steps" : "power.done")}</div>
+      <div class="steps ${many ? "many" : "one"}" role="list">${body}</div>
+      ${steps.length < max && !(steps.length === 1 && steps[0].type === "off")
+        ? html`<div class="addstep"><button class="link" @click=${() => (clearRule(), setSteps((list) => list.push({ type: "trend", ...spec.trend.defaults })))}>+ ${t("steps.add")}</button>
+          <span class="chs">– ${t("steps.add_hint")}</span></div>`
+        : nothing}
+      ${this._used?.key === key && same(this._used.rule, d.power.done) && station && !same(station.power.done, d.power.done) ? html`<div class="note">${t("learn.used")}</div>` : nothing}
+      ${!many && last.type === "off" && !this._markedCount(station) ? nothing : this._previewSummary(station, d, preview)}
+      ${this._renderSuggest(key, d, set, station)}
+      ${this._help(`${many ? t("steps.hint") : t(`rule.${last.type}_hint`)} ${t("power.done_hint")}`, t("rule.all_hint"), "rules")}`;
+  }
+
+  // one step: its number, the rule as a sentence, move up / down / drag, remove
+  _stepRow(key, step, i, count, spec, setSteps, move, clearRule) {
+    const t = this._t;
+    const many = count > 1;
+    const type = spec[step.type] ? step.type : "off";
+    const fields = Object.fromEntries(spec[type].fields.map((f) => [f.key, f]));
+    const prefix = many ? `power.done.steps.${i}` : "power.done";
+    const types = Object.keys(spec).filter((r) => !many || r !== "off"); // "it switches off" ends the run: no step of a sequence
     // .value: the select follows the draft when the rule changes elsewhere (Use, Discard) – the browser ignores
     // ?selected on an option the user once picked. ?selected stays: on a new select .value comes before its options.
-    const typeSelect = html`<select class="inlsel" aria-label=${t("power.rule")} .value=${rule} @change=${(e) => (clearRule(), set((x) => (x.power.done = { type: e.target.value, ...spec[e.target.value].defaults })))}>
-        ${Object.keys(spec).map((r) => html`<option value=${r} ?selected=${rule === r}>${t(`rule_verb.${r}`)}</option>`)}
+    const typeSelect = html`<select class="inlsel" aria-label=${many ? t("steps.rule_n", { n: i + 1 }) : t("power.rule")} .value=${type}
+        @change=${(e) => (clearRule(), setSteps((list) => (list[i] = { type: e.target.value, ...spec[e.target.value].defaults })))}>
+        ${types.map((r) => html`<option value=${r} ?selected=${type === r}>${t(`rule_verb.${r}`)}</option>`)}
       </select>`;
-    const parts = t(`rule_sentence.${rule}`).split(/(\{\w+\})/);
-    const errors = Object.entries(this._errors[key] || {}).filter(([k]) => k.startsWith("power.done.") && fields[k.split(".").pop()]);
-    return html`<div class="ql">${t("power.done")}</div>
+    const parts = t(`rule_sentence.${type}`).split(/(\{\w+\})/);
+    const errors = Object.entries(this._errors[key] || {}).filter(([k]) => k.startsWith(`${prefix}.`) && k.split(".").length === prefix.split(".").length + 1);
+    const drop = (e) => {
+      e.preventDefault();
+      if (this._stepDrag != null) move(this._stepDrag, i);
+      this._stepDrag = null;
+    };
+    return html`<div class="step" role="listitem" data-step=${i + 1} @dragover=${(e) => this._stepDrag != null && e.preventDefault()} @drop=${drop}>
+      ${many ? html`<span class="handle" draggable="true" title=${t("steps.drag")}
+          @dragstart=${(e) => ((this._stepDrag = i), e.dataTransfer.setData("text/plain", String(i)), e.dataTransfer.setDragImage?.(e.target.closest(".step"), 16, 16))}
+          @dragend=${() => (this._stepDrag = null)}><ha-icon icon="mdi:drag"></ha-icon></span>` : nothing}
+      ${many ? html`<span class="num" aria-hidden="true">${i + 1}</span>` : nothing}
       <div class="sentence">${parts.map((part) => {
         const m = part.match(/^\{(\w+)\}$/);
         if (!m) return part;
         if (m[1] === "type") return typeSelect;
         const f = fields[m[1]];
-        return f ? this._inline(key, `power.done.${f.key}`, d.power.done[f.key], f, f.unit, (v) => set((x) => (x.power.done[f.key] = v)), f.step) : part;
+        return f ? this._inline(key, `${prefix}.${f.key}`, step[f.key], f, f.unit, (v) => setSteps((list) => (list[i][f.key] = v)), f.step) : part;
       })}</div>
+      ${many ? html`<span class="tools">
+          <button class="icon" aria-label=${t("steps.up", { n: i + 1 })} ?disabled=${i === 0} @click=${() => move(i, i - 1)}>▲</button>
+          <button class="icon" aria-label=${t("steps.down", { n: i + 1 })} ?disabled=${i === count - 1} @click=${() => move(i, i + 1)}>▼</button>
+          <button class="icon" aria-label=${t("steps.remove", { n: i + 1 })} @click=${() => (clearRule(), setSteps((list) => list.splice(i, 1)))}>×</button>
+        </span>` : nothing}
       ${errors.map(([k, code]) => {
         const f = fields[k.split(".").pop()];
-        return html`<div class="err" role="alert">${t(`error.${code}`)} ${t("allowed", { min: f.min, max: f.max, unit: f.unit })}</div>`;
+        return html`<div class="err" role="alert">${t(`error.${code}`)} ${f ? t("allowed", { min: f.min, max: f.max, unit: f.unit }) : ""}</div>`;
       })}
-      ${this._used?.key === key && same(this._used.rule, d.power.done) && station && !same(station.power.done, d.power.done) ? html`<div class="note">${t("learn.used")}</div>` : nothing}
-      ${rule === "off" && !this._markedCount(station) ? nothing : this._previewSummary(station, d, preview)}
-      ${this._renderSuggest(key, d, set, station)}
-      ${this._help(`${t(`rule.${rule}_hint`)} ${t("power.done_hint")}`, t("rule.all_hint"), "rules")}`;
+    </div>`;
   }
 
   // the draft on all stored runs, counted
@@ -1842,6 +1902,20 @@ class HomeTimerPanel extends LitElement {
     .lbl span { font-size: 12.5px; color: var(--ht-s); }
     .sub { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--ht-d); }
     .sentence { font-size: 15px; line-height: 2.7; }
+    .steps.many { display: flex; flex-direction: column; }
+    .steps.many .step { display: grid; grid-template-columns: auto auto 1fr auto; gap: 0 8px; align-items: start; border: 1px solid var(--divider-color); border-radius: 10px; padding: 4px 10px; background: var(--card-background-color); }
+    .steps.many .step .err { grid-column: 3 / 5; }
+    .step .handle { cursor: grab; color: var(--secondary-text-color); padding-top: 10px; }
+    .step .num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-top: 10px; border-radius: 50%; background: var(--secondary-text-color); color: #fff; font-size: 12px; font-weight: 600; }
+    .step:last-child .num { background: var(--ht-step, #00897b); }
+    .step .tools { display: flex; gap: 2px; padding-top: 8px; }
+    .step .tools .icon { border: 0; background: none; color: var(--secondary-text-color); cursor: pointer; font-size: 13px; padding: 4px 6px; border-radius: 6px; }
+    .step .tools .icon:disabled { opacity: 0.3; cursor: default; }
+    .step .tools .icon:not(:disabled):hover { background: var(--secondary-background-color); }
+    .then { margin: 2px 0 2px 18px; padding: 4px 0 4px 14px; border-left: 2px dashed var(--divider-color); font-size: 12px; font-weight: 700; letter-spacing: 0.06em; color: var(--secondary-text-color); text-transform: uppercase; }
+    .addstep { margin: 8px 0 4px; }
+    .addstep .link { border: 0; background: none; color: var(--primary-color); cursor: pointer; font: inherit; padding: 0; }
+    @container (max-width: 560px) { .steps.many .step { grid-template-columns: auto 1fr auto; } .steps.many .step .handle { display: none; } .steps.many .step .err { grid-column: 2 / 4; } }
     .inl { display: inline-flex; align-items: baseline; gap: 3px; background: var(--ht-fill); border-bottom: 1px solid var(--ht-under); border-radius: 4px 4px 0 0; padding: 0 8px; margin: 0 2px; line-height: 1.9; }
     .inl:focus-within { border-bottom: 2px solid var(--ht-p); }
     .inl.bad { border-bottom: 2px solid var(--ht-err); }
@@ -1984,6 +2058,11 @@ class HomeTimerPanel extends LitElement {
     .chartbox.marking { cursor: crosshair; }
     .chartbox:focus-visible { outline: 2px solid var(--ht-ok); outline-offset: 2px; border-radius: 4px; }
     .chart .done { stroke: var(--ht-ok); stroke-width: 2.5; }
+    .sw.pinsw { width: 0; height: 14px; border-top: none; border-left: 2px dashed var(--secondary-text-color); }
+    .chart .pinl { stroke: var(--secondary-text-color); stroke-width: 1.2; stroke-dasharray: 3 3; }
+    .chart .pinc { fill: var(--secondary-text-color); }
+    .chart .pin:last-of-type .pinc { fill: var(--ht-step, #00897b); }
+    .chart .pint { fill: #fff; font-size: 11px; font-weight: 600; pointer-events: none; }
     .chart .grip { fill: var(--ht-ok); cursor: ew-resize; }
     .chart .gripl { stroke: #fff; stroke-width: 1.6; }
     .chart .tol { fill: color-mix(in srgb, var(--ht-ok) 11%, transparent); }

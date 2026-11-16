@@ -18,7 +18,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 
-from .power import DoneRule
+from .power import DoneSteps
 
 SUBENTRY_STATION = "station"
 CONF_ICON = "icon"
@@ -80,7 +80,7 @@ class PowerConfig:
     preset: str | None = None
     cancel_on_off: bool = True
     warn_after: float = POWER_DEFAULTS["warn_after"]
-    done: DoneRule = field(default_factory=DoneRule)
+    done: DoneSteps = field(default_factory=DoneSteps)
     tolerance: float = field(default=POWER_DEFAULTS["tolerance"], compare=False)  # learning only
 
     @classmethod
@@ -97,7 +97,7 @@ class PowerConfig:
             preset=merged.get("preset") or None,
             cancel_on_off=bool(merged["cancel_on_off"]),
             warn_after=float(merged["warn_after"]),
-            done=DoneRule.from_data(merged.get("done")),
+            done=DoneSteps.from_data(merged.get("done")),
             tolerance=float(merged["tolerance"]),
         )
 

@@ -64,7 +64,8 @@ function path(m) {
 // marks: [{t, label, dash, color}] (the first label above the plot, the next inside);
 // window: {from, to, label} shaded; level: {w, label} a dotted line
 // done: {t, label, tol, tolLabel} – the user's mark (learning) with the "on time" band after it
-export function renderChart(run, m, { labels, hover, unit = "W", marks = [], window = null, level = null, done = null }) {
+// pins: [{t, n}] – where each step of a sequence was met (numbered); the last one is the ring
+export function renderChart(run, m, { labels, hover, unit = "W", marks = [], window = null, level = null, done = null, pins = [] }) {
   const left = PAD.left;
   const right = m.width - PAD.right;
   const bottom = PAD.top + m.plotH;
@@ -103,6 +104,13 @@ export function renderChart(run, m, { labels, hover, unit = "W", marks = [], win
           <circle class="grip" cx=${m.x(done.t)} cy=${PAD.top + m.plotH / 2} r="9"></circle>
           <path class="gripl" d="M${m.x(done.t) - 3},${PAD.top + m.plotH / 2 - 4}v8M${m.x(done.t) + 3},${PAD.top + m.plotH / 2 - 4}v8"></path>
           <text class="mk donet" x=${m.x(done.t) - 6} y=${PAD.top - 6} text-anchor="end">${done.label}</text>` : nothing}
+      ${pins.map((k) => {
+        const x = m.x(k.t);
+        const y = PAD.top + m.plotH * 0.72;
+        return svg`<g class="pin" data-step=${k.n}><line class="pinl" x1=${x} x2=${x} y1=${y + 9} y2=${bottom}></line>
+          <circle class="pinc" cx=${x} cy=${y} r="9"></circle><text class="pint" x=${x} y=${y + 4} text-anchor="middle">${k.n}</text>
+          <title>${k.label || ""}</title></g>`;
+      })}
       ${hover != null && hv != null ? svg`<line class="hover" x1=${m.x(hover)} x2=${m.x(hover)} y1=${PAD.top} y2=${bottom}></line>
           <circle class="dot" cx=${m.x(hover)} cy=${m.y(hv)} r="4"></circle>` : nothing}
       <line class="axis" x1=${left} x2=${right} y1=${bottom} y2=${bottom}></line>
