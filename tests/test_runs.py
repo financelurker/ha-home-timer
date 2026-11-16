@@ -512,3 +512,65 @@ async def test_a_kept_curve_needs_the_same_sensor(hass: HomeAssistant, kitchen, 
     kitchen.runtime_data.runs.pending["gone"] = {"start": "x", "done": 5}
     kitchen.runtime_data.runs.prune({station})
     assert "gone" not in kitchen.runtime_data.runs.pending
+
+
+async def test_phases_are_marked_one_after_another(hass: HomeAssistant) -> None:
+    from custom_components.home_timer.runs import RunStore
+
+    store = RunStore(hass, "e1")
+    trace = Trace()
+    for t, w in ((0, 50), (800, 2800), (1300, 200), (2000, 10), (2400, 0)):
+        trace.add(t, w)
+    run = make_run(T0, 2400, trace, on_above=5, rang=None, trigger="off", marks={"done": 2390.0})
+    store.add("s1", run)
+    phases = [
+        {"name": " Main wash ", "start": 800},
+        {"name": "Prewash", "start": 30},  # the first starts with the run
+        {"name": "Drying", "start": 5000},  # on the curve
+        {"name": "Rinse", "start": 800},  # the same moment: the last one counts
+        {"name": "", "start": 900},  # no name: left out
+    ]
+    marked = store.set_phases("s1", run["id"], phases)
+    assert marked["marks"]["phases"] == [
+        {"name": "Prewash", "start": 0.0}, {"name": "Rinse", "start": 800.0}, {"name": "Drying", "start": 2400.0},
+    ]
+    assert marked["marks"]["done"] == 2390.0  # other marks are kept …
+    store.set_mark("s1", run["id"], 2395)
+    assert len(store.get("s1", run["id"])["marks"]["phases"]) == 3  # … both ways
+    assert store.set_mark("s1", run["id"], 5, name="phases") is None
+    store.set_phases("s1", run["id"], None)
+    assert store.get("s1", run["id"])["marks"] == {"done": 2395.0}
+    assert store.set_phases("s1", "nope", []) is None
+
+
+async def test_phases_over_the_websocket(hass: HomeAssistant, kitchen, freezer, hass_ws_client) -> None:
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Dishwasher", "until_off")
+    await watts(hass, freezer, 2000)
+    await watts(hass, freezer, 0, seconds_after=60)
+    await tick(hass, freezer, 31)
+    (run,) = kitchen.runtime_data.runs.list(station)
+    client = await hass_ws_client(hass)
+    base = {"type": "home_timer/runs/phases", "entry_id": kitchen.entry_id, "station_id": station, "run_id": run["id"]}
+    await client.send_json_auto_id({**base, "phases": [{"name": "Wash", "start": 0}, {"name": "Dry", "start": 30}]})
+    res = await client.receive_json()
+    assert res["result"]["marks"]["phases"] == [{"name": "Wash", "start": 0.0}, {"name": "Dry", "start": 30.0}]
+    await client.send_json_auto_id({**base, "phases": [{"name": "", "start": 0}]})
+    assert not (await client.receive_json())["success"]  # names are needed
+    await client.send_json_auto_id({**base, "phases": None})
+    assert (await client.receive_json())["result"]["marks"] == {}
+    await client.send_json_auto_id({**base, "run_id": "nope", "phases": None})
+    assert (await client.receive_json())["error"]["code"] == "not_found"
+
+
+async def test_phases_of_a_run_picked_up_late_start_with_its_curve(hass: HomeAssistant) -> None:
+    from custom_components.home_timer.runs import RunStore
+
+    store = RunStore(hass, "e1")
+    trace = Trace()
+    for t, w in ((120, 2000), (600, 200), (900, 0)):
+        trace.add(t, w)
+    run = make_run(T0, 900, trace, on_above=5, rang=None, trigger="off")
+    store.add("s1", run)
+    marked = store.set_phases("s1", run["id"], [{"name": "Heat", "start": 120}, {"name": "Wash", "start": 600}])
+    assert marked["marks"]["phases"] == [{"name": "Heat", "start": 120.0}, {"name": "Wash", "start": 600.0}]

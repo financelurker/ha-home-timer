@@ -393,5 +393,18 @@
   "runs.tag.refilled": "completed from the history",
   "runs.reread_not_found": "The run is no longer stored.",
   "zoom.fit_y": "Fit the power scale to the part shown",
-  "zoom.full_y": "The power scale fits the part shown – press for the whole range"
+  "zoom.full_y": "The power scale fits the part shown – press for the whole range",
+  "phases.mark": "Phases",
+  "phases.bar": "The run's phases",
+  "phases.empty": "No phases yet – click where a phase starts",
+  "phases.default": "Phase {n}",
+  "phases.name": "Name of the phase",
+  "phases.remove": "Remove",
+  "phases.remove_all": "Remove all",
+  "phases.done": "Done",
+  "phases.this_run": "This run's phases:",
+  "phases.hint": "Click on the bar where a phase starts – it snaps to the jump nearby. Drag an edge, or select a phase and move its start with ← → (Shift: 10 s). A phase lasts until the next one starts.",
+  "phases.hint_first": "Click on the bar where the second phase starts (the first starts with the run) – it snaps to the jump nearby.",
+  "runs.legend.phases": "Phases (your marks)",
+  "phases.too_many": "At most {n} phases per run."
 }
