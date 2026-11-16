@@ -18,6 +18,9 @@ A); the pairs are first judged from B's moments alone, the best few then exactly
 pair is offered (first) only when it beats the best single rule. Longer sequences
 are set up by hand.
 
+Progress: ``report(share, stage)`` is called as the search goes on ("rules", then
+"steps"); when it returns False the search stops (``Cancelled``).
+
 The target is the mark the rules should meet: ``done`` for now (phase starts and ends
 later, B14).
 
@@ -28,7 +31,7 @@ from __future__ import annotations
 
 import math
 from bisect import bisect_left, bisect_right
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from statistics import median
 from typing import Any
 
@@ -72,11 +75,24 @@ BEND_FACTORS = {
     RULE_UPTURN: (1.5, 2, 3, 5, 8),
     RULE_STEEPER_UP: (1.5, 2, 2.5, 3, 4, 6),
 }
+BEND_WINDOWS = (20, 30, 40, 60, 90)
+BEND_BASELINES = (60, 120, 180, 240)
 IGNORES = (0, 30, 60, 90, 120, 180)
 STEP_GAP = 2 * TICK  # s: a last step met sooner after the first one is no step of its own
 PER_TYPE = 5
 PAIR_IGNORES = (0, 30, 60, 120)  # the last step's "ignore" (from the first step) tried in pairs
 EXACT = 12  # pairs judged exactly  # steps: candidates kept per rule type for each place in a pair
+
+
+PAIRS_SHARE = 0.15  # of the progress: the pairs at the end
+BEND_WEIGHT = 4  # a window and baseline of the bends: about as much work as this many grid entries
+
+
+class Cancelled(Exception):
+    """The search was stopped (``report`` returned False)."""
+
+
+Report = Callable[[float, str], bool]
 
 
 def _lookback(rule: str, params: dict[str, float]) -> float:
@@ -160,8 +176,8 @@ def _fire_times(done: DoneRule, run: dict[str, Any]) -> list[float]:
 def _bend_fires(marked: list[dict[str, Any]]) -> Iterator[tuple[str, dict[str, float], list[list[float]]]]:
     """The four bend directions at once: the slopes per window and baseline are worked out
     once per check, each direction and factor is then a comparison (as ``DoneRule.fires``)."""
-    for window in (20, 30, 40, 60, 90):
-        for baseline in (60, 120, 180, 240):
+    for window in BEND_WINDOWS:
+        for baseline in BEND_BASELINES:
             slopes = []
             for run in marked:
                 trace = run["trace"]
@@ -187,12 +203,23 @@ def _first_after(times: list[float], after: float) -> float | None:
     return times[i] if i < len(times) else None
 
 
-def search(runs: list[dict[str, Any]], config: PowerConfig, tolerance: float, target: str = "done") -> dict[str, Any]:
+def search(
+    runs: list[dict[str, Any]], config: PowerConfig, tolerance: float, target: str = "done", report: Report | None = None
+) -> dict[str, Any]:
     """Suggestions for the done rule (or steps) from the marked runs (not left out)."""
     usable = [p for r in runs if not r.get("skip") and (p := _prepare(r, config, target)) is not None]
     marked = usable[-MAX_RUNS:]
     if len(marked) < MIN_MARKED:
         return {"marked": len(marked), "suggestions": [], "outliers": []}
+    total = sum(sum(1 for _ in (_flat(rule, marked) if rule in (RULE_TIME, RULE_ENERGY) else _grid(rule, marked))) for rule in ORDER if rule not in BENDS)
+    total += BEND_WEIGHT * len(BEND_WINDOWS) * len(BEND_BASELINES)
+    done_units = 0
+
+    def tick(units: float = 1, stage: str = "rules", share: float | None = None) -> None:
+        nonlocal done_units
+        done_units += units
+        if report is not None and not report(share if share is not None else (1 - PAIRS_SHARE) * min(1.0, done_units / total), stage):
+            raise Cancelled
     best: dict[str, dict[str, Any]] = {}
     firsts: dict[str, list[tuple[tuple[float, ...], dict[str, Any], list[float]]]] = {}  # A: met before the mark
     nears: dict[str, list[tuple[tuple[float, ...], str, dict[str, float], float, list[list[float]]]]] = {}  # B: met near the mark
@@ -237,6 +264,7 @@ def search(runs: list[dict[str, Any]], config: PowerConfig, tolerance: float, ta
                 fired = [_fire_times(done, run) for run in marked]
                 judge(rule, params, fired)
                 near(rule, params, 0.0, fired)
+                tick()
             continue
         for params in _grid(rule, marked):
             done = DoneRule.from_data({"type": rule, **params, "ignore": 0})
@@ -250,15 +278,19 @@ def search(runs: list[dict[str, Any]], config: PowerConfig, tolerance: float, ta
                 else:
                     # the rule fires at t with this "ignore" when it fires without and looks back no further than it
                     judge(rule, {**params, "ignore": ignore}, [[t for t in times if t - back >= ignore] for times in fired])
+            tick()
+    per_combo = sum(len(f) for f in BEND_FACTORS.values())
     for rule, params, fired in _bend_fires(marked):
         back = _lookback(rule, params)
         near(rule, params, back, fired)
         for ignore in IGNORES:
             judge(rule, {**params, "ignore": ignore}, [[t for t in times if t - back >= ignore] for times in fired])
+        tick(BEND_WEIGHT / per_combo)
 
     ranked = sorted(best.values(), key=lambda b: b["score"])
     ranked = [b for b in ranked if b["on_time"] > 0][:TOP]
-    pair = _best_pair(firsts, nears, marked, tolerance)
+    tick(0, "steps", 1 - PAIRS_SHARE)
+    pair = _best_pair(firsts, nears, marked, tolerance, lambda share: tick(0, "steps", 1 - PAIRS_SHARE + PAIRS_SHARE * share))
     if pair and (not ranked or pair["score"] < ranked[0]["score"][:4]):
         ranked = [pair, *ranked][:TOP]
     suggestions = []
@@ -282,12 +314,17 @@ def search(runs: list[dict[str, Any]], config: PowerConfig, tolerance: float, ta
     return {"marked": len(marked), "usable": len(usable), "suggestions": suggestions, "outliers": outliers}
 
 
-def _best_pair(firsts: dict[str, list[Any]], nears: dict[str, list[Any]], marked: list[dict[str, Any]], tolerance: float) -> dict[str, Any] | None:
-    """The best "A, then B" from the kept candidates: judged from B's moments, the best few exactly."""
+def _best_pair(
+    firsts: dict[str, list[Any]], nears: dict[str, list[Any]], marked: list[dict[str, Any]], tolerance: float, step: Callable[[float], None]
+) -> dict[str, Any] | None:
+    """The best "A, then B" from the kept candidates: judged from B's moments, the best few exactly.
+    ``step(share)``: how far it is (0–1)."""
     pick = lambda pool: [x for key, items in pool.items() if not key.endswith(":seen") for x in sorted(items, key=lambda x: x[0])[:PER_TYPE]]  # noqa: E731
     rough: dict[tuple[Any, ...], tuple[tuple[float, ...], dict[str, Any], dict[str, Any], list[float]]] = {}
-    for _sa, a, a_rings in pick(firsts):
-        for _sb, rule, params, back, fired in pick(nears):
+    first_steps, last_steps = pick(firsts), pick(nears)
+    for n, (_sa, a, a_rings) in enumerate(first_steps):
+        step(0.7 * n / max(1, len(first_steps)))
+        for _sb, rule, params, back, fired in last_steps:
             for ignore in PAIR_IGNORES if "ignore" in RULE_DEFAULTS[rule] else (None,):
                 b = DoneRule.from_data({"type": rule, **params, **({} if ignore is None else {"ignore": ignore})}).to_data()
                 if a == b:
@@ -302,7 +339,8 @@ def _best_pair(firsts: dict[str, list[Any]], nears: dict[str, list[Any]], marked
                 if moments not in rough or score < rough[moments][0]:
                     rough[moments] = (score, a, b, a_rings)
     best: dict[str, Any] | None = None
-    for _score_rough, a, b, a_rings in sorted(rough.values(), key=lambda x: x[0])[:EXACT]:
+    for n, (_score_rough, a, b, a_rings) in enumerate(sorted(rough.values(), key=lambda x: x[0])[:EXACT]):
+        step(0.7 + 0.3 * n / EXACT)
         rule_b = DoneRule.from_data(b)
         rings = [None if at is None else _first(rule_b, run["trace"], run["checks"], at) for run, at in zip(marked, a_rings, strict=True)]
         if _no_step(rings, a_rings):

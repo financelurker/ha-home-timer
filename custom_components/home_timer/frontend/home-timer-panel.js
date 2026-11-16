@@ -94,6 +94,8 @@ class HomeTimerPanel extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    clearInterval(this._searchPoll);
+    this._searchPoll = null;
     clearInterval(this._timer);
     clearTimeout(this._previewTimer);
     this._resize?.disconnect();
@@ -1178,12 +1180,17 @@ class HomeTimerPanel extends LitElement {
     const tolField = this._inline(key, "power.tolerance", d.power.tolerance ?? 60, spec.tolerance, "s", (v) => set((x) => (x.power.tolerance = v)));
     const parts = t("learn.tolerance", { count: marked }).split(/(\{field\})/);
     const sug = this._suggest?.key === rkey ? this._suggest : null;
+    if (!sug && this._searchChecked !== rkey) {
+      this._searchChecked = rkey; // a search may be going on (or over) from before the page was opened
+      this._attachSearch(area, station, rkey);
+    }
     return html`<div class="suggest">
       <div class="sugrow">
         <button class="btn filled" ?disabled=${marked < need || sug?.loading} @click=${() => this._runSuggest(area, station, d)}><ha-icon icon="mdi:auto-fix"></ha-icon>${t("learn.suggest")}</button>
         <span class="chs">${marked < need ? t("learn.suggest_need", { min: need, count: marked }) : parts.map((x) => (x === "{field}" ? tolField : x))}</span>
       </div>
-      ${sug?.loading ? html`<div class="chs">${t("learn.searching")}</div>` : nothing}
+      ${sug?.loading ? this._renderProgress(area, station, sug) : nothing}
+      ${sug?.cancelled ? html`<div class="note">${t("learn.cancelled")}</div>` : nothing}
       ${sug?.error ? html`<div class="err">${sug.error}</div>` : nothing}
       ${sug?.data && sug.sig !== this._suggestSig(rkey, d) ? html`<div class="note">${t("learn.stale")}</div>` : nothing}
       ${sug?.data && !sug.data.suggestions.length ? html`<div class="note">${t(sug.data.marked < need ? "learn.not_usable" : "learn.none")}</div>` : nothing}
@@ -1211,16 +1218,94 @@ class HomeTimerPanel extends LitElement {
     return JSON.stringify([runs, d.power.tolerance, d.power.on_above, d.power.off_after]);
   }
 
+  // the search's progress: a bar, what it does, how far, and Cancel
+  _renderProgress(area, station, sug) {
+    const t = this._t;
+    const pct = Math.round((sug.progress || 0) * 100);
+    return html`<div class="sprog">
+      <div class="sbar" role="progressbar" aria-label=${t("learn.searching")} aria-valuemin="0" aria-valuemax="100" aria-valuenow=${pct}><i style="width:${pct}%"></i></div>
+      <span class="chs">${t(`learn.stage.${sug.stage || "rules"}`)} · ${pct} %</span>
+      <button class="btn sm" ?disabled=${sug.cancelling} @click=${() => this._cancelSearch(area, station, sug.key)}>${t("learn.cancel")}</button>
+    </div>`;
+  }
+
   async _runSuggest(area, station, d) {
     const key = this._runsKey(area.entry_id, station.id);
     await this._flushMarks();
     const sig = this._suggestSig(key, d);
-    this._suggest = { key, loading: true, data: this._suggest?.key === key ? this._suggest.data : null };
+    const before = this._suggest?.key === key ? this._suggest.data : null;
+    this._suggest = { key, loading: true, progress: 0, stage: "rules", data: before };
+    this._pollSearch(area, station, key, false);
     try {
-      const data = await this.hass.callWS({ type: `${WS}/runs/suggest`, entry_id: area.entry_id, station_id: station.id, power: clone(d.power) });
-      this._suggest = { key, data, sig };
+      const data = await this.hass.callWS({ type: `${WS}/runs/suggest`, entry_id: area.entry_id, station_id: station.id, power: clone(d.power), sig });
+      if (this._suggest?.key === key) this._suggest = { key, data, sig };
     } catch (err) {
-      this._suggest = { key, error: err?.message || String(err) };
+      if (this._suggest?.key !== key) return;
+      this._suggest = err?.code === "cancelled" ? { key, cancelled: true, data: before } : { key, error: err?.message || String(err) };
+    } finally {
+      if (this._searchPollKey === key) this._stopPoll();
+    }
+  }
+
+  // asks how far the search is (twice a second); "attached": a search this page did not start – its result comes from here
+  _pollSearch(area, station, key, attached) {
+    this._stopPoll();
+    this._searchPollKey = key;
+    const ask = async () => {
+      let status;
+      try {
+        status = await this.hass.callWS({ type: `${WS}/runs/suggest_status`, entry_id: area.entry_id, station_id: station.id });
+      } catch (_err) {
+        return; // the next one may get through
+      }
+      const sug = this._suggest;
+      if (sug?.key !== key || !sug.loading) return this._searchPollKey === key && this._stopPoll();
+      if (status.busy) {
+        this._suggest = { ...sug, progress: status.progress, stage: status.stage };
+      } else if (attached) {
+        this._stopPoll();
+        this._suggest = this._searchOutcome(key, status);
+      }
+    };
+    this._searchPoll = setInterval(ask, 500);
+  }
+
+  _stopPoll() {
+    clearInterval(this._searchPoll);
+    this._searchPoll = null;
+    this._searchPollKey = null;
+  }
+
+  _searchOutcome(key, status) {
+    if (status.result) return { key, data: status.result, sig: status.sig };
+    if (status.cancelled) return { key, cancelled: true };
+    if (status.failed) return { key, error: this._t("load_failed") };
+    return null;
+  }
+
+  // on opening a station: a search going on shows its bar, one that is over its result
+  async _attachSearch(area, station, key) {
+    let status;
+    try {
+      status = await this.hass.callWS({ type: `${WS}/runs/suggest_status`, entry_id: area.entry_id, station_id: station.id });
+    } catch (_err) {
+      return;
+    }
+    if (this._suggest?.key === key) return; // started here meanwhile
+    if (status.busy) {
+      this._suggest = { key, loading: true, progress: status.progress, stage: status.stage, sig: status.sig };
+      this._pollSearch(area, station, key, true);
+    } else if (status.result) {
+      this._suggest = this._searchOutcome(key, status);
+    }
+  }
+
+  async _cancelSearch(area, station, key) {
+    if (this._suggest?.key === key) this._suggest = { ...this._suggest, cancelling: true };
+    try {
+      await this.hass.callWS({ type: `${WS}/runs/suggest_cancel`, entry_id: area.entry_id, station_id: station.id });
+    } catch (err) {
+      if (this._suggest?.key === key) this._suggest = { ...this._suggest, cancelling: false };
     }
   }
 
@@ -2089,6 +2174,9 @@ class HomeTimerPanel extends LitElement {
     .tag.late { background: color-mix(in srgb, var(--ht-run) 16%, transparent); color: color-mix(in srgb, var(--ht-run) 85%, #000); }
     .strip line.mk { stroke: var(--ht-ok); stroke-width: 2; }
     .suggest { margin-top: 10px; }
+    .sprog { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 8px 0; }
+    .sbar { flex: 1 1 200px; height: 8px; border-radius: 4px; background: var(--secondary-background-color); overflow: hidden; }
+    .sbar i { display: block; height: 100%; background: var(--primary-color); transition: width 0.4s ease; }
     .sugrow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .sugrow .btn { display: inline-flex; align-items: center; gap: 6px; --mdc-icon-size: 18px; }
     .sugrow .btn[disabled] { opacity: 0.5; cursor: default; }

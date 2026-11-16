@@ -110,6 +110,24 @@ def main() -> None:
                 seeded.first.click()
                 page.wait_for_timeout(1500)
             check("a marked run shows its mark", page.locator("home-timer-panel svg.chart line.done").count() == 1)
+            # a search shows its progress (the bar from the click on) and can be cancelled …
+            page.locator("home-timer-panel .sugrow button").first.click()
+            try:
+                page.wait_for_selector("home-timer-panel .sprog [role=progressbar]", timeout=3000)
+                bar = True
+            except Exception:  # noqa: BLE001
+                bar = False
+            check("a search shows its progress bar", bar)
+            cancel = page.locator("home-timer-panel .sprog button")
+            if cancel.count():
+                try:
+                    cancel.click(timeout=1000)
+                except Exception:  # noqa: BLE001 – it finished meanwhile
+                    pass
+            page.wait_for_selector("home-timer-panel .sprog", state="detached", timeout=60000)
+            cancelled = page.locator("home-timer-panel .suggest .note").filter(has_text="cancelled").count() == 1
+            check("Cancel stops the search (or it finished first)", cancelled or page.locator("home-timer-panel .sug").count() > 0)
+            # … and the next one runs to its end
             page.locator("home-timer-panel .sugrow button").first.click()
             page.wait_for_selector("home-timer-panel .sug", timeout=60000)
             check("suggestions from the marked runs", page.locator("home-timer-panel .sug").count() >= 2)

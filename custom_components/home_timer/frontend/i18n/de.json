@@ -370,5 +370,9 @@
   "steps.remove": "Schritt {n} entfernen",
   "steps.rule_n": "Regel von Schritt {n}",
   "runs.legend.steps": "Wo ein Schritt zutraf",
-  "steps.field_n": "Schritt {n}: {field}"
+  "steps.field_n": "Schritt {n}: {field}",
+  "learn.stage.rules": "Probiere die Regeln",
+  "learn.stage.steps": "Probiere zwei Schritte",
+  "learn.cancel": "Abbrechen",
+  "learn.cancelled": "Suche abgebrochen."
 }

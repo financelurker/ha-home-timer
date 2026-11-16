@@ -370,5 +370,9 @@
   "steps.remove": "Remove step {n}",
   "steps.rule_n": "Rule of step {n}",
   "runs.legend.steps": "Where a step was met",
-  "steps.field_n": "Step {n}: {field}"
+  "steps.field_n": "Step {n}: {field}",
+  "learn.stage.rules": "Trying the rules",
+  "learn.stage.steps": "Trying two steps",
+  "learn.cancel": "Cancel",
+  "learn.cancelled": "Search cancelled."
 }
