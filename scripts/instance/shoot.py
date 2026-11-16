@@ -202,6 +202,44 @@ def main() -> None:
                 discard.click()
                 page.wait_for_timeout(600)
             page.set_viewport_size({"width": 1366, "height": 860})
+        if want("zoom"):
+            # zoom into the curve: buttons keep the mark in view, the overview moves along, Ctrl + wheel, the whole run again
+            page.set_viewport_size({"width": 1366, "height": 1100})
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            seeded = page.locator("home-timer-panel .runrow").filter(has_not_text=re.compile("Today|Running"))
+            if seeded.count():
+                seeded.first.click()
+                page.wait_for_timeout(1500)
+            zoom_in = page.locator("home-timer-panel .zoombar button").nth(1)
+            for _ in range(3):
+                zoom_in.click()
+                page.wait_for_timeout(300)
+            box = page.locator("home-timer-panel svg.chart").bounding_box()
+            done_x = float(page.locator("home-timer-panel svg.chart line.done").get_attribute("x1"))
+            check("zoomed in: the overview shows the part", page.locator("home-timer-panel svg.overview rect.ovwin").count() == 1)
+            check("zoomed in: the mark stays in view", 52 <= done_x <= box["width"] - 14, done_x)
+            page.screenshot(path=OUT / "zoom.png")
+            label = page.locator("home-timer-panel .zoombar .chs").inner_text()
+            # zoomed in, a click sets the mark where it is in the view (to the second)
+            secs = lambda txt: sum(int(x) * 60 ** i for i, x in enumerate(reversed(txt.strip().split(":"))))  # noqa: E731
+            a, b = (secs(x) for x in label.split("–"))
+            page.mouse.click(box["x"] + 52 + (box["width"] - 66) / 2, box["y"] + box["height"] / 2)
+            page.wait_for_timeout(500)
+            placed = secs(page.locator("home-timer-panel .mbar b").inner_text().split()[-1])
+            check("zoomed in: a click sets the mark there", abs(placed - (a + b) / 2) <= 2, (placed, a, b))
+            ov = page.locator("home-timer-panel svg.overview").bounding_box()
+            page.mouse.click(ov["x"] + ov["width"] * 0.2, ov["y"] + ov["height"] / 2)  # move to the first fifth
+            page.wait_for_timeout(400)
+            check("the overview moves the part shown", page.locator("home-timer-panel .zoombar .chs").inner_text() != label)
+            page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            page.keyboard.down("Control")
+            page.mouse.wheel(0, 400)  # out
+            page.keyboard.up("Control")
+            page.wait_for_timeout(400)
+            page.locator("home-timer-panel .zoombar button").nth(2).click()  # the whole run
+            page.wait_for_timeout(400)
+            check("the whole run again: no overview", page.locator("home-timer-panel svg.overview").count() == 0)
+            page.set_viewport_size({"width": 1366, "height": 860})
         if want("panel-station"):
             go(page, f"/home-timer/station/{ref['entry']}/{ref['hob']['id']}")
             page.screenshot(path=OUT / "panel-station.png")

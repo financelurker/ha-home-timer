@@ -376,5 +376,11 @@
   "learn.cancel": "Cancel",
   "learn.cancelled": "Search cancelled.",
   "learn.failed": "The search failed – see the Home Assistant log.",
-  "learn.lost": "The search was interrupted (Home Assistant restarted) – start it again."
+  "learn.lost": "The search was interrupted (Home Assistant restarted) – start it again.",
+  "zoom.label": "Zoom",
+  "zoom.in": "Zoom in",
+  "zoom.out": "Zoom out",
+  "zoom.all": "The whole run",
+  "zoom.hint": "Ctrl + wheel zooms",
+  "zoom.overview": "The whole run – drag to move the part shown"
 }
