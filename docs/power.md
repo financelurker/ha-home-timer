@@ -56,6 +56,8 @@ Every rule except *when it switches off* **ignores the first seconds** of a run 
 
 When one rule is not enough – it would also fire earlier, at a dip that is not the end – the done rule can be a **sequence of steps**: *it is done after these steps*, joined by *then* (**+ Add a step**, up to 8). Each step is looked for once the step before was met, and it looks at nothing before that moment – its *ignore the first …* counts from there; *after a time* and *after energy* count from the run's start. The timer rings when the last step is met. Example: *the power pauses, then the power falls by at least 30 % within 30 s* – a dip before the pause does not count. Move a step with ▲ ▼ or drag it; × removes it. *When it switches off* cannot be a step of a sequence. The timer's sensor shows how many steps are met (`steps_met`), and the curve shows where each step was met (numbered pins).
 
+![Steps: "it has run for 120 s, then the power falls by at least 10 % within 60 s" – the pins on the moka pot's curve show where each step was met](images/panel-steps.png)
+
 ## The station's entities
 
 | Entity | Description |
