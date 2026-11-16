@@ -6,6 +6,7 @@ import random
 from datetime import UTC, datetime, timedelta
 
 import pytest
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import HomeAssistant, State
 
 from custom_components.home_timer.power import DoneRule, Trace
@@ -263,7 +264,30 @@ async def test_a_run_across_a_reload_keeps_its_ring(hass: HomeAssistant, kitchen
     await watts(hass, freezer, 0, seconds_after=20)
     await tick(hass, freezer, 31)
     (run,) = kitchen.runtime_data.runs.list(station)
-    assert run["from"] > 60 and run["trigger"] == "rule" and 60 <= run["rang"] <= 71  # time jumps 70 s at once
+    # the curve from before the reload is kept (B17)
+    assert run["from"] == 0 and run["t"][0] == 0 and run["trigger"] == "rule" and 60 <= run["rang"] <= 71  # time jumps 70 s at once
+    assert kitchen.runtime_data.runs.pending == {}
+
+
+async def test_a_curve_is_kept_only_over_a_short_gap(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Kettle", "until_off")
+    await watts(hass, freezer, 2000)
+    await watts(hass, freezer, 2001, seconds_after=30)
+    # Home Assistant stops without unloading the area: the curve is kept for the next start …
+    hass.bus.async_fire(EVENT_HOMEASSISTANT_STOP)
+    await hass.async_block_till_done()
+    kept = kitchen.runtime_data.runs.pending[station]["curve"]
+    assert kept["t"][0] == 0 and kept["w"][-1] == 2001
+    # … but after a long gap the readings in between are unknown: it starts afresh
+    assert await hass.config_entries.async_unload(kitchen.entry_id)
+    freezer.tick(timedelta(seconds=600))
+    assert await hass.config_entries.async_setup(kitchen.entry_id)
+    await hass.async_block_till_done()
+    await watts(hass, freezer, 0, seconds_after=10)
+    await tick(hass, freezer, 31)
+    (run,) = kitchen.runtime_data.runs.list(station)
+    assert run["from"] >= 600
 
 
 async def test_warn_rings_by_countdown_and_attributes_are_not_readings(hass: HomeAssistant, kitchen, freezer) -> None:
@@ -422,3 +446,69 @@ async def test_preview_api_takes_any_draft(hass: HomeAssistant, kitchen, freezer
     await client.send_json_auto_id({"type": "home_timer/runs/preview", "entry_id": kitchen.entry_id, "station_id": station,
                                     "power": {}, "current_only": True})
     assert (await client.receive_json())["result"] == {"runs": [], "current": None}
+
+
+async def test_kept_data_is_found_again_although_the_reading_came_first(hass: HomeAssistant, kitchen, freezer) -> None:
+    # the run starts with a reading; its timer a moment later – after a reload the watcher knows only the timer
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Kettle", "until_off")
+    await watts(hass, freezer, 2000)
+    watcher = kitchen.runtime_data.watcher(station)
+    watcher.run_start -= timedelta(seconds=0.3)
+    await watts(hass, freezer, 2001, seconds_after=20)
+    watcher.mark_done()
+    assert await hass.config_entries.async_reload(kitchen.entry_id)
+    await hass.async_block_till_done()
+    watcher = kitchen.runtime_data.watcher(station)
+    assert watcher.mark is not None and watcher.trace.times[0] < 1  # the mark and the curve from before
+
+
+async def test_a_rearmed_warning_keeps_its_curve_from_the_run_start(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Iron", "warn", warn_after=1)
+    await watts(hass, freezer, 2000)
+    await watts(hass, freezer, 2100, seconds_after=75)  # warned at 60 s
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_iron_stop_acknowledge"}, blocking=True)
+    await tick(hass, freezer, 30)  # re-armed: a new countdown, started later than the run
+    assert await hass.config_entries.async_reload(kitchen.entry_id)
+    await hass.async_block_till_done()
+    await watts(hass, freezer, 2300, seconds_after=5)
+    await watts(hass, freezer, 0, seconds_after=10)
+    await tick(hass, freezer, 31)
+    (run,) = kitchen.runtime_data.runs.list(station)
+    assert run["t"][0] == 0 and 2300 in run["w"] and run["duration"] == pytest.approx(120, abs=6)
+
+
+async def test_a_pause_goes_on_across_a_reload(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Dishwasher", "until_off", off_after=600)
+    ev = events(hass)
+    await watts(hass, freezer, 2000)
+    await watts(hass, freezer, 5, seconds_after=60)  # a pause
+    await tick(hass, freezer, 20)
+    assert await hass.config_entries.async_reload(kitchen.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get("sensor.kitchen_dishwasher").state == "active" and not ev["finished"]
+    await watts(hass, freezer, 2000, seconds_after=100)  # it goes on
+    await watts(hass, freezer, 0, seconds_after=60)
+    await tick(hass, freezer, 601)
+    (run,) = kitchen.runtime_data.runs.list(station)
+    assert run["duration"] == pytest.approx(240, abs=6) and run["t"][0] == 0
+
+
+async def test_a_kept_curve_needs_the_same_sensor(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    station = await add_power_station(hass, kitchen, "Kettle", "until_off")
+    await watts(hass, freezer, 2000)
+    await watts(hass, freezer, 2001, seconds_after=30)
+    store = kitchen.runtime_data.runs
+    assert await hass.config_entries.async_unload(kitchen.entry_id)
+    store.pending[station]["curve"]["sensor"] = "sensor.another_plug"  # as if the sensor was changed meanwhile
+    await store.async_save()
+    assert await hass.config_entries.async_setup(kitchen.entry_id)
+    await hass.async_block_till_done()
+    assert kitchen.runtime_data.watcher(station).trace.times[0] > 0  # only from now on
+    # pending data of a deleted station goes with its runs
+    kitchen.runtime_data.runs.pending["gone"] = {"start": "x", "done": 5}
+    kitchen.runtime_data.runs.prune({station})
+    assert "gone" not in kitchen.runtime_data.runs.pending

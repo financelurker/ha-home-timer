@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from types import MappingProxyType
+from unittest.mock import patch
 
 import pytest
 from homeassistant.config_entries import ConfigSubentry
@@ -120,11 +121,24 @@ async def test_running_across_a_reload(hass: HomeAssistant, kitchen, freezer) ->
     await hass.async_block_till_done()
     assert hass.states.get("sensor.kitchen_kettle").state == "active"
     assert len(kitchen.runtime_data.timers) == 1
-    # stopped while unloaded
+    # stopped while unloaded: with its curve kept (a short gap), "stopped after" counts as usual …
+    await watts(hass, freezer, 2001, seconds_after=60)
     assert await hass.config_entries.async_unload(kitchen.entry_id)
     hass.states.async_set(SENSOR, "0")
     assert await hass.config_entries.async_setup(kitchen.entry_id)
     await hass.async_block_till_done()
+    assert hass.states.get("sensor.kitchen_kettle").state == "active"
+    await tick(hass, freezer, 31)
+    assert hass.states.get("sensor.kitchen_kettle").state == "ringing"
+    # … without it (a long gap), at once
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_kettle_stop_acknowledge"}, blocking=True)
+    await watts(hass, freezer, 2000, seconds_after=5)
+    assert hass.states.get("sensor.kitchen_kettle").state == "active"
+    assert await hass.config_entries.async_unload(kitchen.entry_id)
+    hass.states.async_set(SENSOR, "0")
+    with patch("custom_components.home_timer.watcher.KEEP_GAP", -1):  # as after a long gap
+        assert await hass.config_entries.async_setup(kitchen.entry_id)
+        await hass.async_block_till_done()
     assert hass.states.get("sensor.kitchen_kettle").state == "ringing"
 
 
@@ -222,8 +236,8 @@ async def test_stopped_during_downtime(hass: HomeAssistant, kitchen, freezer) ->
     await tick(hass, freezer, 60)
     assert await hass.config_entries.async_unload(kitchen.entry_id)
     hass.states.async_set(SENSOR, "0")
-    freezer.tick(600)
-    assert await hass.config_entries.async_setup(kitchen.entry_id)
+    with patch("custom_components.home_timer.watcher.KEEP_GAP", -1):  # as after a long gap
+        assert await hass.config_entries.async_setup(kitchen.entry_id)
     await hass.async_block_till_done()
     assert hass.states.get("sensor.kitchen_iron").state == "idle"
     assert ev["cancelled"][0].data["reason"] == "power_off"

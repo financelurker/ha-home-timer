@@ -27,7 +27,8 @@ from datetime import datetime, timedelta
 from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
-from homeassistant.core import CALLBACK_TYPE, HomeAssistant, callback
+from homeassistant.const import EVENT_HOMEASSISTANT_STOP
+from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_send
 from homeassistant.helpers.event import async_track_point_in_utc_time
@@ -215,6 +216,7 @@ class AreaTimers:
         # per power station: {"runs": n, "durations": [seconds, …] (last 20), "last": seconds}
         self.power_stats: dict[str, dict[str, Any]] = {}
         self._watchers: list[Any] = []
+        self._unsub_stop: Any = None
         self.runs = RunStore(hass, entry.entry_id)  # power stations' runs with their curves
         self._imports: list[asyncio.Task[Any]] = []  # reading earlier runs from the history
 
@@ -316,6 +318,10 @@ class AreaTimers:
             self._notify()
         from .watcher import PowerWatcher  # noqa: PLC0415 - watcher imports the engine
 
+        if any(station.power is not None for station in known.values()):
+            # Home Assistant stops without unloading the area: keep the curves of runs going on
+            self._unsub_stop = self.hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, self._keep_curves)
+
         for station in known.values():
             if station.power is not None:
                 watcher = PowerWatcher(self, station)
@@ -329,8 +335,17 @@ class AreaTimers:
                         f"{DOMAIN} history of {station.name}",
                     ))
 
+    @callback
+    def _keep_curves(self, _event: Event) -> None:
+        self._unsub_stop = None
+        for watcher in self._watchers:
+            watcher.keep_curve()
+
     async def async_unload(self) -> None:
         self._running = False
+        if self._unsub_stop is not None:
+            self._unsub_stop()
+            self._unsub_stop = None
         for task in self._imports:
             task.cancel()  # before the store is saved: a late import must not write to it
         self._imports.clear()

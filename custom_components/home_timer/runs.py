@@ -54,6 +54,7 @@ MONOTONE = (RULE_TIME, RULE_ENERGY)
 TICK = 5.0  # seconds: how often a running station checks its rule (as the watcher does)
 MIN_RUN = 10  # seconds above "runs above"; shorter runs are blips
 CURRENT = "current"  # the id of the run going on (not stored)
+CURVE_KEEP = 20000  # readings of a run going on kept over a reload (a rule may read them all)
 
 
 def runs_key(entry_id: str) -> str:
@@ -317,7 +318,8 @@ class RunStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, runs_key(entry_id))
         self.runs: dict[str, list[dict[str, Any]]] = {}  # station id → runs, oldest first
         self.imported: set[str] = set()  # stations whose history was read
-        # station id → {"start", "done", "steps"}: a mark on the run going on, steps met in it
+        # station id → {"start", "done", "steps", "curve"}: a mark on the run going on, steps met in it,
+        # its curve so far (kept when the area unloads)
         self.pending: dict[str, dict[str, Any]] = {}
 
     async def async_load(self) -> None:
@@ -334,7 +336,7 @@ class RunStore:
         if isinstance(pending, dict):
             self.pending = {
                 str(k): v for k, v in pending.items()
-                if isinstance(v, dict) and (isinstance(v.get("done"), int | float) or isinstance(v.get("steps"), dict))
+                if isinstance(v, dict) and (isinstance(v.get("done"), int | float) or isinstance(v.get("steps"), dict) or isinstance(v.get("curve"), dict))
             }
 
     def list(self, station_id: str) -> list[dict[str, Any]]:
@@ -424,8 +426,36 @@ class RunStore:
         while the steps are the same (``rule``: the done rule's data)."""
         self._pending_set(station_id, start, "steps", {"met": step, "at": at, "rule": rule} if step else None)
 
+    def set_curve(self, station_id: str, start: str, curve: dict[str, Any]) -> None:
+        """The run going on so far when the area unloads – picked up when it loads again.
+        ``curve``: ``t`` (seconds after ``run_start``), ``w``, ``run_start`` (the reading that began
+        the run), ``sensor``, ``at`` (when it was kept)."""
+        if not curve.get("t"):
+            return
+        t, w = compact(list(curve["t"]), list(curve["w"]), CURVE_KEEP)  # (the same step curve, rounded)
+        self._pending_set(station_id, start, "curve", {**curve, "t": t, "w": w})
+
+    def pending_curve(self, station_id: str, start: str) -> dict[str, Any] | None:
+        entry = self.pending.get(station_id)
+        curve = entry.get("curve") if entry and entry.get("start") == start else None
+        if not isinstance(curve, dict):
+            return None
+        t, w = curve.get("t"), curve.get("w")
+        if not isinstance(t, list) or not isinstance(w, list) or len(t) != len(w) or not t:
+            return None
+        if not all(isinstance(x, int | float) and not isinstance(x, bool) for x in (*t, *w)):
+            return None
+        if not all(isinstance(curve.get(k), str) for k in ("at", "run_start", "sensor")):
+            return None
+        return {**curve, "t": [float(x) for x in t], "w": [float(x) for x in w]}
+
+    def drop_curve(self, station_id: str, start: str) -> None:
+        self._pending_set(station_id, start, "curve", None)
+
     def _pending_set(self, station_id: str, start: str, key: str, value: Any) -> None:
         entry = self.pending.get(station_id)
+        if value is None and (not entry or entry.get("start") != start or key not in entry):
+            return  # nothing of this run to remove: other data stays
         entry = dict(entry) if entry and entry.get("start") == start else {"start": start}
         if value is None:
             entry.pop(key, None)
@@ -465,10 +495,11 @@ class RunStore:
 
     def prune(self, known: set[str]) -> None:
         """Forget the runs of deleted stations."""
-        gone = [s for s in {*self.runs, *self.imported} if s not in known]
+        gone = [s for s in {*self.runs, *self.imported, *self.pending} if s not in known]
         for station_id in gone:
             self.runs.pop(station_id, None)
             self.imported.discard(station_id)
+            self.pending.pop(station_id, None)
         if gone:
             self._save()
 

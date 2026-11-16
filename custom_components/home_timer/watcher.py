@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 TICK = timedelta(seconds=5)
 POWER_SOURCE = {"home_timer": "power"}
+KEEP_GAP = 300  # s: a kept curve is picked up after a gap up to this (a reload, a quick restart)
 THIN_ABOVE = 10 * MAX_POINTS  # readings kept of a run whose curve no rule reads
 
 
@@ -85,6 +86,24 @@ class PowerWatcher:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+        self.keep_curve()
+
+    @callback
+    def keep_curve(self) -> None:
+        """The area unloads (a station saved, Home Assistant stops): keep the run's curve so far."""
+        if self.running and self.run_start is not None and self.trace.times:
+            self.engine.runs.set_curve(self.station.id, self._run_key(), {
+                "t": self.trace.times, "w": self.trace.watts, "run_start": self.run_start.isoformat(),
+                "sensor": self.config.sensor, "at": dt_util.utcnow().isoformat(),
+            })
+
+    def _run_key(self) -> str:
+        """What a mark, steps met and the curve kept over a reload are stored under: the start of the
+        run's timer – what the watcher finds again after the reload (the run's own start is the reading
+        that began it, a moment earlier)."""
+        timer = self._ours()
+        start = timer.started_at if timer is not None else self.run_start
+        return start.isoformat() if start is not None else ""
 
     def _ours(self) -> Any:
         """The station's timer, if this watcher started it."""
@@ -95,23 +114,29 @@ class PowerWatcher:
         """First valid reading after a (re)start: pick up the run, or end it."""
         self._resumed = False
         existing = self._ours()
-        if watts > self.config.on_above:
+        kept = self._kept(existing, now) if existing is not None else None
+        if watts > self.config.on_above or kept is not None:
             if existing is None:
                 self._start_run(now, watts)
                 return
+            key = existing.started_at.isoformat()
             self.running = True
-            self.run_start = existing.started_at
             self.timer_id = existing.id
             self.done = existing.status == STATUS_RINGING
-            self.mark = self.engine.runs.pending_mark(self.station.id, existing.started_at.isoformat())
+            self.mark = self.engine.runs.pending_mark(self.station.id, key)
             # steps met before: kept (a later step looks only after the one before – also over the gap)
-            self.step, self.step_at = self.engine.runs.steps_met(self.station.id, existing.started_at.isoformat(), self.config.done.to_data())
+            self.step, self.step_at = self.engine.runs.steps_met(self.station.id, key, self.config.done.to_data())
             self.step = min(self.step, len(self.config.done.steps))
             if existing.finished_at is not None:  # it rang before the restart
                 self.rang = (existing.finished_at - existing.started_at).total_seconds()
                 self.trigger = "rule" if self.config.kind == KIND_UNTIL_OFF else "countdown"
-            self.trace = Trace()
-            self._add(watts, now)  # earlier samples are gone: rules look only from here
+            if kept is not None:  # the curve so far, from the run's own start
+                self.run_start, self.trace = kept
+                if watts <= self.config.on_above:  # a pause when it unloaded: "stopped after" counts on
+                    self._below_since = self._low_since(now)
+            else:  # earlier samples are gone: rules look only from here
+                self.run_start, self.trace = existing.started_at, Trace()
+            self._add(watts, now)
             self.engine.notify_power()
         elif existing is not None:
             # it stopped while Home Assistant was down (or the station reloaded)
@@ -119,6 +144,34 @@ class PowerWatcher:
             self.run_start = existing.started_at
             self.done = existing.status == STATUS_RINGING
             self._stop_run(now, count=False)
+
+    def _kept(self, timer: Any, now: datetime) -> tuple[datetime, Trace] | None:
+        """The curve kept when the area unloaded, with the run's start – after a short gap (a
+        reload) and for the same sensor. After a long one (a restart) the readings in between
+        are unknown."""
+        key = timer.started_at.isoformat()
+        kept = self.engine.runs.pending_curve(self.station.id, key)
+        self.engine.runs.drop_curve(self.station.id, key)
+        if kept is None or kept["sensor"] != self.config.sensor:
+            return None
+        when, start = dt_util.parse_datetime(kept["at"]), dt_util.parse_datetime(kept["run_start"])
+        if when is None or start is None or when.tzinfo is None or start.tzinfo is None:
+            return None
+        if not 0 <= (now - when).total_seconds() <= KEEP_GAP:
+            return None
+        trace = Trace()
+        for t, w in zip(kept["t"], kept["w"], strict=True):
+            trace.add(t, w)
+        return start, trace
+
+    def _low_since(self, now: datetime) -> datetime:
+        """Since when the kept curve has been at or below "runs above" (now, if it was not)."""
+        since = None
+        for t, w in zip(reversed(self.trace.times), reversed(self.trace.watts), strict=True):
+            if w > self.config.on_above:
+                break
+            since = t
+        return self.run_start + timedelta(seconds=since) if since is not None and self.run_start else now
 
     # --------------------------------------------------------------- readings
 
@@ -188,7 +241,7 @@ class PowerWatcher:
             raise ValueError("not running")
         now = self.elapsed()
         self.mark = round(now if seconds is None else min(max(self.trace.start, float(seconds)), now), 1)
-        self.engine.runs.set_pending(self.station.id, self.run_start.isoformat(), self.mark)
+        self.engine.runs.set_pending(self.station.id, self._run_key(), self.mark)
         self.engine.notify_power()
         return self.mark
 
@@ -202,7 +255,7 @@ class PowerWatcher:
             self.step_at = at
             self.step += 1
             if self.run_start is not None:
-                self.engine.runs.set_steps_met(self.station.id, self.run_start.isoformat(), self.step, at, self.config.done.to_data())
+                self.engine.runs.set_steps_met(self.station.id, self._run_key(), self.step, at, self.config.done.to_data())
             self.engine.notify_power()
         return self.step >= len(steps)
 
