@@ -31,7 +31,7 @@ from homeassistant.const import EVENT_HOMEASSISTANT_STOP
 from homeassistant.core import CALLBACK_TYPE, Event, HomeAssistant, callback
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers.dispatcher import async_dispatcher_send
-from homeassistant.helpers.event import async_track_point_in_utc_time
+from homeassistant.helpers.event import async_call_later, async_track_point_in_utc_time
 from homeassistant.helpers.storage import Store
 from homeassistant.util import dt as dt_util
 from homeassistant.util.ulid import ulid_now
@@ -65,7 +65,7 @@ from .const import (
     STORAGE_VERSION,
 )
 from .learn import forget_searches
-from .runs import RunStore, async_import_history
+from .runs import RunStore, async_import_history, async_refill_runs
 from .stations import CONF_PRESETS, Preset, Station, area_presets, find_preset, stations
 
 AREA = ""  # scope key of the area itself (timers without a station)
@@ -73,6 +73,7 @@ CUSTOM_NAME = "Timer"
 DEFAULT_CUSTOM_SECONDS = 300.0
 
 _LOGGER = logging.getLogger(__name__)
+REFILL_DELAY = 30  # s after a run is stored: completing it from the history (the recorder commits in batches)
 
 
 class TimerError(Exception):
@@ -217,6 +218,7 @@ class AreaTimers:
         self.power_stats: dict[str, dict[str, Any]] = {}
         self._watchers: list[Any] = []
         self._unsub_stop: Any = None
+        self._later: list[CALLBACK_TYPE] = []  # runs to complete from the history, a little later
         self.runs = RunStore(hass, entry.entry_id)  # power stations' runs with their curves
         self._imports: list[asyncio.Task[Any]] = []  # reading earlier runs from the history
 
@@ -328,12 +330,19 @@ class AreaTimers:
                 self._watchers.append(watcher)
                 watcher.start()
                 self.runs.fill_sensor(station.id, station.power.sensor)
+                self._background(async_refill_runs(self.hass, self.runs, station.id, station.power), f"complete runs of {station.name}")
                 if station.id not in self.runs.imported:
                     self._imports.append(self.entry.async_create_background_task(
                         self.hass,
                         async_import_history(self.hass, self.runs, station.id, station.power),
                         f"{DOMAIN} history of {station.name}",
                     ))
+
+    def _background(self, coro: Any, name: str) -> None:
+        """A task reading the history: cancelled when the area unloads (before its store is saved)."""
+        task = self.entry.async_create_background_task(self.hass, coro, f"{DOMAIN} {name}")
+        self._imports.append(task)
+        task.add_done_callback(lambda t: t in self._imports and self._imports.remove(t))
 
     @callback
     def _keep_curves(self, _event: Event) -> None:
@@ -346,6 +355,9 @@ class AreaTimers:
         if self._unsub_stop is not None:
             self._unsub_stop()
             self._unsub_stop = None
+        for unsub in self._later:
+            unsub()
+        self._later.clear()
         for task in self._imports:
             task.cancel()  # before the store is saved: a late import must not write to it
         self._imports.clear()
@@ -469,8 +481,19 @@ class AreaTimers:
 
     @callback
     def record_run(self, station_id: str, run: dict[str, Any]) -> None:
-        """A power station's run with its curve (for the panel)."""
+        """A power station's run with its curve (for the panel). A run picked up after a
+        restart misses its start: completed from the history (the recorder has it)."""
         self.runs.add(station_id, run)
+        station = self.stations.get(station_id)
+        if run.get("from") and station is not None and station.power is not None and self._running:
+            # a little later: the recorder writes the last readings in batches
+            power, name = station.power, station.name
+
+            @callback
+            def _refill(_now: Any) -> None:
+                self._background(async_refill_runs(self.hass, self.runs, station_id, power), f"complete a run of {name}")
+
+            self._later.append(async_call_later(self.hass, REFILL_DELAY, _refill))
 
     def usual_duration(self, station_id: str) -> float | None:
         """Median of the last runs, or None before the first."""

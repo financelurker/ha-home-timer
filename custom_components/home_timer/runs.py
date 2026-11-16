@@ -49,6 +49,7 @@ _LOGGER = logging.getLogger(__name__)
 STORAGE_VERSION = 1
 KEEP = 30  # runs without a mark, per station
 MAX_POINTS = 2000  # per stored curve
+REREAD_BACK = timedelta(hours=24)  # how far before a run "read again from the history" looks for its real start
 HISTORY_DAYS = 30  # how far back the first import looks (the recorder keeps 10 days by default)
 MONOTONE = (RULE_TIME, RULE_ENERGY)
 TICK = 5.0  # seconds: how often a running station checks its rule (as the watcher does)
@@ -353,6 +354,18 @@ class RunStore:
         self.runs[station_id] = [r for r in runs if r["id"] not in drop]
         self._save()
 
+    def replace(self, station_id: str, ids: set[str], run: dict[str, Any]) -> None:
+        """Runs (``ids``) replaced by one – a run read again from the history."""
+        runs = [r for r in self.list(station_id) if r["id"] not in ids]
+        self.runs[station_id] = sorted([*runs, run], key=lambda r: r["start"])
+        self._save()
+
+    def set_tried(self, station_id: str, run_id: str) -> None:
+        """A run missing its start: completing it from the history was tried (once is enough)."""
+        if (run := self.get(station_id, run_id)) is not None:
+            run["refill_tried"] = True
+            self._save()
+
     def delete(self, station_id: str, run_id: str) -> bool:
         runs = self.list(station_id)
         kept = [r for r in runs if r["id"] != run_id]
@@ -648,3 +661,128 @@ async def async_import_history(hass: HomeAssistant, store: RunStore, station_id:
         store.add(station_id, runs)
     store.mark_imported(station_id)
     return len(runs)
+
+
+# ------------------------------------------------------------------ a run read again from the history
+
+
+class RereadError(Exception):
+    """Why a run could not be read again: ``no_recorder``, ``other_sensor``, ``not_in_history``."""
+
+
+def _shift_marks(marks: dict[str, Any], delta: float) -> dict[str, Any]:
+    out: dict[str, Any] = {}
+    for key, value in marks.items():
+        if key == "ranges" and isinstance(value, dict):
+            out[key] = {n: [round(a + delta, 1), round(b + delta, 1)] for n, (a, b) in value.items()}
+        elif isinstance(value, int | float) and not isinstance(value, bool):
+            out[key] = round(value + delta, 1)
+    return out
+
+
+def reread_run(
+    samples: list[tuple[datetime, float | None]], runs: list[dict[str, Any]], run_id: str, config: PowerConfig, until: datetime
+) -> tuple[dict[str, Any], set[str]] | None:
+    """The run ``run_id`` as the history shows it: from its real start, with its whole curve.
+
+    The history is read with the station's "on and off"; the run found there that overlaps
+    the stored one most replaces it – and every other stored run within it (pieces of the
+    same run). Marks, its ring and "left out" are kept, moved to the new start. None when
+    the history shows nothing more than the stored run (or nothing at all)."""
+    run = next(r for r in runs if r["id"] == run_id)
+    old_start = dt_util.parse_datetime(run["start"])
+    if old_start is None:
+        return None
+    old_end = old_start + timedelta(seconds=float(run.get("duration") or 0))
+
+    def overlap(found: tuple[datetime, float, Trace]) -> float:
+        start, duration, _trace = found
+        return (min(old_end, start + timedelta(seconds=duration)) - max(old_start, start)).total_seconds()
+
+    found = [f for f in detect_runs(samples, config, until) if overlap(f) > 0]
+    if not found:
+        return None
+    start, duration, trace = max(found, key=overlap)
+    end = start + timedelta(seconds=duration)
+    earlier = (old_start - start).total_seconds()
+    if earlier < 1 and not float(run.get("from") or 0) > 0 and duration <= float(run.get("duration") or 0) + 1:
+        return None  # the stored run is all there is
+    pieces = [
+        r for r in runs
+        if (s := dt_util.parse_datetime(r["start"])) is not None and start - timedelta(seconds=1) <= s < end
+    ]
+    if run not in pieces:
+        pieces.append(run)
+    marks: dict[str, Any] = {}
+    for piece in sorted(pieces, key=lambda r: r is run):  # the clicked run's marks win
+        p_start = dt_util.parse_datetime(piece["start"]) or start
+        marks.update(_shift_marks(piece.get("marks") or {}, (p_start - start).total_seconds()))
+    rang = run.get("rang")
+    new = make_run(
+        start, duration, trace, on_above=config.on_above,
+        rang=rang + earlier if isinstance(rang, int | float) else None, trigger=run.get("trigger"),
+        source=run.get("source") or "live", simulated=bool(run.get("simulated")), sensor=config.sensor, marks=marks,
+    )
+    new.update(id=run["id"], skip=bool(run.get("skip")), refilled=True)
+    return new, {r["id"] for r in pieces}
+
+
+async def async_reread_run(hass: HomeAssistant, store: RunStore, station_id: str, run_id: str, config: PowerConfig) -> dict[str, Any] | None:
+    """Read a stored run again from the recorder's history (see ``reread_run``); the new run, or
+    None when there is nothing more. Raises ``RereadError``."""
+    run = store.get(station_id, run_id)
+    if run is None:
+        raise RereadError("not_in_history")
+    if run.get("sensor") and run["sensor"] != config.sensor:
+        raise RereadError("other_sensor")
+    if "recorder" not in hass.config.components:
+        raise RereadError("no_recorder")
+    from homeassistant.components.recorder import get_instance, history  # noqa: PLC0415 - optional
+
+    instance = get_instance(hass)
+    if not await instance.async_db_ready:
+        raise RereadError("no_recorder")
+    start = dt_util.parse_datetime(run["start"])
+    if start is None:
+        raise RereadError("not_in_history")
+    begin = start - REREAD_BACK
+    end = min(dt_util.utcnow(), start + timedelta(seconds=float(run.get("duration") or 0)) + REREAD_BACK)  # (a later piece too)
+    runs = [dict(r) for r in store.list(station_id)]
+
+    def _read() -> tuple[dict[str, Any], set[str]] | None:
+        states = history.state_changes_during_period(
+            hass, begin, end, config.sensor, no_attributes=True, include_start_time_state=True
+        ).get(config.sensor, [])
+        return reread_run([(s.last_changed, _number(s)) for s in states], runs, run_id, config, end)
+
+    result = await instance.async_add_executor_job(_read)
+    if result is None:
+        return None
+    new, replaced = result
+    if store.get(station_id, run_id) is None:  # deleted meanwhile
+        return None
+    store.replace(station_id, replaced, new)
+    return new
+
+
+async def async_refill_runs(hass: HomeAssistant, store: RunStore, station_id: str, config: PowerConfig) -> int:
+    """Stored runs missing their start (picked up after a restart or reload): completed from the
+    history once each. Returns how many were completed."""
+    done = 0
+    for run in [r for r in store.list(station_id) if float(r.get("from") or 0) > 0 and not r.get("refill_tried")]:
+        try:
+            new = await async_reread_run(hass, store, station_id, run["id"], config)
+        except RereadError as err:
+            if str(err) == "no_recorder":
+                return done  # maybe later
+            new = None
+        except Exception:  # noqa: BLE001 - history is a nice-to-have; never break the area
+            _LOGGER.warning("Could not complete a run of %s from the history", config.sensor, exc_info=True)
+            new = None
+        if new is not None:
+            done += 1
+            new_id = new["id"]
+        else:
+            new_id = run["id"]
+        store.set_tried(station_id, new_id)
+    return done
