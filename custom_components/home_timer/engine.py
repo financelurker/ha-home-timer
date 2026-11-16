@@ -491,9 +491,11 @@ class AreaTimers:
 
             @callback
             def _refill(_now: Any) -> None:
+                self._later.remove(handle)
                 self._background(async_refill_runs(self.hass, self.runs, station_id, power), f"complete a run of {name}")
 
-            self._later.append(async_call_later(self.hass, REFILL_DELAY, _refill))
+            handle = async_call_later(self.hass, REFILL_DELAY, _refill)
+            self._later.append(handle)
 
     def usual_duration(self, station_id: str) -> float | None:
         """Median of the last runs, or None before the first."""

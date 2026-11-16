@@ -292,7 +292,7 @@ async def ws_runs_reread(hass: HomeAssistant, connection: websocket_api.ActiveCo
     if station is None or station.power is None or engine.runs.get(msg["station_id"], msg["run_id"]) is None:
         connection.send_error(msg["id"], "not_found", "Unknown run")
         return
-    try:
+    try:  # (the user's click: pieces of the same run are joined)
         run = await async_reread_run(hass, engine.runs, msg["station_id"], msg["run_id"], station.power)
     except RereadError as err:
         connection.send_error(msg["id"], str(err), str(err))

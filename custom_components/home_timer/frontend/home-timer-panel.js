@@ -46,6 +46,7 @@ class HomeTimerPanel extends LitElement {
     _run: { state: true },
     _hover: { state: true },
     _chartWidth: { state: true },
+    _reread: { state: true },
     _confirm: { state: true },
     _fold: { state: true },
     _preview: { state: true },
@@ -986,7 +987,7 @@ class HomeTimerPanel extends LitElement {
         ${run.running ? html`<span class="tag live">${t("runs.tag.running")}</span>` : html`${this._renderReread(area, station, run)}${this._renderDeleteRun(area, station, run)}`}</span>
       </div>
       ${learning && run.skip ? html`<div class="note">${t("learn.left_out")}</div>` : nothing}
-      ${this._renderRereadNote(run)}
+      ${this._renderRereadNote(run, key)}
       <div class="chartbox ${learning ? "marking" : ""}" tabindex=${learning && markT != null ? "0" : "-1"} aria-label=${t("runs.chart.aria")}
         @pointermove=${(e) => this._pointer(m, e)} @pointerleave=${() => (cancelAnimationFrame(this._frame), (this._hover = null))}
         @pointerdown=${(e) => learning && this._dragStart(e, m, area, station, run)} @pointerup=${(e) => this._dragEnd(e)} @pointercancel=${(e) => this._dragEnd(e, true)}
@@ -1627,6 +1628,7 @@ class HomeTimerPanel extends LitElement {
   }
 
   async _loadRun(entryId, stationId, id) {
+    if (this._reread && !this._reread.loading && this._reread.id !== id) this._reread = null; // its note belongs to its run
     const key = this._runsKey(entryId, stationId);
     if (this._run?.id !== id) (this._confirm = null), (this._hover = null), (this._lastHover = null);
     this._fetching = true;
@@ -1733,32 +1735,33 @@ class HomeTimerPanel extends LitElement {
   _renderReread(area, station, run) {
     const t = this._t;
     const busy = this._reread?.id === run.id && this._reread.loading;
-    return html`<button class="icon sm" aria-label=${t("runs.reread")} title=${t("runs.reread_hint")} ?disabled=${busy}
+    return html`<button class="icon sm" aria-label=${t("runs.reread")} title=${t("runs.reread_hint")} ?disabled=${!!this._reread?.loading}
       @click=${() => this._rereadRun(area.entry_id, station.id, run.id)}><ha-icon icon=${busy ? "mdi:timer-sand" : "mdi:history"}></ha-icon></button>`;
   }
 
   async _rereadRun(entryId, stationId, id) {
     if (this._reread?.loading) return;
-    this._reread = { id, loading: true };
+    this._reread = { id, key: this._runsKey(entryId, stationId), loading: true };
+    await this._flushMarks(); // a mark just moved is saved first (it is moved along with the run)
     try {
       const res = await this.hass.callWS({ type: `${WS}/runs/reread`, entry_id: entryId, station_id: stationId, run_id: id });
-      this._reread = { id, result: res.run ? "done" : "nothing" };
+      this._reread = { id, key: this._runsKey(entryId, stationId), result: res.run ? "done" : "nothing" };
       if (res.run) {
         await this._loadRuns(entryId, stationId);
         await this._loadRun(entryId, stationId, id);
       }
     } catch (err) {
-      this._reread = { id, result: "error", code: err?.code, text: err?.message || String(err) };
+      this._reread = { id, key: this._runsKey(entryId, stationId), result: "error", code: err?.code, text: err?.message || String(err) };
     }
   }
 
-  _renderRereadNote(run) {
+  _renderRereadNote(run, key) {
     const r = this._reread;
-    if (!r || r.id !== run.id || r.loading) return nothing;
+    if (!r || r.id !== run.id || r.key !== key || r.loading) return nothing;
     const t = this._t;
     if (r.result === "done") return html`<div class="note">${t("runs.reread_done", { time: formatDuration(run.duration) })}</div>`;
     if (r.result === "nothing") return html`<div class="note">${t("runs.reread_nothing")}</div>`;
-    const known = ["no_recorder", "other_sensor"].includes(r.code);
+    const known = ["no_recorder", "other_sensor", "not_found"].includes(r.code);
     return html`<div class="err" role="alert">${known ? t(`runs.reread_${r.code}`) : r.text}</div>`;
   }
 
