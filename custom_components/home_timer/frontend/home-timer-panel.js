@@ -980,7 +980,7 @@ class HomeTimerPanel extends LitElement {
     const extra = [...marks.map((k) => k.t), ...(done ? [done.t + tol] : [])];
     const zkey = `${key}:${run.id}:${run.start}`; // the zoom belongs to the run shown (the run going on is always "current")
     const view = this._zoom?.key === zkey ? this._zoom.view : null;
-    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 250, onAbove: Number(p.on_above || 0), ignore: ignore ? ignore + (pv?.draft?.start || 0) : 0, extra, view, fitY: !this._yFull });
+    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 250, onAbove: Number(p.on_above || 0), ignore: ignore ? ignore + (pv?.draft?.start || 0) : 0, extra, view, fitY: !this._yFull, levels: level ? [level.w] : [] });
     const zoomable = m.zoomed || m.end > 2 * MIN_VIEW;
     const zoom = (factor, at) => (this._zoom = { key: zkey, view: zoomView(view, m.end, factor, at) });
     const pan = (share) => (this._zoom = { key: zkey, view: zoomView({ from: m.from + share * m.span, to: m.to + share * m.span }, m.end, 1, m.from) });

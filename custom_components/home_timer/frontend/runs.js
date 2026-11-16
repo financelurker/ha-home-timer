@@ -26,14 +26,15 @@ export function timeStep(span, width) {
 // the sizes and scales of a run's chart
 // extra: further seconds the time axis must reach (marks); view: {from, to} – the seconds shown (zoomed in)
 // fitY: zoomed in, the power axis fits what is in view (a few watts at the end of a 4 kW run)
-export function chartModel(run, { width = 600, height = 240, onAbove = 0, ignore = 0, extra = [], view = null, pad = PAD, fitY = true } = {}) {
+export function chartModel(run, { width = 600, height = 240, onAbove = 0, ignore = 0, extra = [], view = null, pad = PAD, fitY = true, levels = [] } = {}) {
   const t = run.t || [];
   const w = run.w || [];
   const end = Math.max(run.duration || 0, t.length ? t[t.length - 1] : 0, ...extra, 1);
   const v = clampView(view, end);
   const from = v ? v.from : 0;
   const span = v ? v.to - v.from : end;
-  const top = Math.max(v && fitY ? maxIn(t, w, from, from + span) : Math.max(...w, 0), onAbove, v && fitY ? 0.1 : 1) * 1.08;
+  // (levels: watt lines drawn on the chart – a rule's level – stay within the axis)
+  const top = Math.max(v && fitY ? maxIn(t, w, from, from + span) : Math.max(...w, 0), onAbove, ...levels, v && fitY ? 0.1 : 1) * 1.08;
   const ystep = niceStep(top, 4);
   const ymax = Math.ceil(top / ystep - 1e-9) * ystep;
   const plotW = Math.max(10, width - pad.left - pad.right);
@@ -135,7 +136,7 @@ export function renderChart(run, m, { labels, hover, unit = "W", marks = [], win
     <svg class="chart" width=${m.width} height=${m.height} viewBox="0 0 ${m.width} ${m.height}" role="img" aria-label=${labels.aria}>
       ${m.zoomed ? svg`<defs><clipPath id="htplot"><rect x=${left} y="0" width=${right - left} height=${m.height}></rect></clipPath></defs>` : nothing}
       ${yt.map((v) => svg`<line class="grid" x1=${left} x2=${right} y1=${m.y(v)} y2=${m.y(v)}></line>
-          <text class="ax" x=${left - 6} y=${m.y(v) + 4} text-anchor="end">${v.toFixed(decimals)} ${unit}</text>`)}
+          <text class="ax y" x=${left - 6} y=${m.y(v) + 4} text-anchor="end">${v.toFixed(decimals)} ${unit}</text>`)}
       ${m.zoomed ? svg`<g clip-path="url(#htplot)">${data}</g>` : data}
       ${from > 0 && m.from < from ? svg`<text class="zone" x=${left + 4} y=${top + 12}>${labels.unknown}</text>` : nothing}
       ${m.ignore > 0 && m.from < Math.max(m.ignore, from) ? svg`<text class="zone" x=${zoneX(from)} y=${bottom - 6}>${labels.ignored}</text>` : nothing}

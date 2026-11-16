@@ -233,7 +233,7 @@ def main() -> None:
             check("zoomed in: no shape of negative width", all(w >= 0 for w in widths), widths)
             page.screenshot(path=OUT / "zoom.png")
             # the power scale fits the part shown – the toggle gives the whole range back
-            top_label = lambda: float(page.locator("home-timer-panel svg.chart text.ax[text-anchor=end]").last.text_content().split()[0])  # noqa: E731
+            top_label = lambda: float(page.locator("home-timer-panel svg.chart text.ax.y").last.text_content().split()[0])  # noqa: E731
             fitted = top_label()
             page.locator("home-timer-panel .zoombar button[aria-pressed]").click()
             page.wait_for_timeout(300)
