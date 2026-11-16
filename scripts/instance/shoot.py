@@ -202,6 +202,17 @@ def main() -> None:
                 discard.click()
                 page.wait_for_timeout(600)
             page.set_viewport_size({"width": 1366, "height": 860})
+        if want("reread"):
+            # "read again from the history" on a run that is complete: nothing more (and nothing changes)
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            seeded = page.locator("home-timer-panel .runrow").filter(has_not_text=re.compile("Today|Running"))
+            if seeded.count():
+                seeded.first.click()
+                page.wait_for_timeout(1500)
+            page.locator("home-timer-panel .runacts button[title*='history']").first.click()
+            page.wait_for_selector("home-timer-panel .curve .note, home-timer-panel .curve .err", timeout=20000)
+            notes = page.locator("home-timer-panel .curve .note").all_inner_texts()
+            check("read again from the history: a seeded run has nothing more", any("nothing more" in n for n in notes), notes)
         if want("panel-station"):
             go(page, f"/home-timer/station/{ref['entry']}/{ref['hob']['id']}")
             page.screenshot(path=OUT / "panel-station.png")

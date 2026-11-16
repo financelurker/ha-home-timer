@@ -81,6 +81,8 @@ Every run is stored with its power curve when the appliance switches off (runs s
 
 The first time Home Timer sees a power station, it reads the station's earlier runs once from the recorder's history of the sensor, as far as the recorder kept it (10 days by default). For those runs of a station *until it switches off*, when its done rule – as set at that moment – would have rung is worked out from the curve, and labelled as such. Only the history before the first run stored live is read, so no run appears twice. A station's runs are deleted with the station.
 
+**Read again from the history** (the history icon of a run) reads a stored run again from the recorder: its real start and its whole curve, with the station's *on and off*. A run that was cut – e.g. ended in a pause and continued as a new run – is joined with its beginning; pieces of it stored as runs of their own are replaced. Marks, when it rang and *left out* are kept, moved to the real start. The history's run must contain the stored one – with *on and off* changed since, a run is never cut. It looks up to 24 hours before (and after) the run.
+
 The tab also shows how often the sensor reports and how much its readings scatter. Both limit every rule: a sensor that reports every 10 s notices a change up to 10 s late, and scatter hides small changes.
 
 ## Learning
@@ -102,4 +104,4 @@ After a restart (or when the area reloads, e.g. after saving a preset) the first
 - **Still running:** its timer goes on with the run's curve so far – kept when the area unloaded, if it was back within 5 minutes (a reload, a quick restart); the last reading counts as holding through the gap. After a longer gap the readings in between are unknown: rules that look back (pause, drop, the trend changing, cycling) wait until they have a full window of new readings, and *energy* only counts from then. Steps already met stay met (while the steps are not changed).
 - **Off:** with the curve kept (a short gap), *stopped after* counts on as if nothing happened – a pause goes on. Otherwise it is handled like switching off – *until it switches off* rings, a warning is cancelled (or acknowledged if it rang), a preset is cancelled if set so. The run is not counted (nor stored), because its end is unknown.
 
-A run that goes on across a longer gap is stored with the readings from the restart on; the panel says where its curve starts.
+A run that goes on across a longer gap is stored with the readings from the restart on – and soon after completed from the recorder's history (its whole curve, tagged *completed from the history*), if the recorder has it and the history shows the same run (only its start is added; nothing else changes).

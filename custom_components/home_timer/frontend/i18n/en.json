@@ -376,5 +376,13 @@
   "learn.cancel": "Cancel",
   "learn.cancelled": "Search cancelled.",
   "learn.failed": "The search failed – see the Home Assistant log.",
-  "learn.lost": "The search was interrupted (Home Assistant restarted) – start it again."
+  "learn.lost": "The search was interrupted (Home Assistant restarted) – start it again.",
+  "runs.reread": "Read again from the history",
+  "runs.reread_hint": "Read this run again from the recorder's history – its real start and its whole curve, e.g. after a restart",
+  "runs.reread_done": "Read again from the history: now {time}, with its whole curve.",
+  "runs.reread_nothing": "The history shows nothing more of this run.",
+  "runs.reread_no_recorder": "There is no recorder history to read.",
+  "runs.reread_other_sensor": "This run was recorded with another sensor.",
+  "runs.tag.refilled": "completed from the history",
+  "runs.reread_not_found": "The run is no longer stored."
 }

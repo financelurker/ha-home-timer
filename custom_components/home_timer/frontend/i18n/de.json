@@ -376,5 +376,13 @@
   "learn.cancel": "Abbrechen",
   "learn.cancelled": "Suche abgebrochen.",
   "learn.failed": "Die Suche ist fehlgeschlagen – siehe das Protokoll von Home Assistant.",
-  "learn.lost": "Die Suche wurde unterbrochen (Home Assistant hat neu gestartet) – starte sie neu."
+  "learn.lost": "Die Suche wurde unterbrochen (Home Assistant hat neu gestartet) – starte sie neu.",
+  "runs.reread": "Aus dem Verlauf neu lesen",
+  "runs.reread_hint": "Diesen Lauf aus dem Verlauf des Recorders neu lesen – sein echter Anfang und seine ganze Kurve, z. B. nach einem Neustart",
+  "runs.reread_done": "Aus dem Verlauf neu gelesen: jetzt {time}, mit der ganzen Kurve.",
+  "runs.reread_nothing": "Der Verlauf zeigt von diesem Lauf nicht mehr.",
+  "runs.reread_no_recorder": "Es gibt keinen Recorder-Verlauf zum Lesen.",
+  "runs.reread_other_sensor": "Dieser Lauf wurde mit einem anderen Sensor aufgezeichnet.",
+  "runs.tag.refilled": "aus dem Verlauf ergänzt",
+  "runs.reread_not_found": "Der Lauf ist nicht mehr gespeichert."
 }
