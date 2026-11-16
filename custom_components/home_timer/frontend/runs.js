@@ -7,7 +7,6 @@ import { svg, nothing } from "./vendor/lit.js";
 import { formatDuration } from "./helpers.js";
 
 const PAD = { left: 52, right: 14, top: 22, bottom: 26 };
-let CLIPS = 0; // ids of the charts' clip paths
 const TIME_STEPS = [5, 10, 15, 30, 60, 120, 300, 600, 900, 1800, 3600, 7200, 10800, 21600, 43200, 86400];
 
 // a round step for about `count` ticks up to `max`
@@ -91,59 +90,60 @@ function path(m) {
 // done: {t, label, tol, tolLabel} – the user's mark (learning) with the "on time" band after it
 // pins: [{t, n}] – where each step of a sequence was met (numbered); the last one is the ring
 export function renderChart(run, m, { labels, hover, unit = "W", marks = [], window = null, level = null, done = null, pins = [] }) {
-  const left = PAD.left;
-  const right = m.width - PAD.right;
-  const bottom = PAD.top + m.plotH;
+  const left = m.pad.left;
+  const right = m.width - m.pad.right;
+  const top = m.pad.top;
+  const bottom = top + m.plotH;
   const yt = [];
   for (let v = 0; v <= m.ymax + 1e-9; v += m.ystep) yt.push(v);
   const xt = [];
   for (let s = Math.ceil(m.from / m.xstep - 1e-9) * m.xstep; s <= m.to + 1e-9; s += m.xstep) xt.push(s);
-  const clip = `htclip${++CLIPS}`;
   const from = run.from || 0;
   const decimals = Math.max(0, -Math.floor(Math.log10(m.ystep) + 1e-9));
   const hv = hover != null ? valueAt(run, hover) : null;
   const line = path(m);
+  const seen = (s) => s >= m.from - 1e-6 && s <= m.to + 1e-6; // within the view (all of it, when not zoomed)
   const crowded = marks.some((k) => Math.abs(m.x(k.t) - m.x(run.duration || 0)) < 100);
   const flip = (k) => m.x(k.t) > m.width - 130; // a label near the right edge goes to the left of its line
-  return svg`
-    <svg class="chart" width=${m.width} height=${m.height} viewBox="0 0 ${m.width} ${m.height}" role="img" aria-label=${labels.aria}>
-      <g clip-path="url(#${clip})">
-      ${from > 0 ? svg`<rect class="unknown" x=${left} y=${PAD.top} width=${m.x(from) - left} height=${m.plotH}></rect>
-          <text class="zone" x=${left + 4} y=${PAD.top + 12}>${labels.unknown}</text>` : nothing}
-      ${m.ignore > 0 ? svg`<rect class="ignored" x=${m.x(from)} y=${PAD.top} width=${Math.max(0, m.x(Math.max(m.ignore, from)) - m.x(from))} height=${m.plotH}></rect>
-          <text class="zone" x=${m.x(from) + 4} y=${bottom - 6}>${labels.ignored}</text>` : nothing}
-      </g>
-      <defs><clipPath id=${clip}><rect x=${left} y="0" width=${right - left} height=${m.height}></rect></clipPath></defs>
-      ${yt.map((v) => svg`<line class="grid" x1=${left} x2=${right} y1=${m.y(v)} y2=${m.y(v)}></line>
-          <text class="ax" x=${left - 6} y=${m.y(v) + 4} text-anchor="end">${v.toFixed(decimals)} ${unit}</text>`)}
-      <g clip-path="url(#${clip})">
-      ${xt.map((s) => svg`<text class="ax" x=${m.x(s)} y=${bottom + 18} text-anchor="middle">${formatDuration(s)}</text>`)}
+  const zoneX = (s) => Math.max(m.x(s), left) + 4; // a zone's label stays in view
+  // zoomed in, the data is clipped to the plot; labels are drawn only for what is in view (never cut)
+  const data = svg`
+      ${from > 0 && m.from < from ? svg`<rect class="unknown" x=${left} y=${top} width=${Math.max(0, m.x(from) - left)} height=${m.plotH}></rect>` : nothing}
+      ${m.ignore > 0 && m.from < Math.max(m.ignore, from) ? svg`<rect class="ignored" x=${Math.max(left, m.x(from))} y=${top} width=${Math.max(0, m.x(Math.max(m.ignore, from)) - Math.max(left, m.x(from)))} height=${m.plotH}></rect>` : nothing}
       ${m.onAbove > 0 ? svg`<line class="thr" x1=${left} x2=${right} y1=${m.y(m.onAbove)} y2=${m.y(m.onAbove)}></line>` : nothing}
       ${line ? svg`<path class="area" d="${line}V${bottom}H${m.x(m.t[0])}Z"></path><path class="curve" d=${line}></path>` : nothing}
-      ${run.duration && !run.running && run.duration < m.end - 0.5 ? svg`<line class="stop" x1=${m.x(run.duration)} x2=${m.x(run.duration)} y1=${PAD.top} y2=${bottom}></line>
-          <text class="mk" x=${m.x(run.duration) - 4} y=${crowded ? PAD.top + 12 : PAD.top - 6} text-anchor="end">${labels.stopped}</text>` : nothing}
-      ${window ? svg`<rect class="win" x=${m.x(window.from)} y=${PAD.top} width=${Math.max(1, m.x(window.to) - m.x(window.from))} height=${m.plotH}></rect>
-          <text class="zone win" x=${(m.x(window.from) + m.x(window.to)) / 2} y=${bottom - 22} text-anchor="middle">${window.label}</text>` : nothing}
-      ${level ? svg`<line class="level" x1=${left} x2=${right} y1=${m.y(level.w)} y2=${m.y(level.w)}></line>
-          <text class="zone lvl" x=${right - 4} y=${m.y(level.w) - 4} text-anchor="end">${level.label}</text>` : nothing}
-      ${marks.map((k, i) => svg`<line class="mark ${k.dash ? "dash" : ""}" style=${k.color ? `stroke:${k.color}` : ""} x1=${m.x(k.t)} x2=${m.x(k.t)} y1=${PAD.top} y2=${bottom}></line>
-          <text class="mk ring ${k.dash ? "it" : ""}" style=${k.color ? `fill:${k.color}` : ""} x=${flip(k) ? m.x(k.t) - 4 : m.x(k.t) + 4} y=${i ? PAD.top + 12 : PAD.top - 6} text-anchor=${flip(k) ? "end" : "start"}>${k.label}</text>`)}
-      ${done ? svg`${done.tol ? svg`<rect class="tol" x=${m.x(done.t)} y=${PAD.top} width=${Math.max(1, m.x(done.t + done.tol) - m.x(done.t))} height=${m.plotH}></rect>
-            <text class="zone tolt" x=${(m.x(done.t) + m.x(done.t + done.tol)) / 2} y=${bottom - 6} text-anchor="middle">${done.tolLabel || ""}</text>` : nothing}
-          <line class="done" x1=${m.x(done.t)} x2=${m.x(done.t)} y1=${PAD.top} y2=${bottom}></line>
-          <circle class="grip" cx=${m.x(done.t)} cy=${PAD.top + m.plotH / 2} r="9"></circle>
-          <path class="gripl" d="M${m.x(done.t) - 3},${PAD.top + m.plotH / 2 - 4}v8M${m.x(done.t) + 3},${PAD.top + m.plotH / 2 - 4}v8"></path>
-          <text class="mk donet" x=${m.x(done.t) - 6} y=${PAD.top - 6} text-anchor="end">${done.label}</text>` : nothing}
-      ${pins.map((k) => {
+      ${run.duration && !run.running && run.duration < m.end - 0.5 ? svg`<line class="stop" x1=${m.x(run.duration)} x2=${m.x(run.duration)} y1=${top} y2=${bottom}></line>` : nothing}
+      ${window ? svg`<rect class="win" x=${m.x(window.from)} y=${top} width=${Math.max(1, m.x(window.to) - m.x(window.from))} height=${m.plotH}></rect>` : nothing}
+      ${level ? svg`<line class="level" x1=${left} x2=${right} y1=${m.y(level.w)} y2=${m.y(level.w)}></line>` : nothing}
+      ${marks.map((k) => svg`<line class="mark ${k.dash ? "dash" : ""}" style=${k.color ? `stroke:${k.color}` : ""} x1=${m.x(k.t)} x2=${m.x(k.t)} y1=${top} y2=${bottom}></line>`)}
+      ${done?.tol ? svg`<rect class="tol" x=${m.x(done.t)} y=${top} width=${Math.max(1, m.x(done.t + done.tol) - m.x(done.t))} height=${m.plotH}></rect>` : nothing}
+      ${done ? svg`<line class="done" x1=${m.x(done.t)} x2=${m.x(done.t)} y1=${top} y2=${bottom}></line>` : nothing}`;
+  return svg`
+    <svg class="chart" width=${m.width} height=${m.height} viewBox="0 0 ${m.width} ${m.height}" role="img" aria-label=${labels.aria}>
+      ${m.zoomed ? svg`<defs><clipPath id="htplot"><rect x=${left} y="0" width=${right - left} height=${m.height}></rect></clipPath></defs>` : nothing}
+      ${yt.map((v) => svg`<line class="grid" x1=${left} x2=${right} y1=${m.y(v)} y2=${m.y(v)}></line>
+          <text class="ax" x=${left - 6} y=${m.y(v) + 4} text-anchor="end">${v.toFixed(decimals)} ${unit}</text>`)}
+      ${m.zoomed ? svg`<g clip-path="url(#htplot)">${data}</g>` : data}
+      ${from > 0 && m.from < from ? svg`<text class="zone" x=${left + 4} y=${top + 12}>${labels.unknown}</text>` : nothing}
+      ${m.ignore > 0 && m.from < Math.max(m.ignore, from) ? svg`<text class="zone" x=${zoneX(from)} y=${bottom - 6}>${labels.ignored}</text>` : nothing}
+      ${xt.map((s) => svg`<text class="ax" x=${m.x(s)} y=${bottom + 18} text-anchor=${m.zoomed && m.x(s) - left < 20 ? "start" : m.zoomed && right - m.x(s) < 20 ? "end" : "middle"}>${formatDuration(s)}</text>`)}
+      ${run.duration && !run.running && run.duration < m.end - 0.5 && seen(run.duration) ? svg`<text class="mk" x=${m.x(run.duration) - 4} y=${crowded ? top + 12 : top - 6} text-anchor="end">${labels.stopped}</text>` : nothing}
+      ${window && seen((window.from + window.to) / 2) ? svg`<text class="zone win" x=${(m.x(window.from) + m.x(window.to)) / 2} y=${bottom - 22} text-anchor="middle">${window.label}</text>` : nothing}
+      ${level ? svg`<text class="zone lvl" x=${right - 4} y=${m.y(level.w) - 4} text-anchor="end">${level.label}</text>` : nothing}
+      ${marks.map((k, i) => (seen(k.t) ? svg`<text class="mk ring ${k.dash ? "it" : ""}" style=${k.color ? `fill:${k.color}` : ""} x=${flip(k) ? m.x(k.t) - 4 : m.x(k.t) + 4} y=${i ? top + 12 : top - 6} text-anchor=${flip(k) ? "end" : "start"}>${k.label}</text>` : nothing))}
+      ${done?.tol && seen(done.t + done.tol / 2) ? svg`<text class="zone tolt" x=${(m.x(done.t) + m.x(done.t + done.tol)) / 2} y=${bottom - 6} text-anchor="middle">${done.tolLabel || ""}</text>` : nothing}
+      ${done && seen(done.t) ? svg`<circle class="grip" cx=${m.x(done.t)} cy=${top + m.plotH / 2} r="9"></circle>
+          <path class="gripl" d="M${m.x(done.t) - 3},${top + m.plotH / 2 - 4}v8M${m.x(done.t) + 3},${top + m.plotH / 2 - 4}v8"></path>
+          <text class="mk donet" x=${m.x(done.t) - 6} y=${top - 6} text-anchor="end">${done.label}</text>` : nothing}
+      ${pins.filter((k) => seen(k.t)).map((k) => {
         const x = m.x(k.t);
-        const y = PAD.top + m.plotH * 0.72;
+        const y = top + m.plotH * 0.72;
         return svg`<g class="pin ${k.last ? "last" : ""}" data-step=${k.n}><line class="pinl" x1=${x} x2=${x} y1=${y + 9} y2=${bottom}></line>
           <circle class="pinc" cx=${x} cy=${y} r="9"></circle><text class="pint" x=${x} y=${y + 4} text-anchor="middle">${k.n}</text>
           <title>${k.label || ""}</title></g>`;
       })}
-      ${hover != null && hv != null ? svg`<line class="hover" x1=${m.x(hover)} x2=${m.x(hover)} y1=${PAD.top} y2=${bottom}></line>
+      ${hover != null && hv != null && seen(hover) ? svg`<line class="hover" x1=${m.x(hover)} x2=${m.x(hover)} y1=${top} y2=${bottom}></line>
           <circle class="dot" cx=${m.x(hover)} cy=${m.y(hv)} r="4"></circle>` : nothing}
-      </g>
       <line class="axis" x1=${left} x2=${right} y1=${bottom} y2=${bottom}></line>
     </svg>`;
 }

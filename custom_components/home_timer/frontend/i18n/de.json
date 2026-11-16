@@ -382,5 +382,6 @@
   "zoom.out": "Herauszoomen",
   "zoom.all": "Der ganze Lauf",
   "zoom.hint": "Strg + Mausrad zoomt",
-  "zoom.overview": "Der ganze Lauf – ziehen, um den gezeigten Teil zu verschieben"
+  "zoom.overview": "Der ganze Lauf – ziehen, um den gezeigten Teil zu verschieben",
+  "zoom.keys": "+ und − zoomen, 0 zeigt den ganzen Lauf, ← → verschieben im Zoom"
 }

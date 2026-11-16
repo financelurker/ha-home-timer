@@ -218,6 +218,8 @@ def main() -> None:
             done_x = float(page.locator("home-timer-panel svg.chart line.done").get_attribute("x1"))
             check("zoomed in: the overview shows the part", page.locator("home-timer-panel svg.overview rect.ovwin").count() == 1)
             check("zoomed in: the mark stays in view", 52 <= done_x <= box["width"] - 14, done_x)
+            widths = page.locator("home-timer-panel svg.chart rect").evaluate_all("els => els.map((e) => +e.getAttribute('width'))")
+            check("zoomed in: no shape of negative width", all(w >= 0 for w in widths), widths)
             page.screenshot(path=OUT / "zoom.png")
             label = page.locator("home-timer-panel .zoombar .chs").inner_text()
             # zoomed in, a click sets the mark where it is in the view (to the second)

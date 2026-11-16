@@ -98,6 +98,9 @@ class HomeTimerPanel extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    cancelAnimationFrame(this._wheelFrame);
+    this._wheelFrame = null;
+    this._wheelSum = null;
     clearInterval(this._searchPoll);
     this._searchPoll = null;
     clearInterval(this._timer);
@@ -973,11 +976,16 @@ class HomeTimerPanel extends LitElement {
     const markT = this._learning(d) ? run.marks?.done ?? null : null;
     const done = learning && markT != null ? { t: markT, label: t("mark.mark", { time: formatDuration(markT) }), tol, tolLabel: `${tol} s` } : null;
     const extra = [...marks.map((k) => k.t), ...(done ? [done.t + tol] : [])];
-    const zkey = `${key}:${run.id}`; // the zoom belongs to the run shown
+    const zkey = `${key}:${run.id}:${run.start}`; // the zoom belongs to the run shown (the run going on is always "current")
     const view = this._zoom?.key === zkey ? this._zoom.view : null;
     const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 250, onAbove: Number(p.on_above || 0), ignore: ignore ? ignore + (pv?.draft?.start || 0) : 0, extra, view });
-    const zoomable = m.end > 2 * MIN_VIEW;
+    const zoomable = m.zoomed || m.end > 2 * MIN_VIEW;
     const zoom = (factor, at) => (this._zoom = { key: zkey, view: zoomView(view, m.end, factor, at) });
+    const pan = (share) => (this._zoom = { key: zkey, view: zoomView({ from: m.from + share * m.span, to: m.to + share * m.span }, m.end, 1, m.from) });
+    // a button that disables itself (the whole run shown, the narrowest view) hands the focus to the chart
+    const keepFocus = () => this.updateComplete.then(() => {
+      if (this.shadowRoot?.activeElement?.disabled) this.shadowRoot.querySelector(".chartbox")?.focus();
+    });
     // zooming in keeps your mark in view (where it is placed exactly); else the middle of what is shown
     const centre = () => (markT != null && markT >= m.from && markT <= m.to ? markT : (m.from + m.to) / 2);
     const outlier = this._isOutlier(key, run.id);
@@ -995,14 +1003,15 @@ class HomeTimerPanel extends LitElement {
       ${learning && run.skip ? html`<div class="note">${t("learn.left_out")}</div>` : nothing}
       ${zoomable ? html`<div class="zoombar" role="group" aria-label=${t("zoom.label")}>
           ${m.zoomed ? html`<span class="chs">${formatDuration(m.from)} – ${formatDuration(m.to)}</span>` : this.narrow ? nothing : html`<span class="chs">${t("zoom.hint")}</span>`}
-          <button class="icon sm" aria-label=${t("zoom.out")} title=${t("zoom.out")} ?disabled=${!m.zoomed} @click=${() => zoom(2, centre())}><ha-icon icon="mdi:magnify-minus-outline"></ha-icon></button>
-          <button class="icon sm" aria-label=${t("zoom.in")} title=${t("zoom.in")} ?disabled=${m.span <= MIN_VIEW + 1e-6} @click=${() => zoom(0.5, centre())}><ha-icon icon="mdi:magnify-plus-outline"></ha-icon></button>
-          <button class="icon sm" aria-label=${t("zoom.all")} title=${t("zoom.all")} ?disabled=${!m.zoomed} @click=${() => (this._zoom = null)}><ha-icon icon="mdi:arrow-expand-horizontal"></ha-icon></button>
+          <button class="icon sm" aria-label=${t("zoom.out")} title=${t("zoom.out")} ?disabled=${!m.zoomed} @click=${() => (zoom(2, centre()), keepFocus())}><ha-icon icon="mdi:magnify-minus-outline"></ha-icon></button>
+          <button class="icon sm" aria-label=${t("zoom.in")} title=${t("zoom.in")} ?disabled=${m.span <= MIN_VIEW + 1e-6} @click=${() => (zoom(0.5, centre()), keepFocus())}><ha-icon icon="mdi:magnify-plus-outline"></ha-icon></button>
+          <button class="icon sm" aria-label=${t("zoom.all")} title=${t("zoom.all")} ?disabled=${!m.zoomed} @click=${() => ((this._zoom = null), keepFocus())}><ha-icon icon="mdi:arrow-expand-horizontal"></ha-icon></button>
         </div>` : nothing}
-      <div class="chartbox ${learning ? "marking" : ""}" tabindex=${(learning && markT != null) || zoomable ? "0" : "-1"} aria-label=${t("runs.chart.aria")}
+      <div class="chartbox ${learning ? "marking" : ""}" tabindex=${(learning && markT != null) || zoomable ? "0" : "-1"} role="group" aria-label=${t("runs.chart.aria")}
+        aria-keyshortcuts=${zoomable ? "+ - 0" : nothing} aria-description=${zoomable ? t("zoom.keys") : nothing}
         @pointermove=${(e) => this._pointer(m, e)} @pointerleave=${() => (cancelAnimationFrame(this._frame), (this._hover = null))}
         @pointerdown=${(e) => learning && this._dragStart(e, m, area, station, run)} @pointerup=${(e) => this._dragEnd(e)} @pointercancel=${(e) => this._dragEnd(e, true)}
-        @wheel=${(e) => zoomable && this._wheel(e, m, zoom, zkey, view)}
+        @wheel=${(e) => zoomable && this._wheel(e, m, zoom, pan)}
         @keydown=${(e) => {
           if (zoomable && ["+", "=", "-", "0"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
             e.preventDefault();
@@ -1010,7 +1019,11 @@ class HomeTimerPanel extends LitElement {
             else zoom(e.key === "-" ? 2 : 0.5, centre());
             return;
           }
-          if (learning && markT != null) this._markKey(e, area, station, run, markT);
+          if (learning && markT != null) return this._markKey(e, area, station, run, markT);
+          if (m.zoomed && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { // not marking: the arrows move along
+            e.preventDefault();
+            pan((e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 0.5 : 0.1));
+          }
         }}>
         ${renderChart(run, m, { labels, hover: this._hover, unit, marks, window, level, done, pins })}
       </div>
@@ -1080,11 +1093,23 @@ class HomeTimerPanel extends LitElement {
   }
 
   // a mark set, moved or removed: shown at once, saved after a short pause (nudges, drags)
+  // zoomed in: a mark moved out of view (buttons, keys) takes the view along
+  _followMark(run, done) {
+    const z = this._zoom;
+    if (!z?.view || !z.key.endsWith(`:${run.id}:${run.start}`)) return;
+    const { from, to } = z.view;
+    if (done >= from && done <= to) return;
+    const span = to - from;
+    const shift = done < from ? done - from - span * 0.1 : done - to + span * 0.1;
+    this._zoom = { key: z.key, view: { from: from + shift, to: to + shift } }; // (clamped to the run when drawn)
+  }
+
   _setMark(area, station, run, value, save = true) {
     const key = this._runsKey(area.entry_id, station.id);
     const done = value == null ? null : Math.max(0, Math.round(value * 10) / 10);
     const marks = done == null ? {} : { done };
     if (this._run?.key === key && this._run.id === run.id) this._run = { ...this._run, data: { ...this._run.data, marks } };
+    if (save && !this._drag && done != null) this._followMark(run, done);
     const list = this._runs[key];
     if (list) this._runs = { ...this._runs, [key]: { ...list, runs: list.runs.map((r) => (r.id === run.id ? { ...r, marks } : r)) } };
     if (!save) return;
@@ -1166,33 +1191,61 @@ class HomeTimerPanel extends LitElement {
     return Math.min(Math.max(run.from || 0, t), last);
   }
 
-  // Ctrl (or ⌘) + wheel, or pinching a touchpad: zoom around the pointer; zoomed in, a sideways wheel moves along
-  _wheel(e, m, zoom, zkey, view) {
+  // Ctrl (or ⌘) + wheel, or pinching a touchpad: zoom around the pointer; zoomed in, a sideways wheel moves along.
+  // Wheel events come fast (a touchpad): they add up and are drawn once a frame.
+  _wheel(e, m, zoom, pan) {
+    if (this._drag) return; // the mark is being dragged on the scale of its start
     const svgEl = e.currentTarget.querySelector("svg.chart");
     if (!svgEl) return;
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? m.plotW : 1; // lines, pages → pixels
+    const w = this._wheelSum || (this._wheelSum = { zoom: 0, pan: 0 });
     if (e.ctrlKey || e.metaKey) {
       e.preventDefault();
-      zoom(Math.exp(Math.max(-1, Math.min(1, e.deltaY / 100)) * 0.35), secondsAt(m, svgEl, e.clientX, true));
+      w.zoom += Math.max(-1, Math.min(1, (e.deltaY * unit) / 100)) * 0.35;
+      w.at = secondsAt(m, svgEl, e.clientX, true);
     } else if (m.zoomed && Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
       e.preventDefault();
-      const shift = (e.deltaX / m.plotW) * m.span;
-      this._zoom = { key: zkey, view: zoomView({ from: view.from + shift, to: view.to + shift }, m.end, 1, view.from + shift) };
+      w.pan += (e.deltaX * unit) / m.plotW;
+    } else {
+      return;
     }
+    if (this._wheelFrame) return;
+    this._wheelFrame = requestAnimationFrame(() => {
+      const sum = this._wheelSum;
+      this._wheelFrame = null;
+      this._wheelSum = null;
+      if (sum.zoom) zoom(Math.exp(sum.zoom), sum.at);
+      else if (sum.pan) pan(sum.pan);
+      this._hover = null; // the second under the pointer changed
+    });
   }
 
-  // zoomed in: the whole run below the chart; drag (or tap) to move the part shown
+  // zoomed in: the whole run below the chart; drag it (or tap) to move the part shown – grabbing the window keeps
+  // where it was grabbed, a press beside it centres the window there
   _renderOverview(run, m, extra, zkey) {
     const o = overviewModel(run, this._chartWidth || 600, extra);
-    const move = (e) => {
+    const at = (e) => {
       const el = e.currentTarget.querySelector("svg.overview");
-      if (!el) return;
-      const at = secondsAt(o, el, e.clientX, true);
-      this._zoom = { key: zkey, view: zoomView({ from: at - m.span / 2, to: at + m.span / 2 }, m.end, 1, at) };
+      return el ? secondsAt(o, el, e.clientX, true) : null;
     };
+    const place = (centre) => (this._zoom = { key: zkey, view: zoomView({ from: centre - m.span / 2, to: centre + m.span / 2 }, m.end, 1, centre) });
+    const down = (e) => {
+      if (e.button !== 0) return;
+      const s = at(e);
+      if (s == null) return;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      const inside = s >= m.from && s <= m.to;
+      this._ovDrag = { offset: inside ? s - (m.from + m.to) / 2 : 0 };
+      if (!inside) place(s);
+    };
+    const move = (e) => {
+      if (!this._ovDrag || !(e.buttons & 1)) return (this._ovDrag = null);
+      const s = at(e);
+      if (s != null) place(s - this._ovDrag.offset);
+    };
+    const end = () => (this._ovDrag = null);
     return html`<div class="ovbox" title=${this._t("zoom.overview")}
-      @pointerdown=${(e) => (e.currentTarget.setPointerCapture?.(e.pointerId), (this._ovDrag = true), move(e))}
-      @pointermove=${(e) => this._ovDrag && move(e)}
-      @pointerup=${() => (this._ovDrag = false)} @pointercancel=${() => (this._ovDrag = false)}>
+      @pointerdown=${down} @pointermove=${move} @pointerup=${end} @pointercancel=${end} @lostpointercapture=${end}>
       ${renderOverview(o, { from: m.from, to: m.to }, this._t("zoom.overview"))}
     </div>`;
   }
