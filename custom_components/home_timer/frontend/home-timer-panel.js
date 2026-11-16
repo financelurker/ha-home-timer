@@ -1437,31 +1437,49 @@ class HomeTimerPanel extends LitElement {
       const el = e.currentTarget.querySelector("svg.overview");
       return el ? secondsAt(o, el, e.clientX, true) : null;
     };
+    // which edge a press at px grabs: the nearer one, within the grip; in a narrow window its middle still moves it
+    const edgeAt = (px, touch) => {
+      const a = o.x(m.from);
+      const b = o.x(m.to);
+      const reach = touch ? 14 : 8;
+      const inner = Math.min(reach, (b - a) / 3); // inside the window
+      const da = Math.abs(px - a);
+      const db = Math.abs(px - b);
+      const near = (d, outside) => d <= (outside ? reach : inner);
+      if (da <= db && near(da, px < a)) return "from";
+      if (near(db, px > b)) return "to";
+      return null;
+    };
+    const pxOf = (e) => {
+      const el = e.currentTarget.querySelector("svg.overview");
+      if (!el) return null;
+      const box = el.getBoundingClientRect();
+      return ((e.clientX - box.left) / box.width) * o.width;
+    };
     const place = (centre) => (this._zoom = { key: zkey, view: zoomView({ from: centre - m.span / 2, to: centre + m.span / 2 }, m.end, 1, centre) });
     const down = (e) => {
       if (e.button !== 0) return;
       const s = at(e);
       if (s == null) return;
       e.currentTarget.setPointerCapture?.(e.pointerId);
-      const el = e.currentTarget.querySelector("svg.overview");
-      const px = el ? ((e.clientX - el.getBoundingClientRect().left) / el.getBoundingClientRect().width) * o.width : null;
-      const grip = e.pointerType === "touch" ? 14 : 8; // (a finger is wider)
-      const edge = px == null ? null : Math.abs(px - o.x(m.from)) <= grip ? "from" : Math.abs(px - o.x(m.to)) <= grip ? "to" : null;
+      const px = pxOf(e);
+      const edge = px == null ? null : edgeAt(px, e.pointerType === "touch"); // (a finger is wider)
       if (edge) return (this._ovDrag = { edge });
       const inside = s >= m.from && s <= m.to;
       this._ovDrag = { offset: inside ? s - (m.from + m.to) / 2 : 0 };
       if (!inside) place(s);
     };
     const resize = (edge, s) => {
-      const from = edge === "from" ? Math.min(s, m.to - MIN_VIEW) : m.from;
-      const to = edge === "to" ? Math.max(s, m.from + MIN_VIEW) : m.to;
+      const most = m.end - 1; // (never the whole run while dragging: the overview stays to drag back)
+      const from = edge === "from" ? Math.max(Math.min(s, m.to - MIN_VIEW), m.to - most) : m.from;
+      const to = edge === "to" ? Math.min(Math.max(s, m.from + MIN_VIEW), m.from + most) : m.to;
       this._zoom = { key: zkey, view: zoomView({ from, to }, m.end, 1, from) };
     };
     const move = (e) => {
       const el = e.currentTarget.querySelector("svg.overview");
       if (!this._ovDrag) { // the pointer shows what a press there does
-        const px = el ? ((e.clientX - el.getBoundingClientRect().left) / el.getBoundingClientRect().width) * o.width : null;
-        if (el) el.style.cursor = px != null && (Math.abs(px - o.x(m.from)) <= 8 || Math.abs(px - o.x(m.to)) <= 8) ? "ew-resize" : "";
+        const px = pxOf(e);
+        if (el) el.style.cursor = px != null && edgeAt(px, false) ? "ew-resize" : "";
         return;
       }
       if (!(e.buttons & 1)) return (this._ovDrag = null);

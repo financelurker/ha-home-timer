@@ -254,7 +254,6 @@ def main() -> None:
             page.wait_for_timeout(400)
             check("the overview moves the part shown", page.locator("home-timer-panel .zoombar .chs").inner_text() != label)
             # its edges are grips: dragging the right one makes the part shown wider
-            secs = lambda txt: sum(int(x) * 60 ** i for i, x in enumerate(reversed(txt.strip().split(":"))))  # noqa: E731
             a1, b1 = (secs(x) for x in page.locator("home-timer-panel .zoombar .chs").inner_text().split("–"))
             grip = page.locator("home-timer-panel svg.overview rect.ovgrip").nth(1).bounding_box()
             page.mouse.move(grip["x"] + 3, grip["y"] + 9)
