@@ -145,7 +145,10 @@ async def checks(ha: Instance, s: aiohttp.ClientSession, ctx: dict) -> None:
     running = await wait_for(lambda: _state_is(ha, "binary_sensor.kitchen_e2e_plug_running", "on"), 15)
     check("power: appliance running", running, await ha.state("binary_sensor.kitchen_e2e_plug_running"))
     check("power: open timer runs", (await ha.state(timer_entity) or {}).get("state") == "active", await ha.state(timer_entity))
-    await asyncio.sleep(12)  # longer than a blip
+    await asyncio.sleep(6)
+    # the area reloads while it runs (as when a station is saved): the run's curve so far is kept
+    await ha.service("homeassistant", "reload_config_entry", {"entry_id": entry_id})
+    await asyncio.sleep(6)  # longer than a blip in all
     await ha.service("input_number", "set_value", {"entity_id": "input_number.e2e_watts", "value": 0})
     done = await next_event(events, "home_timer_finished", station_name="E2E plug", timeout=20)
     check("power: switching off finishes it (trigger off)", done is not None and done["data"].get("trigger") == "off", done)
@@ -155,10 +158,13 @@ async def checks(ha: Instance, s: aiohttp.ClientSession, ctx: dict) -> None:
     runs = await ha.state("sensor.kitchen_e2e_plug_runs")
     check("power: run counted", runs and runs["state"] == "1", runs)
     stored = await ha.call({"type": "home_timer/runs/list", "entry_id": entry_id, "station_id": ctx["station_id"]})
-    check("runs: the run is stored", len(stored["runs"]) == 1 and stored["runs"][0]["trigger"] == "off", stored)
-    if stored["runs"]:
-        run = await ha.call({"type": "home_timer/runs/get", "entry_id": entry_id, "station_id": ctx["station_id"], "run_id": stored["runs"][0]["id"]})
+    # (runs of earlier checks on this instance come back from the recorder's history: only the live one counts)
+    live = [r for r in stored["runs"] if r["source"] == "live"]
+    check("runs: the run is stored", len(live) == 1 and live[0]["trigger"] == "off", stored)
+    if live:
+        run = await ha.call({"type": "home_timer/runs/get", "entry_id": entry_id, "station_id": ctx["station_id"], "run_id": live[0]["id"]})
         check("runs: with its curve", run["w"][:1] == [2000] and 10 <= run["duration"] <= 16, {k: run[k] for k in ("duration", "t", "w")})
+        check("runs: the curve from before a reload is kept", run["from"] == 0 and run["t"][:1] == [0], {k: run[k] for k in ("from", "t")})
     moka = next(st for st in kitchen["stations"] if st["name"] == "Moka pot")
     seeded = await ha.call({"type": "home_timer/runs/list", "entry_id": entry_id, "station_id": moka["id"]})
     check("runs: the moka pot's week (seed_runs.py)", len(seeded["runs"]) >= 8 and seeded["sensor"]["interval"], seeded["sensor"])

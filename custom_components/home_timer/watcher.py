@@ -42,6 +42,7 @@ if TYPE_CHECKING:
 _LOGGER = logging.getLogger(__name__)
 TICK = timedelta(seconds=5)
 POWER_SOURCE = {"home_timer": "power"}
+KEEP_GAP = 300  # s: a kept curve is picked up after a gap up to this (a reload, a quick restart)
 THIN_ABOVE = 10 * MAX_POINTS  # readings kept of a run whose curve no rule reads
 
 
@@ -85,6 +86,23 @@ class PowerWatcher:
         for unsub in self._unsubs:
             unsub()
         self._unsubs.clear()
+        self.keep_curve()
+
+    @callback
+    def keep_curve(self) -> None:
+        """The area unloads (a station saved, Home Assistant stops): keep the run's curve so far."""
+        if self.running and self.run_start is not None and self.trace.times:
+            self.engine.runs.set_curve(
+                self.station.id, self._run_key(), self.trace.times, self.trace.watts, dt_util.utcnow().isoformat()
+            )
+
+    def _run_key(self) -> str:
+        """What a mark, steps met and the curve kept over a reload are stored under: the start of the
+        run's timer – what the watcher finds again after the reload (the run's own start is the reading
+        that began it, a moment earlier)."""
+        timer = self._ours()
+        start = timer.started_at if timer is not None else self.run_start
+        return start.isoformat() if start is not None else ""
 
     def _ours(self) -> Any:
         """The station's timer, if this watcher started it."""
@@ -110,8 +128,8 @@ class PowerWatcher:
             if existing.finished_at is not None:  # it rang before the restart
                 self.rang = (existing.finished_at - existing.started_at).total_seconds()
                 self.trigger = "rule" if self.config.kind == KIND_UNTIL_OFF else "countdown"
-            self.trace = Trace()
-            self._add(watts, now)  # earlier samples are gone: rules look only from here
+            self.trace = self._kept_trace(existing.started_at, now)
+            self._add(watts, now)
             self.engine.notify_power()
         elif existing is not None:
             # it stopped while Home Assistant was down (or the station reloaded)
@@ -119,6 +137,22 @@ class PowerWatcher:
             self.run_start = existing.started_at
             self.done = existing.status == STATUS_RINGING
             self._stop_run(now, count=False)
+
+    def _kept_trace(self, start: datetime, now: datetime) -> Trace:
+        """The curve kept when the area unloaded – after a short gap (a reload). After a long one
+        (a restart) the readings in between are unknown: rules look only from here."""
+        kept = self.engine.runs.pending_curve(self.station.id, start.isoformat())
+        self.engine.runs.drop_curve(self.station.id, start.isoformat())
+        trace = Trace()
+        if kept is None:
+            return trace
+        times, watts, at = kept
+        when = dt_util.parse_datetime(at)
+        if when is None or not 0 <= (now - when).total_seconds() <= KEEP_GAP:
+            return trace
+        for t, w in zip(times, watts, strict=True):
+            trace.add(t, w)
+        return trace
 
     # --------------------------------------------------------------- readings
 
@@ -188,7 +222,7 @@ class PowerWatcher:
             raise ValueError("not running")
         now = self.elapsed()
         self.mark = round(now if seconds is None else min(max(self.trace.start, float(seconds)), now), 1)
-        self.engine.runs.set_pending(self.station.id, self.run_start.isoformat(), self.mark)
+        self.engine.runs.set_pending(self.station.id, self._run_key(), self.mark)
         self.engine.notify_power()
         return self.mark
 
@@ -202,7 +236,7 @@ class PowerWatcher:
             self.step_at = at
             self.step += 1
             if self.run_start is not None:
-                self.engine.runs.set_steps_met(self.station.id, self.run_start.isoformat(), self.step, at, self.config.done.to_data())
+                self.engine.runs.set_steps_met(self.station.id, self._run_key(), self.step, at, self.config.done.to_data())
             self.engine.notify_power()
         return self.step >= len(steps)
 

@@ -54,6 +54,7 @@ MONOTONE = (RULE_TIME, RULE_ENERGY)
 TICK = 5.0  # seconds: how often a running station checks its rule (as the watcher does)
 MIN_RUN = 10  # seconds above "runs above"; shorter runs are blips
 CURRENT = "current"  # the id of the run going on (not stored)
+CURVE_KEEP = 20000  # readings of a run going on kept over a reload (a rule may read them all)
 
 
 def runs_key(entry_id: str) -> str:
@@ -317,7 +318,8 @@ class RunStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, runs_key(entry_id))
         self.runs: dict[str, list[dict[str, Any]]] = {}  # station id → runs, oldest first
         self.imported: set[str] = set()  # stations whose history was read
-        # station id → {"start", "done", "steps"}: a mark on the run going on, steps met in it
+        # station id → {"start", "done", "steps", "curve"}: a mark on the run going on, steps met in it,
+        # its curve so far (kept when the area unloads)
         self.pending: dict[str, dict[str, Any]] = {}
 
     async def async_load(self) -> None:
@@ -334,7 +336,7 @@ class RunStore:
         if isinstance(pending, dict):
             self.pending = {
                 str(k): v for k, v in pending.items()
-                if isinstance(v, dict) and (isinstance(v.get("done"), int | float) or isinstance(v.get("steps"), dict))
+                if isinstance(v, dict) and (isinstance(v.get("done"), int | float) or isinstance(v.get("steps"), dict) or isinstance(v.get("curve"), dict))
             }
 
     def list(self, station_id: str) -> list[dict[str, Any]]:
@@ -423,6 +425,29 @@ class RunStore:
         """Steps met in the run going on (how many, when the last) – picked up after a reload
         while the steps are the same (``rule``: the done rule's data)."""
         self._pending_set(station_id, start, "steps", {"met": step, "at": at, "rule": rule} if step else None)
+
+    def set_curve(self, station_id: str, start: str, times: list[float], watts: list[float], at: str) -> None:
+        """The run going on so far (seconds after its start, W) when the area unloads – picked up
+        when it loads again (``at``: when it was kept)."""
+        if not times:
+            return
+        t, w = compact(list(times), list(watts), CURVE_KEEP)
+        self._pending_set(station_id, start, "curve", {"t": t, "w": w, "at": at})
+
+    def pending_curve(self, station_id: str, start: str) -> tuple[list[float], list[float], str] | None:
+        entry = self.pending.get(station_id)
+        curve = entry.get("curve") if entry and entry.get("start") == start else None
+        if not isinstance(curve, dict):
+            return None
+        t, w, at = curve.get("t"), curve.get("w"), curve.get("at")
+        if not isinstance(t, list) or not isinstance(w, list) or len(t) != len(w) or not t or not isinstance(at, str):
+            return None
+        if not all(isinstance(x, int | float) for x in (*t, *w)):
+            return None
+        return [float(x) for x in t], [float(x) for x in w], at
+
+    def drop_curve(self, station_id: str, start: str) -> None:
+        self._pending_set(station_id, start, "curve", None)
 
     def _pending_set(self, station_id: str, start: str, key: str, value: Any) -> None:
         entry = self.pending.get(station_id)
