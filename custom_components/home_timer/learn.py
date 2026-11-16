@@ -197,7 +197,12 @@ def search(runs: list[dict[str, Any]], config: PowerConfig, tolerance: float, ta
     firsts: dict[str, list[tuple[tuple[float, ...], dict[str, Any], list[float]]]] = {}  # A: met before the mark
     nears: dict[str, list[tuple[tuple[float, ...], str, dict[str, float], float, list[list[float]]]]] = {}  # B: met near the mark
 
-    def keep(pool: dict[str, list[Any]], rule: str, item: tuple[Any, ...]) -> None:
+    def keep(pool: dict[str, list[Any]], rule: str, item: tuple[Any, ...], moments: tuple[Any, ...]) -> None:
+        # the same moments in each run (e.g. only "ignore" differs): the first – simplest – one is kept
+        seen = pool.setdefault(f"{rule}:seen", set())
+        if moments in seen:
+            return
+        seen.add(moments)
         items = pool.setdefault(rule, [])
         items.append(item)
         if len(items) > 4 * PER_TYPE:
@@ -211,17 +216,17 @@ def search(runs: list[dict[str, Any]], config: PowerConfig, tolerance: float, ta
         score = (*score, ORDER.index(rule))
         if rule not in best or score < best[rule]["score"]:
             best[rule] = {"score": score, "rule": data, "delays": delays, "on_time": -score[1], "early": score[0]}
-        # as a first step: met in each run, not after the mark (+ tolerance) – the closer before it the better
+        # as a first step: met in each run before the mark – the closer before it the better
         gaps = [run["mark"] - ring if ring is not None else -1e9 for run, ring in zip(marked, rings, strict=True)]
-        if all(g >= -tolerance for g in gaps):
-            keep(firsts, rule, ((median(max(0.0, g) for g in gaps), max(gaps)), data, rings))
+        if all(g >= -EARLY for g in gaps):
+            keep(firsts, rule, ((median(gaps), max(gaps), ORDER.index(rule)), data, rings), tuple(rings))
 
     def near(rule: str, params: dict[str, float], back: float, fired: list[list[float]]) -> None:
         # as a last step (moments without "ignore"): how it would ring if looked for only shortly before the mark
         rings = [_first_after(times, run["mark"] + EARLY - 1e-9) for run, times in zip(marked, fired, strict=True)]
         score, _ = _score(rings, marked, tolerance)
         if score[1] < 0:
-            keep(nears, rule, (score[1:], rule, params, back, fired))
+            keep(nears, rule, ((*score[1:], ORDER.index(rule)), rule, params, back, fired), (back, *map(tuple, fired)))
 
     for rule in ORDER:
         if rule in BENDS:
@@ -279,8 +284,8 @@ def search(runs: list[dict[str, Any]], config: PowerConfig, tolerance: float, ta
 
 def _best_pair(firsts: dict[str, list[Any]], nears: dict[str, list[Any]], marked: list[dict[str, Any]], tolerance: float) -> dict[str, Any] | None:
     """The best "A, then B" from the kept candidates: judged from B's moments, the best few exactly."""
-    pick = lambda pool: [x for items in pool.values() for x in sorted(items, key=lambda x: x[0])[:PER_TYPE]]  # noqa: E731
-    rough: list[tuple[tuple[float, ...], dict[str, Any], dict[str, Any], list[float]]] = []
+    pick = lambda pool: [x for key, items in pool.items() if not key.endswith(":seen") for x in sorted(items, key=lambda x: x[0])[:PER_TYPE]]  # noqa: E731
+    rough: dict[tuple[Any, ...], tuple[tuple[float, ...], dict[str, Any], dict[str, Any], list[float]]] = {}
     for _sa, a, a_rings in pick(firsts):
         for _sb, rule, params, back, fired in pick(nears):
             for ignore in PAIR_IGNORES if "ignore" in RULE_DEFAULTS[rule] else (None,):
@@ -289,22 +294,30 @@ def _best_pair(firsts: dict[str, list[Any]], nears: dict[str, list[Any]], marked
                     continue
                 # B fires at t after A when its look back starts after A (+ ignore)
                 rings = [None if at is None else _first_at(times, max(at + 1e-9, at + (ignore or 0) + back)) for times, at in zip(fired, a_rings, strict=True)]
-                if any(ring is not None and ring - at < STEP_GAP for ring, at in zip(rings, a_rings, strict=True)):
-                    continue  # B met right after A (in any run): no step of its own, just A a little later
+                if _no_step(rings, a_rings):
+                    continue
                 score, _ = _score(rings, marked, tolerance)
-                rough.append((score, a, b, a_rings))
-    rough.sort(key=lambda x: x[0])
+                score = (*score, ORDER.index(a["type"]) + ORDER.index(rule))  # on a tie: the simpler pair
+                moments = (tuple(a_rings), tuple(rings))  # the same pair of moments: judged once (the simplest)
+                if moments not in rough or score < rough[moments][0]:
+                    rough[moments] = (score, a, b, a_rings)
     best: dict[str, Any] | None = None
-    for _score_rough, a, b, a_rings in rough[:EXACT]:
+    for _score_rough, a, b, a_rings in sorted(rough.values(), key=lambda x: x[0])[:EXACT]:
         rule_b = DoneRule.from_data(b)
         rings = [None if at is None else _first(rule_b, run["trace"], run["checks"], at) for run, at in zip(marked, a_rings, strict=True)]
-        if any(ring is not None and ring - at < STEP_GAP for ring, at in zip(rings, a_rings, strict=True)):
+        if _no_step(rings, a_rings):
             continue
         score, delays = _score(rings, marked, tolerance)
         if best is None or score < best["score"]:
             best = {"score": score, "rule": DoneSteps.from_data({"steps": [a, b]}).to_data(), "delays": delays,
                     "on_time": -score[1], "early": score[0]}
     return best if best and best["on_time"] > 0 else None
+
+
+def _no_step(rings: list[float | None], a_rings: list[float | None]) -> bool:
+    """B met right after A in most runs: no step of its own, just A a little later."""
+    soon = sum(1 for ring, at in zip(rings, a_rings, strict=True) if ring is not None and at is not None and ring - at < STEP_GAP)
+    return soon * 2 > len(rings)
 
 
 def _first_at(times: list[float], at: float) -> float | None:

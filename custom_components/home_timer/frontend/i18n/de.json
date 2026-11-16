@@ -369,5 +369,6 @@
   "steps.down": "Schritt {n} nach unten",
   "steps.remove": "Schritt {n} entfernen",
   "steps.rule_n": "Regel von Schritt {n}",
-  "runs.legend.steps": "Wo ein Schritt zutraf"
+  "runs.legend.steps": "Wo ein Schritt zutraf",
+  "steps.field_n": "Schritt {n}: {field}"
 }

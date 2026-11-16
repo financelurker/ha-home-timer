@@ -369,5 +369,6 @@
   "steps.down": "Move step {n} down",
   "steps.remove": "Remove step {n}",
   "steps.rule_n": "Rule of step {n}",
-  "runs.legend.steps": "Where a step was met"
+  "runs.legend.steps": "Where a step was met",
+  "steps.field_n": "Step {n}: {field}"
 }

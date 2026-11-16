@@ -14,7 +14,10 @@ cycling    the share of time at ≥ ``level`` W within ``window`` s       thermo
            falls below ``share`` %
 drop       power falls by ≥ ``percent`` % within ``window`` s            moka pot
 knee       power falls ``factor`` × faster over ``window`` s than over  moka pot
-           the ``baseline`` s before
+           the ``baseline`` s before ("the trend bends steeper downwards")
+flatten    … falls ``factor`` × slower than before, or no longer         levels off
+upturn     … starts to rise after it fell or stayed                     switches on again
+steeper_up … rises ``factor`` × faster than before                       a higher stage
 trend      power is below the line through the ``baseline`` s before    moka pot
            by ≥ ``factor`` × the scatter of the readings around it
 rise       power is above the line through the ``baseline`` s before    something switches
@@ -28,13 +31,19 @@ energy     ``wh`` Wh have been used                                     very reg
 All rules except ``off`` ignore the first ``ignore`` seconds of a run (switch-on
 spikes). A trace may start late (a run picked up after a restart): rules that look
 back never look before its first sample, and ``energy`` only counts from there.
+
+``DoneSteps``: rules met one after another; each later step looks only after the
+one before was met.
 """
 
 from __future__ import annotations
 
+import logging
 from bisect import bisect_right
 from dataclasses import dataclass, field
 from typing import Any
+
+_LOGGER = logging.getLogger(__name__)
 
 RULE_OFF = "off"
 RULE_PAUSE = "pause"
@@ -256,7 +265,7 @@ class DoneRule:
             RULE_DROP: f"falls by ≥ {p('percent'):g} % within {p('window'):g} s",
             RULE_KNEE: f"falls {p('factor'):g}× faster over {p('window'):g} s than the {p('baseline'):g} s before",
             RULE_FLATTEN: f"falls {p('factor'):g}× slower over {p('window'):g} s than the {p('baseline'):g} s before",
-            RULE_UPTURN: f"turns upwards over {p('window'):g} s after the {p('baseline'):g} s before",
+            RULE_UPTURN: f"turns upwards over {p('window'):g} s ({p('factor'):g}× the flat limit) after the {p('baseline'):g} s before",
             RULE_STEEPER_UP: f"rises {p('factor'):g}× faster over {p('window'):g} s than the {p('baseline'):g} s before",
             RULE_TREND: f"below its trend over {p('baseline'):g} s by {p('factor'):g}× the scatter",
             RULE_RISE: f"above its trend over {p('baseline'):g} s by {p('factor'):g}× the scatter",
@@ -388,7 +397,11 @@ class DoneSteps:
     def from_data(cls, data: dict[str, Any] | None) -> DoneSteps:
         raw = data.get("steps") if isinstance(data, dict) else None
         if isinstance(raw, list) and raw:
-            items = [x for x in raw if isinstance(x, dict) and x.get("type") != RULE_OFF][:MAX_STEPS] or [{}]
+            items = [x for x in raw if isinstance(x, dict)]
+            usable = [x for x in items if x.get("type") in RULE_DEFAULTS and (x["type"] != RULE_OFF or len(items) == 1)]
+            if len(usable) < len(items):  # unknown types (a newer version?) or "off" within steps: left out
+                _LOGGER.warning("Done steps left out (unknown, or 'off' within steps): %s", [x for x in items if x not in usable])
+            items = usable[:MAX_STEPS] or [{}]
             return cls(
                 tuple(DoneRule.from_data(x) for x in items),
                 tuple({k: x[k] for k in STEP_KEYS if k in x} for x in items),

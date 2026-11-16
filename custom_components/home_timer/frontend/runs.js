@@ -107,7 +107,7 @@ export function renderChart(run, m, { labels, hover, unit = "W", marks = [], win
       ${pins.map((k) => {
         const x = m.x(k.t);
         const y = PAD.top + m.plotH * 0.72;
-        return svg`<g class="pin" data-step=${k.n}><line class="pinl" x1=${x} x2=${x} y1=${y + 9} y2=${bottom}></line>
+        return svg`<g class="pin ${k.last ? "last" : ""}" data-step=${k.n}><line class="pinl" x1=${x} x2=${x} y1=${y + 9} y2=${bottom}></line>
           <circle class="pinc" cx=${x} cy=${y} r="9"></circle><text class="pint" x=${x} y=${y + 4} text-anchor="middle">${k.n}</text>
           <title>${k.label || ""}</title></g>`;
       })}

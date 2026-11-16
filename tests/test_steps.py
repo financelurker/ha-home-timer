@@ -167,3 +167,44 @@ async def test_a_station_rings_after_its_last_step(hass: HomeAssistant, kitchen,
     await watts(hass, freezer, 201, seconds_after=5)
     assert ev["finished"] and ev["finished"][0].data["trigger"] == "rule"
     assert hass.states.get(sensor).attributes["steps_met"] == 2
+
+
+async def test_steps_met_survive_a_reload(hass: HomeAssistant, kitchen, freezer) -> None:
+    hass.states.async_set(SENSOR, "0")
+    done = {"steps": [{"type": "pause", "below": 5, "seconds": 5, "ignore": 0}, {"type": "drop", "percent": 30, "window": 30, "ignore": 0}]}
+    await add_power_station(hass, kitchen, "Washer", "until_off", done=done)
+    ev = events(hass)
+    await watts(hass, freezer, 400)
+    await watts(hass, freezer, 0, seconds_after=60)  # the pause: step 1
+    await watts(hass, freezer, 400, seconds_after=12)
+    assert hass.states.get("sensor.kitchen_washer").attributes["steps_met"] == 1
+    assert await hass.config_entries.async_reload(kitchen.entry_id)
+    await hass.async_block_till_done()
+    await watts(hass, freezer, 401, seconds_after=5)
+    assert hass.states.get("sensor.kitchen_washer").attributes["steps_met"] == 1  # kept
+    await watts(hass, freezer, 400, seconds_after=60)
+    await watts(hass, freezer, 200, seconds_after=60)  # the power halves: step 2 – done
+    await watts(hass, freezer, 201, seconds_after=5)
+    assert ev["finished"] and ev["finished"][0].data["trigger"] == "rule"
+
+
+async def test_steps_met_are_forgotten_when_the_steps_change(hass: HomeAssistant) -> None:
+    from custom_components.home_timer.runs import RunStore
+
+    store = RunStore(hass, "e1")
+    rule = {"steps": [{"type": "time", "seconds": 60}, {"type": "time", "seconds": 120}]}
+    store.set_steps_met("s1", "start", 1, 61.0, rule)
+    store.set_pending("s1", "start", 30.0)
+    assert store.steps_met("s1", "start", rule) == (1, 61.0) and store.pending_mark("s1", "start") == 30.0
+    assert store.steps_met("s1", "start", {"type": "off"}) == (0, None)  # other steps
+    assert store.steps_met("s1", "other start", rule) == (0, None)  # another run
+    store.set_pending("s1", "start", None)
+    assert store.steps_met("s1", "start", rule) == (1, 61.0)  # the mark removed, the steps kept
+    store.set_pending("s1", "", None)  # the run is stored
+    assert store.pending == {}
+
+
+def test_unknown_steps_are_left_out() -> None:
+    steps = DoneSteps.from_data({"steps": [{"type": "pause"}, {"type": "future_rule"}, {}, {"type": "off"}]})
+    assert [r.type for r in steps.steps] == ["pause"]
+    assert DoneSteps.from_data({"steps": [{"type": "off"}]}).type == "off"

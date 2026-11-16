@@ -317,7 +317,8 @@ class RunStore:
         self._store: Store[dict[str, Any]] = Store(hass, STORAGE_VERSION, runs_key(entry_id))
         self.runs: dict[str, list[dict[str, Any]]] = {}  # station id → runs, oldest first
         self.imported: set[str] = set()  # stations whose history was read
-        self.pending: dict[str, dict[str, Any]] = {}  # station id → {"start", "done"}: a mark on the run going on
+        # station id → {"start", "done", "steps"}: a mark on the run going on, steps met in it
+        self.pending: dict[str, dict[str, Any]] = {}
 
     async def async_load(self) -> None:
         data = await self._store.async_load()
@@ -331,7 +332,10 @@ class RunStore:
         self.imported = {str(s) for s in data.get("imported", []) if isinstance(s, str)}
         pending = data.get("pending")
         if isinstance(pending, dict):
-            self.pending = {str(k): v for k, v in pending.items() if isinstance(v, dict) and isinstance(v.get("done"), (int, float))}
+            self.pending = {
+                str(k): v for k, v in pending.items()
+                if isinstance(v, dict) and (isinstance(v.get("done"), int | float) or isinstance(v.get("steps"), dict))
+            }
 
     def list(self, station_id: str) -> list[dict[str, Any]]:
         return self.runs.get(station_id, [])
@@ -407,17 +411,45 @@ class RunStore:
         return run
 
     def set_pending(self, station_id: str, start: str, done: float | None) -> None:
-        """"Done now" during a run: kept here until the run is stored – also across a reload."""
-        if done is None:
+        """"Done now" during a run: kept here until the run is stored – also across a reload.
+        An empty ``start`` forgets all of the station's (the run is stored)."""
+        if not start:
             if self.pending.pop(station_id, None) is not None:
                 self._save()
             return
-        self.pending[station_id] = {"start": start, "done": done}
+        self._pending_set(station_id, start, "done", done)
+
+    def set_steps_met(self, station_id: str, start: str, step: int, at: float | None, rule: dict[str, Any]) -> None:
+        """Steps met in the run going on (how many, when the last) – picked up after a reload
+        while the steps are the same (``rule``: the done rule's data)."""
+        self._pending_set(station_id, start, "steps", {"met": step, "at": at, "rule": rule} if step else None)
+
+    def _pending_set(self, station_id: str, start: str, key: str, value: Any) -> None:
+        entry = self.pending.get(station_id)
+        entry = dict(entry) if entry and entry.get("start") == start else {"start": start}
+        if value is None:
+            entry.pop(key, None)
+        else:
+            entry[key] = value
+        if len(entry) > 1:
+            self.pending[station_id] = entry
+        else:
+            self.pending.pop(station_id, None)
         self._save()
 
     def pending_mark(self, station_id: str, start: str) -> float | None:
-        mark = self.pending.get(station_id)
-        return mark["done"] if mark and mark.get("start") == start else None
+        entry = self.pending.get(station_id)
+        done = entry.get("done") if entry and entry.get("start") == start else None
+        return float(done) if isinstance(done, int | float) and not isinstance(done, bool) else None
+
+    def steps_met(self, station_id: str, start: str, rule: dict[str, Any]) -> tuple[int, float | None]:
+        """Steps met before a reload – none when the steps changed since."""
+        entry = self.pending.get(station_id)
+        steps = entry.get("steps") if entry and entry.get("start") == start else None
+        if not isinstance(steps, dict) or steps.get("rule") != rule or not isinstance(steps.get("met"), int) or steps["met"] < 1:
+            return 0, None
+        at = steps.get("at")
+        return steps["met"], float(at) if isinstance(at, int | float) and not isinstance(at, bool) else None
 
     def fill_sensor(self, station_id: str, sensor: str) -> None:
         """Runs stored before runs knew their sensor: they were recorded with the station's."""

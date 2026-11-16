@@ -22,6 +22,8 @@ function loadFold() {
 }
 
 // the done rule as a list of steps (one step is stored as the plain rule)
+const STEP_KEYS = ["phase", "repeat", "optional"]; // reserved per step for phases (later): kept as they are
+const keepKeys = (step) => Object.fromEntries(STEP_KEYS.filter((k) => step && k in step).map((k) => [k, step[k]]));
 const doneSteps = (done) => (done?.steps?.length ? done.steps : [done || { type: "off" }]);
 
 class HomeTimerPanel extends LitElement {
@@ -639,9 +641,9 @@ class HomeTimerPanel extends LitElement {
   }
 
   // a small number field inside a sentence
-  _inline(key, field, value, range, unit, onChange, step = 1) {
+  _inline(key, field, value, range, unit, onChange, step = 1, label = null) {
     const bad = this._errors[key]?.[field];
-    return html`<span class="inl ${bad ? "bad" : ""}"><input type="number" inputmode="decimal" aria-label=${this._t(`rule_field.${field.split(".").pop()}`)}
+    return html`<span class="inl ${bad ? "bad" : ""}"><input type="number" inputmode="decimal" aria-label=${label || this._t(`rule_field.${field.split(".").pop()}`)}
         .value=${String(value ?? "")} step=${step} min=${range?.min ?? ""} max=${range?.max ?? ""}
         style="width:${Math.max(2, String(value ?? "").length) + 1.5}ch"
         @input=${(e) => (this._clearErr(key, field), onChange(e.target.value === "" ? null : Number(e.target.value)))} /><i>${unit}</i></span>`;
@@ -953,7 +955,7 @@ class HomeTimerPanel extends LitElement {
     const stepsAt = (differs ? pv?.draft : pv?.saved)?.steps;
     const shownSteps = differs ? ruleSteps : doneSteps(station.power.done);
     const pins = p.kind === "until_off" && stepsAt && !(differs ? pv.draft : pv.saved).blip
-      ? stepsAt.map((x, i) => (x == null ? null : { t: (differs ? pv.draft : pv.saved).start + x, n: i + 1, label: `${i + 1}. ${shownSteps[i] ? this._ruleText(shownSteps[i]) : ""} – ${formatDuration(x)}` })).filter(Boolean)
+      ? stepsAt.map((x, i) => (x == null ? null : { t: (differs ? pv.draft : pv.saved).start + x, n: i + 1, last: i === stepsAt.length - 1, label: `${i + 1}. ${shownSteps[i] ? this._ruleText(shownSteps[i]) : ""} – ${formatDuration(x)}` })).filter(Boolean)
       : [];
     const ring = pv?.draft?.trigger === "rule" ? pv.draft.start + pv.draft.rang : null;
     const window = winSec && ring != null ? { from: Math.max(0, ring - winSec), to: ring, label: this._learning(d) && run.marks?.done != null ? "" : `${winSec} s` } : null;
@@ -1307,7 +1309,7 @@ class HomeTimerPanel extends LitElement {
     const setSteps = (fn) => set((x) => {
       const list = doneSteps(x.power.done).map(clone);
       fn(list);
-      x.power.done = list.length === 1 ? list[0] : { steps: list };
+      x.power.done = list.length === 1 && !STEP_KEYS.some((k) => k in list[0]) ? list[0] : { steps: list };
     });
     const move = (from, to) => {
       if (from === to || to < 0 || to >= steps.length) return;
@@ -1318,7 +1320,7 @@ class HomeTimerPanel extends LitElement {
     const last = steps[steps.length - 1];
     const body = steps.map((step, i) => html`
       ${i ? html`<div class="then" aria-hidden="true">${t("steps.then")}</div>` : nothing}
-      ${this._stepRow(key, step, i, steps.length, spec, setSteps, move, clearRule)}`);
+      ${this._stepRow(key, step, i, steps.length, !!d.power.done?.steps, spec, setSteps, move, clearRule)}`);
     return html`<div class="ql">${t(many ? "power.done_steps" : "power.done")}</div>
       <div class="steps ${many ? "many" : "one"}" role="list">${body}</div>
       ${steps.length < max && !(steps.length === 1 && steps[0].type === "off")
@@ -1332,17 +1334,17 @@ class HomeTimerPanel extends LitElement {
   }
 
   // one step: its number, the rule as a sentence, move up / down / drag, remove
-  _stepRow(key, step, i, count, spec, setSteps, move, clearRule) {
+  _stepRow(key, step, i, count, stored, spec, setSteps, move, clearRule) {
     const t = this._t;
     const many = count > 1;
     const type = spec[step.type] ? step.type : "off";
     const fields = Object.fromEntries(spec[type].fields.map((f) => [f.key, f]));
-    const prefix = many ? `power.done.steps.${i}` : "power.done";
+    const prefix = stored ? `power.done.steps.${i}` : "power.done"; // the error keys follow how it is stored
     const types = Object.keys(spec).filter((r) => !many || r !== "off"); // "it switches off" ends the run: no step of a sequence
     // .value: the select follows the draft when the rule changes elsewhere (Use, Discard) – the browser ignores
     // ?selected on an option the user once picked. ?selected stays: on a new select .value comes before its options.
     const typeSelect = html`<select class="inlsel" aria-label=${many ? t("steps.rule_n", { n: i + 1 }) : t("power.rule")} .value=${type}
-        @change=${(e) => (clearRule(), setSteps((list) => (list[i] = { type: e.target.value, ...spec[e.target.value].defaults })))}>
+        @change=${(e) => (clearRule(), setSteps((list) => (list[i] = { ...keepKeys(list[i]), type: e.target.value, ...spec[e.target.value].defaults })))}>
         ${types.map((r) => html`<option value=${r} ?selected=${type === r}>${t(`rule_verb.${r}`)}</option>`)}
       </select>`;
     const parts = t(`rule_sentence.${type}`).split(/(\{\w+\})/);
@@ -1362,7 +1364,8 @@ class HomeTimerPanel extends LitElement {
         if (!m) return part;
         if (m[1] === "type") return typeSelect;
         const f = fields[m[1]];
-        return f ? this._inline(key, `${prefix}.${f.key}`, step[f.key], f, f.unit, (v) => setSteps((list) => (list[i][f.key] = v)), f.step) : part;
+        const label = many ? t("steps.field_n", { n: i + 1, field: t(`rule_field.${f?.key}`) }) : null;
+        return f ? this._inline(key, `${prefix}.${f.key}`, step[f.key], f, f.unit, (v) => setSteps((list) => (list[i][f.key] = v)), f.step, label) : part;
       })}</div>
       ${many ? html`<span class="tools">
           <button class="icon" aria-label=${t("steps.up", { n: i + 1 })} ?disabled=${i === 0} @click=${() => move(i, i - 1)}>▲</button>
@@ -2061,7 +2064,7 @@ class HomeTimerPanel extends LitElement {
     .sw.pinsw { width: 0; height: 14px; border-top: none; border-left: 2px dashed var(--secondary-text-color); }
     .chart .pinl { stroke: var(--secondary-text-color); stroke-width: 1.2; stroke-dasharray: 3 3; }
     .chart .pinc { fill: var(--secondary-text-color); }
-    .chart .pin:last-of-type .pinc { fill: var(--ht-step, #00897b); }
+    .chart .pin.last .pinc { fill: var(--ht-step, #00897b); }
     .chart .pint { fill: #fff; font-size: 11px; font-weight: 600; pointer-events: none; }
     .chart .grip { fill: var(--ht-ok); cursor: ew-resize; }
     .chart .gripl { stroke: #fff; stroke-width: 1.6; }

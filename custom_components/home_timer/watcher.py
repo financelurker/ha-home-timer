@@ -104,6 +104,9 @@ class PowerWatcher:
             self.timer_id = existing.id
             self.done = existing.status == STATUS_RINGING
             self.mark = self.engine.runs.pending_mark(self.station.id, existing.started_at.isoformat())
+            # steps met before: kept (a later step looks only after the one before – also over the gap)
+            self.step, self.step_at = self.engine.runs.steps_met(self.station.id, existing.started_at.isoformat(), self.config.done.to_data())
+            self.step = min(self.step, len(self.config.done.steps))
             if existing.finished_at is not None:  # it rang before the restart
                 self.rang = (existing.finished_at - existing.started_at).total_seconds()
                 self.trigger = "rule" if self.config.kind == KIND_UNTIL_OFF else "countdown"
@@ -198,6 +201,8 @@ class PowerWatcher:
         if (self.step_at is None or at > self.step_at) and steps[self.step].fires(self.trace, at, begin=begin):
             self.step_at = at
             self.step += 1
+            if self.run_start is not None:
+                self.engine.runs.set_steps_met(self.station.id, self.run_start.isoformat(), self.step, at, self.config.done.to_data())
             self.engine.notify_power()
         return self.step >= len(steps)
 
