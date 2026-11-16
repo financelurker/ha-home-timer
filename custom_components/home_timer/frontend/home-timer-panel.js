@@ -1436,12 +1436,32 @@ class HomeTimerPanel extends LitElement {
   }
 
   // zoomed in: the whole run below the chart; drag it (or tap) to move the part shown – grabbing the window keeps
-  // where it was grabbed, a press beside it centres the window there
+  // where it was grabbed, a press beside it centres the window there; its edges are grips: dragged, the part shown
+  // gets wider or narrower (at least MIN_VIEW)
   _renderOverview(run, m, extra, zkey) {
     const o = overviewModel(run, this._chartWidth || 600, extra);
     const at = (e) => {
       const el = e.currentTarget.querySelector("svg.overview");
       return el ? secondsAt(o, el, e.clientX, true) : null;
+    };
+    // which edge a press at px grabs: the nearer one, within the grip; in a narrow window its middle still moves it
+    const edgeAt = (px, touch) => {
+      const a = o.x(m.from);
+      const b = o.x(m.to);
+      const reach = touch ? 14 : 8;
+      const inner = Math.min(reach, (b - a) / 3); // inside the window
+      const da = Math.abs(px - a);
+      const db = Math.abs(px - b);
+      const near = (d, outside) => d <= (outside ? reach : inner);
+      if (da <= db && near(da, px < a)) return "from";
+      if (near(db, px > b)) return "to";
+      return null;
+    };
+    const pxOf = (e) => {
+      const el = e.currentTarget.querySelector("svg.overview");
+      if (!el) return null;
+      const box = el.getBoundingClientRect();
+      return ((e.clientX - box.left) / box.width) * o.width;
     };
     const place = (centre) => (this._zoom = { key: zkey, view: zoomView({ from: centre - m.span / 2, to: centre + m.span / 2 }, m.end, 1, centre) });
     const down = (e) => {
@@ -1449,14 +1469,31 @@ class HomeTimerPanel extends LitElement {
       const s = at(e);
       if (s == null) return;
       e.currentTarget.setPointerCapture?.(e.pointerId);
+      const px = pxOf(e);
+      const edge = px == null ? null : edgeAt(px, e.pointerType === "touch"); // (a finger is wider)
+      if (edge) return (this._ovDrag = { edge });
       const inside = s >= m.from && s <= m.to;
       this._ovDrag = { offset: inside ? s - (m.from + m.to) / 2 : 0 };
       if (!inside) place(s);
     };
+    const resize = (edge, s) => {
+      const most = m.end - 1; // (never the whole run while dragging: the overview stays to drag back)
+      const from = edge === "from" ? Math.max(Math.min(s, m.to - MIN_VIEW), m.to - most) : m.from;
+      const to = edge === "to" ? Math.min(Math.max(s, m.from + MIN_VIEW), m.from + most) : m.to;
+      this._zoom = { key: zkey, view: zoomView({ from, to }, m.end, 1, from) };
+    };
     const move = (e) => {
-      if (!this._ovDrag || !(e.buttons & 1)) return (this._ovDrag = null);
+      const el = e.currentTarget.querySelector("svg.overview");
+      if (!this._ovDrag) { // the pointer shows what a press there does
+        const px = pxOf(e);
+        if (el) el.style.cursor = px != null && edgeAt(px, false) ? "ew-resize" : "";
+        return;
+      }
+      if (!(e.buttons & 1)) return (this._ovDrag = null);
       const s = at(e);
-      if (s != null) place(s - this._ovDrag.offset);
+      if (s == null) return;
+      if (this._ovDrag.edge) resize(this._ovDrag.edge, s);
+      else place(s - this._ovDrag.offset);
     };
     const end = () => (this._ovDrag = null);
     return html`<div class="ovbox" title=${this._t("zoom.overview")}
@@ -2464,6 +2501,7 @@ class HomeTimerPanel extends LitElement {
     .overview .ovbg { fill: var(--secondary-background-color); }
     .overview .ovcurve { fill: none; stroke: var(--ht-p); stroke-width: 1; opacity: 0.7; }
     .overview .ovwin { fill: color-mix(in srgb, var(--primary-color) 14%, transparent); stroke: var(--primary-color); stroke-width: 1.5; }
+    .overview .ovgrip { fill: var(--primary-color); stroke: var(--card-background-color, #fff); stroke-width: 1.5; }
     .chart { display: block; overflow: visible; }
     .chart .grid { stroke: var(--ht-d); stroke-width: 1; }
     .chart .axis { stroke: var(--ht-under); stroke-width: 1; }

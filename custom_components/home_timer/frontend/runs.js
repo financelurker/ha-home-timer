@@ -191,6 +191,7 @@ export function renderOverview(o, view, label) {
       <rect class="ovbg" x=${o.pad.left} y=${o.pad.top} width=${o.plotW} height=${o.plotH}></rect>
       ${line ? svg`<path class="ovcurve" d=${line}></path>` : nothing}
       <rect class="ovwin" x=${a} y="1" width=${Math.max(4, b - a)} height=${o.height - 2} rx="3"><title>${label}</title></rect>
+      ${[a, b].map((x) => svg`<rect class="ovgrip" x=${x - 3} y=${o.height / 2 - 9} width="6" height="18" rx="2"></rect>`)}
     </svg>`;
 }
 
