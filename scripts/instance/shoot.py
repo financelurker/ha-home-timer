@@ -253,6 +253,17 @@ def main() -> None:
             page.mouse.click(ov["x"] + ov["width"] * 0.2, ov["y"] + ov["height"] / 2)  # move to the first fifth
             page.wait_for_timeout(400)
             check("the overview moves the part shown", page.locator("home-timer-panel .zoombar .chs").inner_text() != label)
+            # its edges are grips: dragging the right one makes the part shown wider
+            secs = lambda txt: sum(int(x) * 60 ** i for i, x in enumerate(reversed(txt.strip().split(":"))))  # noqa: E731
+            a1, b1 = (secs(x) for x in page.locator("home-timer-panel .zoombar .chs").inner_text().split("–"))
+            grip = page.locator("home-timer-panel svg.overview rect.ovgrip").nth(1).bounding_box()
+            page.mouse.move(grip["x"] + 3, grip["y"] + 9)
+            page.mouse.down()
+            page.mouse.move(grip["x"] + 3 + ov["width"] * 0.15, grip["y"] + 9, steps=6)
+            page.mouse.up()
+            page.wait_for_timeout(400)
+            a2, b2 = (secs(x) for x in page.locator("home-timer-panel .zoombar .chs").inner_text().split("–"))
+            check("dragging the window's edge makes the part shown wider", abs(a2 - a1) <= 1 and b2 > b1 + 30, (a1, b1, a2, b2))
             page.mouse.move(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
             page.keyboard.down("Control")
             page.mouse.wheel(0, 400)  # out
