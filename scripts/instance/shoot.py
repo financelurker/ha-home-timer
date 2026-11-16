@@ -99,6 +99,8 @@ def main() -> None:
                 if page.locator("home-timer-panel svg.chart line.mark.dash").count():
                     break
             check("the curve shows the draft's ring", page.locator("home-timer-panel svg.chart line.mark.dash").count() == 1)
+            page.locator("home-timer-panel .pane").first.evaluate("el => el.scrollTo(0, 0)")  # the clicks scrolled it
+            page.wait_for_timeout(600)
             page.screenshot(path=OUT / "panel-runs.png")
             page.set_viewport_size({"width": 1366, "height": 860})
         if want("panel-learn"):
@@ -174,6 +176,7 @@ def main() -> None:
             steps.nth(0).locator("select.inlsel").select_option("time")
             page.wait_for_timeout(400)
             steps.nth(0).locator(".sentence input").first.fill("120")
+            steps.nth(1).locator(".sentence input").last.fill("0")  # its "ignore" counts from step 1: none needed
             page.wait_for_timeout(2500)
             check("steps: the curve pins where each step was met", page.locator("home-timer-panel svg.chart g.pin").count() == 2)
             page.set_viewport_size({"width": 1366, "height": 1640})
@@ -231,8 +234,9 @@ def main() -> None:
             pp.screenshot(path=OUT / "phone-area.png")
             go(pp, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
             pp.screenshot(path=OUT / "phone-power.png")
+            pp.locator("home-timer-panel .runrow").first.scroll_into_view_if_needed()  # down to the runs
             pp.mouse.move(195, 600)
-            pp.mouse.wheel(0, 760)  # down to what the timer should do
+            pp.mouse.wheel(0, -260)  # … with the end of what the timer should do above them
             pp.wait_for_timeout(800)
             pp.screenshot(path=OUT / "phone-runs.png")
         browser.close()
