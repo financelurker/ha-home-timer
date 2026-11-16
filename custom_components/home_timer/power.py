@@ -377,7 +377,6 @@ def bend(trace: Trace, now: float, window: float, baseline: float) -> tuple[floa
 # ------------------------------------------------------------------ steps
 
 MAX_STEPS = 8
-STEP_KEYS = ("phase", "repeat", "optional")  # reserved for phases (B14): kept as stored, not used yet
 
 
 @dataclass(frozen=True)
@@ -386,12 +385,10 @@ class DoneSteps:
 
     Each step is looked for once the step before was met (at a later check); done
     when the last one is met. One step is the plain done rule. Stored as the rule
-    itself for one step, else ``{"steps": [rule, …]}`` – each step may carry keys
-    for phases later (``STEP_KEYS``), which are kept untouched.
+    itself for one step, else ``{"steps": [rule, …]}``.
     """
 
     steps: tuple[DoneRule, ...] = (DoneRule(),)
-    extra: tuple[dict[str, Any], ...] = ({},)
 
     @classmethod
     def from_data(cls, data: dict[str, Any] | None) -> DoneSteps:
@@ -402,16 +399,13 @@ class DoneSteps:
             if len(usable) < len(items):  # unknown types (a newer version?) or "off" within steps: left out
                 _LOGGER.warning("Done steps left out (unknown, or 'off' within steps): %s", [x for x in items if x not in usable])
             items = usable[:MAX_STEPS] or [{}]
-            return cls(
-                tuple(DoneRule.from_data(x) for x in items),
-                tuple({k: x[k] for k in STEP_KEYS if k in x} for x in items),
-            )
-        return cls((DoneRule.from_data(data),), ({},))
+            return cls(tuple(DoneRule.from_data(x) for x in items))
+        return cls((DoneRule.from_data(data),))
 
     def to_data(self) -> dict[str, Any]:
-        if len(self.steps) == 1 and not self.extra[0]:
+        if len(self.steps) == 1:
             return self.steps[0].to_data()
-        return {"steps": [{**rule.to_data(), **extra} for rule, extra in zip(self.steps, self.extra, strict=True)]}
+        return {"steps": [rule.to_data() for rule in self.steps]}
 
     @property
     def type(self) -> str:

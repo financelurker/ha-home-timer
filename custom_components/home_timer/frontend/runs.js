@@ -103,8 +103,7 @@ function path(m) {
 // window: {from, to, label} shaded; level: {w, label} a dotted line
 // done: {t, label, tol, tolLabel} – the user's mark (learning) with the "on time" band after it
 // pins: [{t, n}] – where each step of a sequence was met (numbered); the last one is the ring
-// phases: [{from, to, c, sel}] – the run's phases, tinted behind the curve
-export function renderChart(run, m, { labels, hover, unit = "W", marks = [], window = null, level = null, done = null, pins = [], phases = [] }) {
+export function renderChart(run, m, { labels, hover, unit = "W", marks = [], window = null, level = null, done = null, pins = [] }) {
   const left = m.pad.left;
   const right = m.width - m.pad.right;
   const top = m.pad.top;
@@ -126,7 +125,6 @@ export function renderChart(run, m, { labels, hover, unit = "W", marks = [], win
   const nearDone = (k) => row2Free && done && seen(done.t) && (flip(k) || m.x(k.t) - m.x(done.t) < 8) && Math.abs(m.x(k.t) - m.x(done.t)) < 170;
   // zoomed in, the data is clipped to the plot; labels are drawn only for what is in view (never cut)
   const data = svg`
-      ${phases.map((p) => svg`<rect class="phb ${p.sel ? "sel" : ""}" x=${m.x(p.from)} y=${top} width=${Math.max(0, m.x(p.to) - m.x(p.from))} height=${m.plotH} style="fill:${p.c}"></rect>`)}
       ${from > 0 && m.from < from ? svg`<rect class="unknown" x=${left} y=${top} width=${Math.max(0, m.x(from) - left)} height=${m.plotH}></rect>` : nothing}
       ${m.ignore > 0 && m.from < Math.max(m.ignore, from) ? svg`<rect class="ignored" x=${Math.max(left, m.x(from))} y=${top} width=${Math.max(0, m.x(Math.max(m.ignore, from)) - Math.max(left, m.x(from)))} height=${m.plotH}></rect>` : nothing}
       ${m.onAbove > 0 ? svg`<line class="thr" x1=${left} x2=${right} y1=${m.y(m.onAbove)} y2=${m.y(m.onAbove)}></line>` : nothing}
@@ -193,62 +191,4 @@ export function renderOverview(o, view, label) {
       <rect class="ovwin" x=${a} y="1" width=${Math.max(4, b - a)} height=${o.height - 2} rx="3"><title>${label}</title></rect>
       ${[a, b].map((x) => svg`<rect class="ovgrip" x=${x - 3} y=${o.height / 2 - 9} width="6" height="18" rx="2"></rect>`)}
     </svg>`;
-}
-
-
-// ------------------------------------------------------------------ phases
-
-export const PHASE_COLORS = ["#8e24aa", "#e53935", "#1e88e5", "#fb8c00", "#43a047", "#00897b", "#6d4c41", "#3949ab"];
-
-// a run's phases as spans: [{name, from, to}] – each until the next starts, the last until the run ends
-export function phaseSpans(run) {
-  const list = run.marks?.phases || [];
-  const end = Math.max(run.duration || 0, list.length ? list[list.length - 1].start : 0);
-  return list.map((p, i) => ({ name: p.name, from: p.start, to: i + 1 < list.length ? list[i + 1].start : end }));
-}
-
-// the moment near second `s` (within `radius` s) where the curve jumps the most – a phase starts there
-export function snapAt(run, s, radius) {
-  const t = run.t || [];
-  const w = run.w || [];
-  let best = null;
-  let jump = 0;
-  for (let i = 1; i < t.length; i++) {
-    if (t[i] < s - radius) continue;
-    if (t[i] > s + radius) break;
-    const d = Math.abs(w[i] - w[i - 1]);
-    // a jump: a tenth of the level at least, and clearly more than the sensor scatters (any unit: W or kW)
-    if (d > jump && d >= Math.max(3 * (run.noise || 0), 0.1 * Math.max(w[i], w[i - 1])) && d > 0) {
-      jump = d;
-      best = t[i];
-    }
-  }
-  return best ?? s;
-}
-
-// the phase bar under the chart: the phases side by side (on the chart's time scale), the selected one with
-// its edges; split: a second the pointer points at (marking: a click splits there); empty: no phases yet
-export function renderPhaseBar(m, spans, { colors, sel = null, split = null, empty = "", marking = false }) {
-  const left = m.pad.left;
-  const right = m.width - m.pad.right;
-  const h = 28;
-  const seg = (p, i) => {
-    const a = m.x(p.from);
-    const b = m.x(p.to);
-    const w = Math.max(0, b - a);
-    const c = colors[i];
-    return svg`<g class="pseg ${sel === i ? "sel" : ""}" data-i=${i}>
-      <rect x=${a + 0.5} y="2" width=${Math.max(0, w - 1)} height=${h - 4} rx="5" style="--c:${c}"></rect>
-      ${w > 36 ? svg`<text x=${a + w / 2} y=${h / 2 + 4} text-anchor="middle" style="--c:${c}">${p.name}</text>` : nothing}
-      <title>${p.name} · ${formatDuration(p.from)} – ${formatDuration(p.to)}</title></g>`;
-  };
-  return svg`<svg class="pbar ${marking ? "marking" : ""}" width=${m.width} height=${h + 4} viewBox="0 0 ${m.width} ${h + 4}">
-    <defs><clipPath id="htpbar"><rect x=${left} y="0" width=${right - left} height=${h + 4}></rect></clipPath></defs>
-    <g clip-path="url(#htpbar)">
-      ${spans.length ? spans.map(seg) : svg`<rect class="pempty" x=${left} y="2" width=${right - left} height=${h - 4} rx="5"></rect>
-        <text class="pemptyt" x=${(left + right) / 2} y=${h / 2 + 4} text-anchor="middle">${empty}</text>`}
-      ${sel != null && spans[sel] ? [sel > 0 ? spans[sel].from : null, sel + 1 < spans.length ? spans[sel].to : null]
-        .filter((s) => s != null).map((s) => svg`<rect class="phand" x=${m.x(s) - 4} y="0" width="8" height=${h} rx="3"></rect>`) : nothing}
-      ${split != null ? svg`<line class="psplit" x1=${m.x(split)} x2=${m.x(split)} y1="0" y2=${h}></line>` : nothing}
-    </g></svg>`;
 }

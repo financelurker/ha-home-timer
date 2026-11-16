@@ -18,7 +18,7 @@ from ..const import (
     CONF_RING_UNTIL_ACK,
     DEFAULT_OPTIONS,
 )
-from ..power import MAX_STEPS, STEP_KEYS, RULE_DEFAULTS, RULE_FIELDS, RULE_OFF, RULE_TYPES
+from ..power import MAX_STEPS, RULE_DEFAULTS, RULE_FIELDS, RULE_OFF, RULE_TYPES
 from ..stations import (
     CONF_ICON,
     CONF_MODE,
@@ -127,7 +127,7 @@ def check_rule(raw: Any, prefix: str = "power.done") -> tuple[dict[str, Any], Er
 def check_done(raw: Any) -> tuple[dict[str, Any], Errors]:
     """The done rule, or steps: ``{"steps": [rule, …]}`` (errors ``power.done.steps.<i>.<field>``).
 
-    One step is stored as the plain rule. Keys reserved for phases are kept.
+    One step is stored as the plain rule.
     """
     steps = raw.get("steps") if isinstance(raw, dict) else None
     if not isinstance(steps, list):
@@ -140,11 +140,9 @@ def check_done(raw: Any) -> tuple[dict[str, Any], Errors]:
         rule, errs = check_rule(step, f"power.done.steps.{i}")
         if rule["type"] == RULE_OFF and len(steps) > 1:  # "it switches off" ends the run: no step of a sequence
             errs[f"power.done.steps.{i}.type"] = "invalid"
-        if isinstance(step, dict):
-            rule.update({k: step[k] for k in STEP_KEYS if k in step})
         out.append(rule)
         errors.update(errs)
-    if len(out) == 1 and not any(k in out[0] for k in STEP_KEYS):
+    if len(out) == 1:
         return out[0], {k.replace("power.done.steps.0.", "power.done."): v for k, v in errors.items()}
     return {"steps": out}, errors
 

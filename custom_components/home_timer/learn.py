@@ -21,9 +21,6 @@ are set up by hand.
 Progress: ``report(share, stage)`` is called as the search goes on ("rules", then
 "steps"); when it returns False the search stops (``Cancelled``).
 
-The target is the mark the rules should meet: ``done`` for now (phase starts and ends
-later, B14).
-
 Pure (no Home Assistant); the panel runs it in an executor.
 """
 
@@ -146,10 +143,10 @@ def _flat(rule: str, runs: list[dict[str, Any]]) -> Iterator[dict[str, float]]:
             yield {"wh": value}
 
 
-def _prepare(run: dict[str, Any], config: PowerConfig, target: str = "done") -> dict[str, Any] | None:
+def _prepare(run: dict[str, Any], config: PowerConfig) -> dict[str, Any] | None:
     """A marked stored run as the search needs it – found again with the draft's "on and
     off" as the preview finds it: its trace from its start, until when it is checked, its mark."""
-    mark = (run.get("marks") or {}).get(target)
+    mark = (run.get("marks") or {}).get("done")
     if not isinstance(mark, int | float) or isinstance(mark, bool):
         mark = None
     times, watts = run.get("t") or [], run.get("w") or []
@@ -206,10 +203,10 @@ def _first_after(times: list[float], after: float) -> float | None:
 
 
 def search(
-    runs: list[dict[str, Any]], config: PowerConfig, tolerance: float, target: str = "done", report: Report | None = None
+    runs: list[dict[str, Any]], config: PowerConfig, tolerance: float, report: Report | None = None
 ) -> dict[str, Any]:
     """Suggestions for the done rule (or steps) from the marked runs (not left out)."""
-    usable = [p for r in runs if not r.get("skip") and (p := _prepare(r, config, target)) is not None]
+    usable = [p for r in runs if not r.get("skip") and (p := _prepare(r, config)) is not None]
     marked = usable[-MAX_RUNS:]
     if len(marked) < MIN_MARKED:
         return {"marked": len(marked), "suggestions": [], "outliers": []}

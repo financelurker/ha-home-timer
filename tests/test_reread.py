@@ -65,15 +65,12 @@ def test_a_run_cut_in_a_pause_is_joined_with_its_beginning() -> None:
     # the old version ended the run in the pause at a reload: the rest became a run of its own
     samples = dishwasher()
     first = stored(0, 1200, samples)  # (if it was stored at all)
-    first["marks"] = {"phases": [{"name": "Heat", "start": 0.0}]}
-    rest = stored(1500, 3000, samples, rang=1400, marks={"done": 1380.0, "ranges": {"wash": [0, 1500]},
-                  "phases": [{"name": "Wash", "start": 0.0}, {"name": "Dry", "start": 1000.0}]}, skip=True)
+    rest = stored(1500, 3000, samples, rang=1400, marks={"done": 1380.0}, skip=True)
     assert reread(samples, [first, rest], rest["id"], join=False) is None  # on its own: only backwards, never joined
     new, replaced = reread(samples, [first, rest], rest["id"])
     assert replaced == {first["id"], rest["id"]} and new["id"] == rest["id"]
     assert new["start"] == T0.isoformat() and new["duration"] == pytest.approx(3000, abs=1)
-    assert new["marks"] == {"done": 2880.0, "ranges": {"wash": [1500.0, 3000.0]},  # moved to the real start
-                            "phases": [{"name": "Heat", "start": 0.0}, {"name": "Wash", "start": 1500.0}, {"name": "Dry", "start": 2500.0}]}
+    assert new["marks"] == {"done": 2880.0}  # moved to the real start
     assert new["rang"] == 2900 and new["skip"] is True
     # the whole run read again: nothing more
     assert reread(samples, [new], new["id"]) is None

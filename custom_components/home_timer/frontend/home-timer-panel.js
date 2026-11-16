@@ -6,7 +6,7 @@
 
 import { LitElement, html, svg, css, nothing } from "./vendor/lit.js";
 import { clone, formatDuration, looseTimers, parseDuration, parseRoute, same, stationLive, tempId, translator } from "./helpers.js";
-import { MIN_VIEW, PHASE_COLORS, chartModel, overviewModel, phaseSpans, renderChart, renderOverview, renderPhaseBar, secondsAt, snapAt, valueAt, zoomView } from "./runs.js";
+import { MIN_VIEW, chartModel, overviewModel, renderChart, renderOverview, secondsAt, valueAt, zoomView } from "./runs.js";
 
 const PANEL = "home-timer";
 const WS = "home_timer";
@@ -22,9 +22,6 @@ function loadFold() {
 }
 
 // the done rule as a list of steps (one step is stored as the plain rule)
-const MAX_PHASES = 40; // per run (as the store keeps them)
-const STEP_KEYS = ["phase", "repeat", "optional"]; // reserved per step for phases (later): kept as they are
-const keepKeys = (step) => Object.fromEntries(STEP_KEYS.filter((k) => step && k in step).map((k) => [k, step[k]]));
 const doneSteps = (done) => (done?.steps?.length ? done.steps : [done || { type: "off" }]);
 
 class HomeTimerPanel extends LitElement {
@@ -49,8 +46,6 @@ class HomeTimerPanel extends LitElement {
     _chartWidth: { state: true },
     _zoom: { state: true },
     _yFull: { state: true },
-    _phaseEdit: { state: true },
-    _phaseSnap: { state: true },
     _reread: { state: true },
     _confirm: { state: true },
     _fold: { state: true },
@@ -994,12 +989,6 @@ class HomeTimerPanel extends LitElement {
     // zooming in keeps your mark in view (where it is placed exactly); else the middle of what is shown
     const centre = () => (markT != null && markT >= m.from && markT <= m.to ? markT : (m.from + m.to) / 2);
     const outlier = this._isOutlier(key, run.id);
-    // the run's phases (marked by you): tinted behind the curve, a bar below it
-    const spans = phaseSpans(run);
-    const colors = this._phaseColors(key, spans);
-    const marking = this._phaseEdit?.key === zkey && !run.running;
-    const showPhases = !run.running && (spans.length > 0 || marking);
-    const phaseBands = spans.map((sp, i) => ({ from: sp.from, to: sp.to, c: colors[i], sel: marking && this._phaseEdit.sel === i }));
     const hv = this._hover != null ? valueAt(run, this._hover) : null;
     const labels = { aria: t("runs.chart.aria"), stopped: t("runs.chart.stopped"), unknown: t("runs.chart.unknown"), ignored: t("runs.chart.ignored") };
     const actual = run.rang != null && !run.running ? t(run.simulated ? "runs.actual_history" : "runs.actual", { time: formatDuration(run.rang) }) : "";
@@ -1010,8 +999,7 @@ class HomeTimerPanel extends LitElement {
         ${run.refilled ? html`<span class="tag">${t("runs.tag.refilled")}</span>` : nothing}
         ${this._otherSensor(run, station) ? html`<span class="tag">${t("runs.tag.other_sensor")}</span>` : nothing}</span>
         <span class="runacts">${learning ? html`<button class="btn sm" @click=${() => this._setSkip(area, station, run, !run.skip)}>${t(run.skip ? "learn.take_back" : "learn.leave_out")}</button>` : nothing}
-        ${run.running ? html`<span class="tag live">${t("runs.tag.running")}</span>` : html`<button class="btn sm ${this._phaseEdit?.key === zkey ? "on" : ""}" aria-pressed=${this._phaseEdit?.key === zkey ? "true" : "false"}
-            @click=${() => (this._phaseEdit = this._phaseEdit?.key === zkey ? null : { key: zkey, sel: null, hover: null })}>✎ ${t("phases.mark")}</button>${this._renderReread(area, station, run)}${this._renderDeleteRun(area, station, run)}`}</span>
+        ${run.running ? html`<span class="tag live">${t("runs.tag.running")}</span>` : html`${this._renderReread(area, station, run)}${this._renderDeleteRun(area, station, run)}`}</span>
       </div>
       ${learning && run.skip ? html`<div class="note">${t("learn.left_out")}</div>` : nothing}
       ${this._renderRereadNote(run, key)}
@@ -1041,9 +1029,8 @@ class HomeTimerPanel extends LitElement {
             pan((e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 0.5 : 0.1));
           }
         }}>
-        ${renderChart(run, m, { labels, hover: this._hover, unit, marks, window, level, done, pins, phases: phaseBands })}
+        ${renderChart(run, m, { labels, hover: this._hover, unit, marks, window, level, done, pins })}
       </div>
-      ${showPhases ? this._renderPhases(area, station, run, m, zkey, spans, colors) : nothing}
       ${m.zoomed ? this._renderOverview(run, m, extra, zkey) : nothing}
       <div class="readout">${this._hover != null && hv != null ? `${formatDuration(this._hover)} · ${Math.round(hv * 10) / 10} ${unit}` : html`&nbsp;`}</div>
       ${this._learning(d) ? this._renderMarkBar(area, station, run, pv, outlier) : nothing}
@@ -1053,7 +1040,6 @@ class HomeTimerPanel extends LitElement {
         ${ignore > 0 ? html`<span><i class="sw ign"></i>${t("runs.legend.ignored")}</span>` : nothing}
         ${marks.length ? html`<span><i class="sw rang"></i>${t(differs ? "runs.legend.saved" : "runs.legend.ring")}</span>` : nothing}
         ${pins.length ? html`<span><i class="sw pinsw"></i>${t("runs.legend.steps")}</span>` : nothing}
-        ${spans.length ? html`<span><i class="sw phsw"></i>${t("runs.legend.phases")}</span>` : nothing}
         ${differs && marks.some((k) => k.dash) ? html`<span><i class="sw rang dash"></i>${t("runs.legend.draft")}</span>` : nothing}
         ${window ? html`<span><i class="sw win"></i>${t("runs.legend.window")}</span>` : nothing}
         ${done ? html`<span><i class="sw done"></i>${t("runs.legend.mark")}</span><span><i class="sw tol"></i>${t("runs.legend.tol", { s: tol })}</span>` : nothing}
@@ -1064,206 +1050,10 @@ class HomeTimerPanel extends LitElement {
             : html`${t("runs.this_run")} <b>${this._outcome(pv.saved, savedKind)}</b>.`}
             ${actual ? html`<span class="chs">${actual}</span>` : nothing}</div>` : html`<div class="chs">${this._preview?.key === key && this._preview.error ? `${t("preview.failed")}: ${this._preview.error}` : t("loading")}</div>`}
         ${done && pv && !run.skip ? html`<div>${t("learn.your_mark", { time: formatDuration(markT) })} – ${t("runs.legend.saved")}: ${this._verdictHtml(this._verdict(pv.saved, markT, tol))}${differs ? html` · ${t("runs.legend.draft")}: ${this._verdictHtml(this._verdict(pv.draft, markT, tol))}` : nothing}</div>` : nothing}
-        ${spans.length && !marking ? html`<div class="phlist"><b>${t("phases.this_run")}</b> ${spans.map((sp, i) => html`<span class="phchip"><i style="background:${colors[i]}"></i>${sp.name} ${formatDuration(sp.to - sp.from)}</span>`)}</div>` : nothing}
         ${run.from > 0 ? html`<div class="chs">${t("runs.picked_up", { time: formatDuration(run.from) })}</div>` : nothing}
         ${run.running ? html`<div class="chs">${t("runs.running", { time: formatDuration(run.duration) })}</div>` : nothing}
       </div>
     </div></div>`;
-  }
-
-  // ------------------------------------------------------------------ phases
-  // A run's phases are marked by you on the bar under the curve: one after another, each until the next starts
-  // (the first with the run). Saved at once, like marks.
-
-  // the names used in the station's runs, in their usual order (by where they start, on average) – worked out once
-  // per list of runs
-  _phaseNames(key) {
-    const runs = this._runs[key]?.runs || [];
-    if (this._namesMemo?.runs === runs) return [...this._namesMemo.names];
-    const at = new Map();
-    for (const r of runs) {
-      const list = r.marks?.phases || [];
-      list.forEach((p) => {
-        const share = r.duration ? p.start / r.duration : 0;
-        const x = at.get(p.name) || { sum: 0, n: 0 };
-        at.set(p.name, { sum: x.sum + share, n: x.n + 1 });
-      });
-    }
-    const names = [...at.entries()].sort((a, b) => a[1].sum / a[1].n - b[1].sum / b[1].n).map(([name]) => name);
-    // colours: by when a name was first used (oldest run first) – a new name does not change the others' colours
-    const first = [];
-    for (const r of [...runs].reverse()) for (const p of r.marks?.phases || []) if (!first.includes(p.name)) first.push(p.name);
-    this._namesMemo = { runs, names, first };
-    return [...names];
-  }
-
-  // one colour per name, the same in every run of the station
-  _phaseColors(key, spans) {
-    this._phaseNames(key);
-    const first = [...(this._namesMemo?.first || [])];
-    for (const sp of spans) if (!first.includes(sp.name)) first.push(sp.name);
-    return spans.map((sp) => PHASE_COLORS[first.indexOf(sp.name) % PHASE_COLORS.length]);
-  }
-
-  _setPhases(area, station, run, list, save = true) {
-    const key = this._runsKey(area.entry_id, station.id);
-    const phases = list.map((p, i) => ({ name: p.name, start: i === 0 ? run.from || 0 : Math.round(p.start * 10) / 10 }));
-    const { phases: _old, ...others } = run.marks || {};
-    const marks = phases.length ? { ...others, phases } : others;
-    if (this._run?.key === key && this._run.id === run.id) this._run = { ...this._run, data: { ...this._run.data, marks } };
-    const runs = this._runs[key];
-    if (runs) this._runs = { ...this._runs, [key]: { ...runs, runs: runs.runs.map((r) => (r.id === run.id ? { ...r, marks } : r)) } };
-    if (!save) return;
-    this._markSaves = this._markSaves || new Map();
-    const id = `phases:${run.id}`;
-    const pending = this._markSaves.get(id);
-    if (pending) clearTimeout(pending.timer);
-    const send = async () => {
-      this._markSaves.delete(id);
-      try {
-        await this.hass.callWS({ type: `${WS}/runs/phases`, entry_id: area.entry_id, station_id: station.id, run_id: run.id, phases: phases.length ? phases : null });
-      } catch (err) {
-        this._notice = { kind: "warn", text: err?.message || String(err) };
-      }
-    };
-    this._markSaves.set(id, { timer: setTimeout(send, 400), send });
-  }
-
-  // the bar under the curve; marking: a click splits there (at the jump nearby with Alt or "snap" on), edges are dragged, the chips
-  // below select a phase to rename, move (← →) or remove
-  _renderPhases(area, station, run, m, zkey, spans, colors) {
-    const t = this._t;
-    const key = this._runsKey(area.entry_id, station.id);
-    const edit = this._phaseEdit?.key === zkey ? this._phaseEdit : null;
-    const list = (run.marks?.phases || []).map((p) => ({ ...p }));
-    const names = this._phaseNames(key);
-    const at = (e) => {
-      const el = e.currentTarget.querySelector("svg.pbar");
-      return el ? secondsAt(m, el, e.clientX, true) : null;
-    };
-    // a phase starts where you put it; with Alt held (or "snap to jumps" on) at the jump in the curve nearby
-    const snap = (s, e) => {
-      const free = Math.round(s * 10) / 10;
-      if (!(this._phaseSnap || e?.altKey)) return free;
-      return Math.min(run.duration || s, Math.max(0, snapAt(run, s, (12 / m.plotW) * m.span)));
-    };
-    const nextName = (i) => {
-      const before = i > 0 ? list[i - 1]?.name : null;
-      const k = before != null ? names.indexOf(before) : -1;
-      const used = new Set(list.map((p) => p.name));
-      return names.slice(k + 1).find((n) => !used.has(n)) || t("phases.default", { n: i + 1 });
-    };
-    const select = (sel) => (this._phaseEdit = { key: zkey, sel, hover: null });
-    const from = run.from || 0; // (a run picked up late: its curve – and its first phase – start there)
-    const end = run.duration || 0;
-    const down = (e) => {
-      if (e.button !== 0) return;
-      const s = at(e);
-      if (s == null) return;
-      if (!edit) { // not marking: a tap on a phase starts marking with it selected (on letting go – not while scrolling)
-        this._phaseTap = { x: e.clientX, y: e.clientY, s };
-        return;
-      }
-      const px = m.x(s);
-      const edge = list.findIndex((p, i) => i > 0 && Math.abs(m.x(p.start) - px) < 8);
-      if (edge > 0) { // drag an edge
-        e.currentTarget.setPointerCapture?.(e.pointerId);
-        this._phaseDrag = edge;
-        return select(edge);
-      }
-      const where = snap(s, e);
-      if (where <= from + 1 || where >= end - 1) return; // a phase starts within the run
-      if (list.length >= MAX_PHASES) return (this._notice = { kind: "warn", text: t("phases.too_many", { n: MAX_PHASES }) });
-      if (!list.length) {
-        const first = { name: names[0] || t("phases.default", { n: 1 }), start: from };
-        const fresh = [first, { name: names[1] || t("phases.default", { n: 2 }), start: where }];
-        this._setPhases(area, station, run, fresh);
-        return select(1);
-      }
-      if (list.some((p) => Math.abs(p.start - where) < 1)) return;
-      const i = list.filter((p) => p.start < where).length;
-      list.splice(i, 0, { name: nextName(i), start: where });
-      this._setPhases(area, station, run, list);
-      select(i);
-    };
-    const move = (e) => {
-      if (!edit) return;
-      const s = at(e);
-      if (s == null) return;
-      if (this._phaseDrag) {
-        if (!(e.buttons & 1)) return (this._phaseDrag = null);
-        const j = this._phaseDrag;
-        const lo = Math.max(list[j - 1].start, from) + 1;
-        const hi = j + 1 < list.length ? list[j + 1].start - 1 : end - 1;
-        list[j].start = Math.min(hi, Math.max(lo, snap(s, e)));
-        this._phaseDragList = list;
-        this._setPhases(area, station, run, list, false);
-        return;
-      }
-      const hover = snap(s, e);
-      cancelAnimationFrame(this._phaseFrame); // (once a frame)
-      this._phaseFrame = requestAnimationFrame(() => this._phaseEdit?.key === zkey && (this._phaseEdit = { ...this._phaseEdit, hover }));
-    };
-    const up = (e) => {
-      const tap = this._phaseTap;
-      this._phaseTap = null;
-      if (tap && e?.type === "pointerup" && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) {
-        const i = spans.findIndex((sp) => tap.s >= sp.from && tap.s <= sp.to);
-        return select(i >= 0 ? i : null);
-      }
-      if (!this._phaseDrag) return;
-      this._phaseDrag = null;
-      if (this._phaseDragList) this._setPhases(area, station, run, this._phaseDragList); // saved once it is let go
-      this._phaseDragList = null;
-    };
-    const keys = (e) => {
-      const i = edit?.sel;
-      if (i == null) return;
-      if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && i > 0) {
-        e.preventDefault();
-        const step = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 1);
-        const lo = Math.max(list[i - 1].start, from) + 1;
-        const hi = i + 1 < list.length ? list[i + 1].start - 1 : end - 1;
-        list[i].start = Math.min(hi, Math.max(lo, list[i].start + step));
-        this._setPhases(area, station, run, list);
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        e.preventDefault();
-        remove(i);
-      }
-    };
-    const remove = (i) => { // the phase goes; the one before takes its time (the first: the next one starts with the run)
-      list.splice(i, 1);
-      this._setPhases(area, station, run, list.length > 1 ? list : []);
-      select(null);
-    };
-    const rename = (i, value) => {
-      const name = value.trim().slice(0, 40);
-      if (!name || name === list[i].name) return;
-      list[i].name = name;
-      this._setPhases(area, station, run, list);
-    };
-    const sel = edit?.sel != null && spans[edit.sel] ? edit.sel : null;
-    const bar = html`<div class="pbox ${edit ? "marking" : ""}" tabindex=${edit ? "0" : "-1"} role="group" aria-label=${t("phases.bar")}
-        @pointerdown=${down} @pointermove=${move} @pointerup=${up} @pointercancel=${up} @lostpointercapture=${up}
-        @pointerleave=${() => edit && edit.hover != null && (this._phaseEdit = { ...edit, hover: null })} @keydown=${keys}>
-        ${renderPhaseBar(m, spans, { colors, sel, split: edit && !this._phaseDrag ? edit.hover : null, empty: t("phases.empty"), marking: !!edit })}
-      </div>`;
-    if (!edit) return bar;
-    return html`${bar}
-      <div class="ptool" @keydown=${(e) => e.target.tagName !== "INPUT" && keys(e)}>
-        ${spans.map((sp, i) => html`<button class="phchip ${i === sel ? "on" : ""}" @click=${() => select(i)}><i style="background:${colors[i]}"></i>${sp.name}</button>`)}
-        ${sel != null ? html`<span class="psel">
-            <input class="pname" .value=${spans[sel].name} list="ht-phase-names" maxlength="40" aria-label=${t("phases.name")}
-              @change=${(e) => rename(sel, e.target.value)} @keydown=${(e) => e.key === "Enter" && rename(sel, e.target.value)}>
-            <datalist id="ht-phase-names">${names.map((n) => html`<option value=${n}></option>`)}</datalist>
-            <span class="chs">${formatDuration(spans[sel].from)} – ${formatDuration(spans[sel].to)}</span>
-            <button class="btn sm" @click=${() => remove(sel)}>${t("phases.remove")}</button></span>` : nothing}
-        <span class="sp"></span>
-        <label class="psnap"><input type="checkbox" .checked=${!!this._phaseSnap} @change=${(e) => (this._phaseSnap = e.target.checked)}>${t("phases.snap")}</label>
-        ${spans.length ? html`<button class="btn sm" @click=${() => (this._setPhases(area, station, run, []), select(null))}>${t("phases.remove_all")}</button>` : nothing}
-        <button class="btn sm f" @click=${() => (this._phaseEdit = null)}>${t("phases.done")}</button>
-      </div>
-      <div class="help">${t(spans.length ? "phases.hint" : "phases.hint_first")}</div>`;
   }
 
   // ------------------------------------------------------------------ learning: marks
@@ -1321,8 +1111,7 @@ class HomeTimerPanel extends LitElement {
   _setMark(area, station, run, value, save = true) {
     const key = this._runsKey(area.entry_id, station.id);
     const done = value == null ? null : Math.max(0, Math.round(value * 10) / 10);
-    const { done: _old, ...others } = run.marks || {}; // (its phases stay)
-    const marks = done == null ? others : { ...others, done };
+    const marks = done == null ? {} : { done };
     if (this._run?.key === key && this._run.id === run.id) this._run = { ...this._run, data: { ...this._run.data, marks } };
     if (save && !this._drag && done != null) this._followMark(run, done);
     const list = this._runs[key];
@@ -1767,7 +1556,7 @@ class HomeTimerPanel extends LitElement {
     const setSteps = (fn) => set((x) => {
       const list = doneSteps(x.power.done).map(clone);
       fn(list);
-      x.power.done = list.length === 1 && !STEP_KEYS.some((k) => k in list[0]) ? list[0] : { steps: list };
+      x.power.done = list.length === 1 ? list[0] : { steps: list };
     });
     const move = (from, to) => {
       if (from === to || to < 0 || to >= steps.length) return;
@@ -1802,7 +1591,7 @@ class HomeTimerPanel extends LitElement {
     // .value: the select follows the draft when the rule changes elsewhere (Use, Discard) – the browser ignores
     // ?selected on an option the user once picked. ?selected stays: on a new select .value comes before its options.
     const typeSelect = html`<select class="inlsel" aria-label=${many ? t("steps.rule_n", { n: i + 1 }) : t("power.rule")} .value=${type}
-        @change=${(e) => (clearRule(), setSteps((list) => (list[i] = { ...keepKeys(list[i]), type: e.target.value, ...spec[e.target.value].defaults })))}>
+        @change=${(e) => (clearRule(), setSteps((list) => (list[i] = { type: e.target.value, ...spec[e.target.value].defaults })))}>
         ${types.map((r) => html`<option value=${r} ?selected=${type === r}>${t(`rule_verb.${r}`)}</option>`)}
       </select>`;
     const parts = t(`rule_sentence.${type}`).split(/(\{\w+\})/);
@@ -2133,15 +1922,12 @@ class HomeTimerPanel extends LitElement {
   }
 
   // a small bar per run: its length, the saved and the draft ring
-  _strip(run, pv, differs, mark = null, key = null) {
+  _strip(run, pv, differs, mark = null) {
     const end = Math.max(run.duration || 0, mark ?? 0, ...(pv ? [pv.saved, pv.draft].filter((x) => x && x.rang != null).map((x) => x.start + x.rang) : []), 1);
     const x = (s) => Math.min(100, (s / end) * 100);
-    const spans = phaseSpans(run);
-    const colors = spans.length && key ? this._phaseColors(key, spans) : [];
     const line = (res, dash) => res && res.rang != null && !res.blip
       ? svg`<line x1="${x(res.start + res.rang)}%" x2="${x(res.start + res.rang)}%" y1="1" y2="13" class="${res.trigger === "cancelled" ? "cx" : ""} ${dash ? "dash" : ""}"></line>` : nothing;
     return html`<svg class="strip" width="100%" height="14" aria-hidden="true"><rect x="0" y="5" width="${x(run.duration || 0)}%" height="4" rx="2"></rect>
-      ${spans.map((sp, i) => svg`<rect class="ph" x="${x(sp.from)}%" y="4" width="${Math.max(0, x(sp.to) - x(sp.from))}%" height="6" style="fill:${colors[i]}"></rect>`)}
       ${mark != null ? svg`<line x1="${x(mark)}%" x2="${x(mark)}%" y1="0" y2="14" class="mk"></line>` : nothing}
       ${pv ? line(pv.saved, false) : nothing}${pv && differs ? line(pv.draft, true) : nothing}</svg>`;
   }
@@ -2200,7 +1986,7 @@ class HomeTimerPanel extends LitElement {
               return html`<button class="runrow ${r.id === selected ? "sel" : ""}" role="option" aria-selected=${r.id === selected ? "true" : "false"} @click=${() => this._loadRun(area.entry_id, station.id, r.id)}>
                 <span class="rw">${r.running ? t("runs.now") : this._runWhen(r, !this.narrow)}</span>
                 <span class="rd">${formatDuration(r.duration)}</span>
-                <span class="rs">${this._strip(r, pv, differs, markOf(r), key)}</span>
+                <span class="rs">${this._strip(r, pv, differs, markOf(r))}</span>
                 <span class="rr">${text(r, pv)}</span>
                 <span class="rt">${tagOf(r, pv)}</span>
               </button>`;
@@ -2467,31 +2253,6 @@ class HomeTimerPanel extends LitElement {
     .tag { font-size: 11.5px; font-weight: 500; padding: 2px 8px; border-radius: 10px; background: var(--ht-fill); color: var(--ht-s); white-space: nowrap; }
     .tag.live { background: color-mix(in srgb, var(--ht-run) 16%, transparent); color: var(--ht-run); }
     .chartbox { width: 100%; touch-action: pan-y; }
-    .chart .phb { opacity: 0.07; }
-    .chart .phb.sel { opacity: 0.16; }
-    .pbox { width: 100%; margin-top: 2px; outline: none; }
-    .pbox.marking { cursor: crosshair; touch-action: none; }
-    .pbox:focus-visible .pbar { outline: 2px solid var(--primary-color); outline-offset: 1px; border-radius: 6px; }
-    .pbar { display: block; }
-    .pbar .pseg rect { fill: color-mix(in srgb, var(--c) 22%, var(--card-background-color, #fff)); stroke: color-mix(in srgb, var(--c) 55%, var(--card-background-color, #fff)); }
-    .pbar .pseg.sel rect { fill: color-mix(in srgb, var(--c) 40%, var(--card-background-color, #fff)); stroke: var(--c); stroke-width: 2; }
-    .pbar .pseg text { fill: color-mix(in srgb, var(--c) 80%, var(--primary-text-color)); font-size: 12px; font-weight: 600; pointer-events: none; }
-    .pbar .pempty { fill: var(--secondary-background-color); stroke: var(--divider-color); stroke-dasharray: 4 3; }
-    .pbar .pemptyt { fill: var(--secondary-text-color); font-size: 12px; }
-    .pbar .phand { fill: var(--primary-text-color); cursor: ew-resize; }
-    .pbar .psplit { stroke: var(--primary-text-color); stroke-width: 1.5; stroke-dasharray: 3 3; }
-    .ptool { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: var(--secondary-background-color); border-radius: 8px; padding: 8px 10px; margin: 6px 0 2px; }
-    .ptool .sp { flex: 1; }
-    .psnap { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; }
-    .phchip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--divider-color); border-radius: 14px; padding: 2px 10px; background: var(--card-background-color); color: var(--primary-text-color); font: inherit; font-size: 13px; cursor: pointer; }
-    .phchip.on { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
-    span.phchip { cursor: default; }
-    .phchip i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
-    .psel { display: inline-flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .pname { font: inherit; padding: 4px 8px; border: 1px solid var(--divider-color); border-radius: 6px; background: var(--card-background-color); color: var(--primary-text-color); width: 160px; }
-    .phlist { line-height: 2; }
-    .sw.phsw { border-top: 8px solid color-mix(in srgb, #e53935 25%, transparent); }
-    .btn.sm.on { background: color-mix(in srgb, var(--primary-color) 14%, transparent); }
     .zoombar { display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin: 0 0 -4px; --mdc-icon-size: 18px; }
     .zoombar .chs { margin-right: 6px; }
     .zoombar .icon[disabled] { opacity: 0.35; cursor: default; }
@@ -2583,7 +2344,6 @@ class HomeTimerPanel extends LitElement {
     .sw.win { height: 10px; border: none; background: color-mix(in srgb, var(--ht-err) 14%, transparent); }
     .strip { display: block; overflow: visible; }
     .strip rect { fill: var(--ht-d); }
-    .strip rect.ph { opacity: 0.75; }
     .strip line { stroke: var(--ht-err); stroke-width: 2; }
     .strip line.dash { stroke-dasharray: 3 2; }
     .strip line.cx { stroke: var(--ht-run); }
