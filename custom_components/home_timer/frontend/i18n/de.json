@@ -391,5 +391,7 @@
   "runs.reread_no_recorder": "Es gibt keinen Recorder-Verlauf zum Lesen.",
   "runs.reread_other_sensor": "Dieser Lauf wurde mit einem anderen Sensor aufgezeichnet.",
   "runs.tag.refilled": "aus dem Verlauf ergänzt",
-  "runs.reread_not_found": "Der Lauf ist nicht mehr gespeichert."
+  "runs.reread_not_found": "Der Lauf ist nicht mehr gespeichert.",
+  "zoom.fit_y": "Leistungsachse an den gezeigten Teil anpassen",
+  "zoom.full_y": "Die Leistungsachse passt sich dem gezeigten Teil an – drücken für den ganzen Bereich"
 }

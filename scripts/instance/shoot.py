@@ -232,6 +232,15 @@ def main() -> None:
             widths = page.locator("home-timer-panel svg.chart rect").evaluate_all("els => els.map((e) => +e.getAttribute('width'))")
             check("zoomed in: no shape of negative width", all(w >= 0 for w in widths), widths)
             page.screenshot(path=OUT / "zoom.png")
+            # the power scale fits the part shown – the toggle gives the whole range back
+            top_label = lambda: float(page.locator("home-timer-panel svg.chart text.ax[text-anchor=end]").last.text_content().split()[0])  # noqa: E731
+            fitted = top_label()
+            page.locator("home-timer-panel .zoombar button[aria-pressed]").click()
+            page.wait_for_timeout(300)
+            full = top_label()
+            page.locator("home-timer-panel .zoombar button[aria-pressed]").click()
+            page.wait_for_timeout(300)
+            check("zoomed in: the power scale fits the part shown", fitted < full and top_label() == fitted, (fitted, full))
             label = page.locator("home-timer-panel .zoombar .chs").inner_text()
             # zoomed in, a click sets the mark where it is in the view (to the second)
             secs = lambda txt: sum(int(x) * 60 ** i for i, x in enumerate(reversed(txt.strip().split(":"))))  # noqa: E731
@@ -249,7 +258,7 @@ def main() -> None:
             page.mouse.wheel(0, 400)  # out
             page.keyboard.up("Control")
             page.wait_for_timeout(400)
-            page.locator("home-timer-panel .zoombar button").nth(2).click()  # the whole run
+            page.locator("home-timer-panel .zoombar button[aria-label='The whole run']").click()
             page.wait_for_timeout(400)
             check("the whole run again: no overview", page.locator("home-timer-panel svg.overview").count() == 0)
             page.set_viewport_size({"width": 1366, "height": 860})

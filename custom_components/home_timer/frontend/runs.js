@@ -25,22 +25,35 @@ export function timeStep(span, width) {
 
 // the sizes and scales of a run's chart
 // extra: further seconds the time axis must reach (marks); view: {from, to} – the seconds shown (zoomed in)
-export function chartModel(run, { width = 600, height = 240, onAbove = 0, ignore = 0, extra = [], view = null, pad = PAD } = {}) {
+// fitY: zoomed in, the power axis fits what is in view (a few watts at the end of a 4 kW run)
+export function chartModel(run, { width = 600, height = 240, onAbove = 0, ignore = 0, extra = [], view = null, pad = PAD, fitY = true } = {}) {
   const t = run.t || [];
   const w = run.w || [];
   const end = Math.max(run.duration || 0, t.length ? t[t.length - 1] : 0, ...extra, 1);
-  const top = Math.max(...w, onAbove, 1) * 1.08;
-  const ystep = niceStep(top, 4);
-  const ymax = Math.ceil(top / ystep) * ystep;
-  const plotW = Math.max(10, width - pad.left - pad.right);
-  const plotH = Math.max(10, height - pad.top - pad.bottom);
   const v = clampView(view, end);
   const from = v ? v.from : 0;
   const span = v ? v.to - v.from : end;
+  const top = Math.max(v && fitY ? maxIn(t, w, from, from + span) : Math.max(...w, 0), onAbove, v && fitY ? 0.1 : 1) * 1.08;
+  const ystep = niceStep(top, 4);
+  const ymax = Math.ceil(top / ystep - 1e-9) * ystep;
+  const plotW = Math.max(10, width - pad.left - pad.right);
+  const plotH = Math.max(10, height - pad.top - pad.bottom);
   // zoomed in, what lies outside the view is clipped (the chart draws within its plot)
   const x = (s) => pad.left + ((Math.min(Math.max(s, 0), end) - from) / span) * plotW;
   const y = (val) => pad.top + plotH - (Math.min(Math.max(val, 0), ymax) / ymax) * plotH;
   return { t, w, end, from, to: from + span, span, zoomed: !!v, ymax, ystep, xstep: timeStep(span, plotW), plotW, plotH, width, height, x, y, onAbove, ignore, pad };
+}
+
+// the highest reading within [a, b] – including the one in force at a (the curve is a step curve)
+function maxIn(t, w, a, b) {
+  let top = 0;
+  let before = null;
+  for (let i = 0; i < t.length; i++) {
+    if (t[i] <= a) before = w[i];
+    else if (t[i] <= b) top = Math.max(top, w[i]);
+    else break;
+  }
+  return Math.max(top, before ?? 0);
 }
 
 export const MIN_VIEW = 30; // seconds: the narrowest view
