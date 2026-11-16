@@ -50,6 +50,7 @@ class HomeTimerPanel extends LitElement {
     _zoom: { state: true },
     _yFull: { state: true },
     _phaseEdit: { state: true },
+    _phaseSnap: { state: true },
     _reread: { state: true },
     _confirm: { state: true },
     _fold: { state: true },
@@ -1128,7 +1129,7 @@ class HomeTimerPanel extends LitElement {
     this._markSaves.set(id, { timer: setTimeout(send, 400), send });
   }
 
-  // the bar under the curve; marking: a click splits there (at the jump nearby), the edges are dragged, the chips
+  // the bar under the curve; marking: a click splits there (at the jump nearby with Alt or "snap" on), edges are dragged, the chips
   // below select a phase to rename, move (← →) or remove
   _renderPhases(area, station, run, m, zkey, spans, colors) {
     const t = this._t;
@@ -1140,7 +1141,12 @@ class HomeTimerPanel extends LitElement {
       const el = e.currentTarget.querySelector("svg.pbar");
       return el ? secondsAt(m, el, e.clientX, true) : null;
     };
-    const snap = (s) => Math.min(run.duration || s, Math.max(0, snapAt(run, s, (12 / m.plotW) * m.span)));
+    // a phase starts where you put it; with Alt held (or "snap to jumps" on) at the jump in the curve nearby
+    const snap = (s, e) => {
+      const free = Math.round(s * 10) / 10;
+      if (!(this._phaseSnap || e?.altKey)) return free;
+      return Math.min(run.duration || s, Math.max(0, snapAt(run, s, (12 / m.plotW) * m.span)));
+    };
     const nextName = (i) => {
       const before = i > 0 ? list[i - 1]?.name : null;
       const k = before != null ? names.indexOf(before) : -1;
@@ -1165,7 +1171,7 @@ class HomeTimerPanel extends LitElement {
         this._phaseDrag = edge;
         return select(edge);
       }
-      const where = snap(s);
+      const where = snap(s, e);
       if (where <= from + 1 || where >= end - 1) return; // a phase starts within the run
       if (list.length >= MAX_PHASES) return (this._notice = { kind: "warn", text: t("phases.too_many", { n: MAX_PHASES }) });
       if (!list.length) {
@@ -1189,12 +1195,12 @@ class HomeTimerPanel extends LitElement {
         const j = this._phaseDrag;
         const lo = Math.max(list[j - 1].start, from) + 1;
         const hi = j + 1 < list.length ? list[j + 1].start - 1 : end - 1;
-        list[j].start = Math.min(hi, Math.max(lo, snap(s)));
+        list[j].start = Math.min(hi, Math.max(lo, snap(s, e)));
         this._phaseDragList = list;
         this._setPhases(area, station, run, list, false);
         return;
       }
-      const hover = snap(s);
+      const hover = snap(s, e);
       cancelAnimationFrame(this._phaseFrame); // (once a frame)
       this._phaseFrame = requestAnimationFrame(() => this._phaseEdit?.key === zkey && (this._phaseEdit = { ...this._phaseEdit, hover }));
     };
@@ -1253,6 +1259,7 @@ class HomeTimerPanel extends LitElement {
             <span class="chs">${formatDuration(spans[sel].from)} – ${formatDuration(spans[sel].to)}</span>
             <button class="btn sm" @click=${() => remove(sel)}>${t("phases.remove")}</button></span>` : nothing}
         <span class="sp"></span>
+        <label class="psnap"><input type="checkbox" .checked=${!!this._phaseSnap} @change=${(e) => (this._phaseSnap = e.target.checked)}>${t("phases.snap")}</label>
         ${spans.length ? html`<button class="btn sm" @click=${() => (this._setPhases(area, station, run, []), select(null))}>${t("phases.remove_all")}</button>` : nothing}
         <button class="btn sm f" @click=${() => (this._phaseEdit = null)}>${t("phases.done")}</button>
       </div>
@@ -2438,6 +2445,7 @@ class HomeTimerPanel extends LitElement {
     .pbar .psplit { stroke: var(--primary-text-color); stroke-width: 1.5; stroke-dasharray: 3 3; }
     .ptool { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; background: var(--secondary-background-color); border-radius: 8px; padding: 8px 10px; margin: 6px 0 2px; }
     .ptool .sp { flex: 1; }
+    .psnap { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; color: var(--secondary-text-color); cursor: pointer; }
     .phchip { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--divider-color); border-radius: 14px; padding: 2px 10px; background: var(--card-background-color); color: var(--primary-text-color); font: inherit; font-size: 13px; cursor: pointer; }
     .phchip.on { border-color: var(--primary-color); box-shadow: 0 0 0 1px var(--primary-color); }
     span.phchip { cursor: default; }

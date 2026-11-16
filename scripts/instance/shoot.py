@@ -282,6 +282,10 @@ def main() -> None:
             page.mouse.click(bar["x"] + done_x, bar["y"] + 14)
             page.wait_for_timeout(300)
             check("phases: two clicks make three phases", page.locator("home-timer-panel svg.pbar .pseg").count() == 3)
+            secs = lambda txt: sum(int(x) * 60 ** i for i, x in enumerate(reversed(txt.strip().split(":"))))  # noqa: E731
+            mark_s = secs(page.locator("home-timer-panel .mbar b").inner_text().split()[-1])
+            start_s = secs(page.locator("home-timer-panel .ptool .psel .chs").inner_text().split("–")[0])
+            check("phases: a phase starts exactly where you click (at your mark here)", abs(start_s - mark_s) <= 2, (start_s, mark_s))
             name = page.locator("home-timer-panel .ptool input.pname")
             for i, label in enumerate(("Heating up", "Brewing", "Keeping warm")):
                 page.locator("home-timer-panel .ptool .phchip").nth(i).click()
