@@ -97,6 +97,12 @@ Which rule and values fit your appliance is easiest to learn from your own runs:
 
 With marks, the preview judges each run: *on time*, *too early* or *too late*. A run that the best suggestion misses while it fits the others is flagged *mark looks off*: check its mark, leave the run out of learning (it stays stored), or keep it. Marked runs are kept without limit (they are never dropped from the stored runs); a mark set with *Done now* survives a restart or a reload while the run goes on.
 
+### Phases
+
+Appliances with programs (a dishwasher, a washing machine) go through phases – prewash, main wash, rinse, drying. Mark them on a run: **✎ Phases** above its curve, then click on the bar under the curve where a phase starts; it snaps to the jump in the curve nearby. Phases lie next to each other: one lasts until the next starts, the first starts with the run. Name a phase by selecting it (names used before are offered), drag an edge or move it with ← → (Shift: 10 s), remove one (the phase before takes its time). Phases are saved at once, like marks, and shown as a coloured strip in the runs list – the same name has the same colour in every run.
+
+Marking phases is the first part: recognising them while the appliance runs (a phase sensor, suggestions per phase) builds on the marked runs.
+
 ## Restarts
 
 After a restart (or when the area reloads, e.g. after saving a preset) the first valid power reading decides – while the sensor is still unavailable, nothing happens:

@@ -393,5 +393,17 @@
   "runs.tag.refilled": "aus dem Verlauf ergänzt",
   "runs.reread_not_found": "Der Lauf ist nicht mehr gespeichert.",
   "zoom.fit_y": "Leistungsachse an den gezeigten Teil anpassen",
-  "zoom.full_y": "Die Leistungsachse passt sich dem gezeigten Teil an – drücken für den ganzen Bereich"
+  "zoom.full_y": "Die Leistungsachse passt sich dem gezeigten Teil an – drücken für den ganzen Bereich",
+  "phases.mark": "Phasen",
+  "phases.bar": "Die Phasen des Laufs",
+  "phases.empty": "Noch keine Phasen – klicke, wo eine Phase beginnt",
+  "phases.default": "Phase {n}",
+  "phases.name": "Name der Phase",
+  "phases.remove": "Entfernen",
+  "phases.remove_all": "Alle entfernen",
+  "phases.done": "Fertig",
+  "phases.this_run": "Phasen dieses Laufs:",
+  "phases.hint": "Klicke auf den Balken, wo eine Phase beginnt – sie rastet am Sprung in der Nähe ein. Ziehe eine Grenze, oder wähle eine Phase und verschiebe ihren Beginn mit ← → (Umschalt: 10 s). Eine Phase dauert, bis die nächste beginnt.",
+  "phases.hint_first": "Klicke auf den Balken, wo die zweite Phase beginnt (die erste beginnt mit dem Lauf) – sie rastet am Sprung in der Nähe ein.",
+  "runs.legend.phases": "Phasen (deine Markierungen)"
 }

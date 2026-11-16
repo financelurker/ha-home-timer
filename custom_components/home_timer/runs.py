@@ -15,7 +15,8 @@ A run (JSON)::
      "t": [s, …], "w": [W, …]  (a step curve: each reading holds until the next),
      "marks": {"done": s on the curve – when it was really done, marked by the user;
                other names: further points (phase starts and ends, B14);
-               "ranges": {name: [from, to]} – stretches of the curve, e.g. a phase (B14)},
+               "phases": [{"name", "start"}] – the phases, one after another (B14);
+               "ranges": {name: [from, to]} – stretches of the curve (reserved)},
      "skip": True to leave it out of learning}
 
 The first time a power station is seen, its earlier runs are read once from the
@@ -200,6 +201,30 @@ def make_run(
     }
 
 
+MAX_PHASES = 40
+MAX_PHASE_NAME = 40
+
+
+def clean_phases(phases: list[Any], first: float, on_curve: Any) -> list[dict[str, Any]]:
+    """Phases as stored: named, one after another from the run's start (``first``), no two
+    starting at the same moment, at most ``MAX_PHASES``."""
+    out: dict[float, str] = {}
+    for p in phases[: MAX_PHASES * 2]:
+        if not isinstance(p, dict) or not isinstance(p.get("name"), str):
+            continue
+        name = p["name"].strip()[:MAX_PHASE_NAME]
+        start = p.get("start")
+        if not name or not isinstance(start, int | float) or isinstance(start, bool):
+            continue
+        out[on_curve(float(start))] = name
+    starts = sorted(out)[:MAX_PHASES]
+    if not starts:
+        return []
+    clean = [{"name": out[s], "start": s} for s in starts]
+    clean[0]["start"] = first  # the first phase starts with the run
+    return clean
+
+
 def summary(run: dict[str, Any]) -> dict[str, Any]:
     """A run without its curve (for the list)."""
     return {k: v for k, v in run.items() if k not in ("t", "w")} | {"points": len(run.get("t", []))}
@@ -379,13 +404,30 @@ class RunStore:
         """Mark a point – when the run was done (seconds on its curve) – or remove the mark.
         Other marks of the run are kept."""
         run = self.get(station_id, run_id)
-        if run is None or name == "ranges":
+        if run is None or name in ("ranges", "phases"):
             return None
         marks = dict(run.get("marks") or {})
         if done is None:
             marks.pop(name, None)
         else:
             marks[name] = self._on_curve(run, done)
+        run["marks"] = marks
+        self._save()
+        return run
+
+    def set_phases(self, station_id: str, run_id: str, phases: list[dict[str, Any]] | None) -> dict[str, Any] | None:
+        """The run's phases, marked by the user: one after another, each ``{"name", "start"}``
+        (seconds on its curve); a phase lasts until the next one starts, the first starts with
+        the run. None or [] removes them. Other marks of the run are kept."""
+        run = self.get(station_id, run_id)
+        if run is None:
+            return None
+        marks = dict(run.get("marks") or {})
+        clean = clean_phases(phases or [], self._on_curve(run, 0.0), lambda s: self._on_curve(run, s))
+        if clean:
+            marks["phases"] = clean
+        else:
+            marks.pop("phases", None)
         run["marks"] = marks
         self._save()
         return run
@@ -666,7 +708,9 @@ class RereadError(Exception):
 def _shift_marks(marks: dict[str, Any], delta: float) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for key, value in marks.items():
-        if key == "ranges" and isinstance(value, dict):
+        if key == "phases" and isinstance(value, list):
+            out[key] = [{**p, "start": round(p["start"] + delta, 1)} for p in value]
+        elif key == "ranges" and isinstance(value, dict):
             out[key] = {n: [round(a + delta, 1), round(b + delta, 1)] for n, (a, b) in value.items()}
         elif isinstance(value, int | float) and not isinstance(value, bool):
             out[key] = round(value + delta, 1)
@@ -723,13 +767,17 @@ def merge_reread(
         return None  # the stored run is all there is
     marks: dict[str, Any] = {}
     ranges: dict[str, Any] = {}
+    phases: list[dict[str, Any]] = []
     for piece in sorted(pieces, key=lambda r: r is run):  # the clicked run's marks win
         sp = _span(piece)
         shifted = _shift_marks(piece.get("marks") or {}, (sp[0] - start).total_seconds() if sp else 0.0)
         ranges.update(shifted.pop("ranges", {}))
+        phases.extend(shifted.pop("phases", []))  # the pieces' phases, one after another
         marks.update(shifted)
     if ranges:
         marks["ranges"] = ranges
+    if phases:
+        marks["phases"] = clean_phases(phases, 0.0, lambda x: round(min(max(0.0, x), duration), 1))
     # the ring: of the piece that rang by its rule (or countdown), else the last one's
     rang = trigger = None
     simulated = any(p.get("simulated") for p in pieces)
