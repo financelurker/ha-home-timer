@@ -13,6 +13,7 @@ from custom_components.home_timer.power import DoneRule, Trace
 from custom_components.home_timer.runs import (
     KEEP,
     MAX_POINTS,
+    STORAGE_VERSION,
     RunStore,
     compact,
     detect_runs,
@@ -21,6 +22,7 @@ from custom_components.home_timer.runs import (
     make_run,
     noise,
     runs_from_history,
+    runs_key,
 )
 from custom_components.home_timer.stations import PowerConfig
 
@@ -204,6 +206,18 @@ async def test_deleting_the_area_deletes_its_runs(hass: HomeAssistant, freezer) 
     await again.async_load()
     assert again.list(station) == []
 
+
+async def test_marks_other_than_done_are_dropped_on_load(hass: HomeAssistant, hass_storage) -> None:
+    run = lambda rid, marks: {"id": rid, "start": T0.isoformat(), "duration": 60, "t": [0], "w": [100], "marks": marks}  # noqa: E731
+    hass_storage[runs_key("e1")] = {"version": STORAGE_VERSION, "key": runs_key("e1"), "data": {"runs": {"s1": [
+        run("a", {"done": 5, "phases": [{"name": "Wash", "start": 0}], "ranges": {"wash": [0, 9]}, "wash_start": 1}),
+        run("b", {"phases": [{"name": "Wash", "start": 0}]}),
+        run("c", [1, 2]),
+        run("d", {"done": True}),
+    ]}}}
+    store = RunStore(hass, "e1")
+    await store.async_load()
+    assert [r["marks"] for r in store.runs["s1"]] == [{"done": 5}, {}, {}, {}]
 
 def test_a_run_going_at_the_first_reading_is_left_out() -> None:
     config = PowerConfig(sensor=SENSOR, on_above=10, off_after=30)

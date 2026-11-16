@@ -331,8 +331,9 @@ class RunStore:
                 str(k): [r for r in v if isinstance(r, dict) and r.get("id")] for k, v in runs.items() if isinstance(v, list)
             }
             for run in (r for v in self.runs.values() for r in v):  # marks other than "done" (phases, briefly) are gone
-                marks = run.get("marks") or {}
-                run["marks"] = {"done": marks["done"]} if isinstance(marks.get("done"), int | float) else {}
+                marks = run.get("marks") if isinstance(run.get("marks"), dict) else {}
+                done = marks.get("done")
+                run["marks"] = {"done": done} if isinstance(done, int | float) and not isinstance(done, bool) else {}
         self.imported = {str(s) for s in data.get("imported", []) if isinstance(s, str)}
         pending = data.get("pending")
         if isinstance(pending, dict):
