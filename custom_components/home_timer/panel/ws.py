@@ -9,6 +9,7 @@ station/delete    remove a station
 runs/list         a power station's stored runs (without curves), the current run, the sensor's report rate and noise
 runs/get          one run with its curve ("current": the run going on)
 runs/delete       delete a stored run
+runs/reread       read a stored run again from the recorder's history (its real start, its whole curve)
 runs/preview      what saved settings and a draft make of each stored run (and of the current one)
 runs/mark         mark when a run was done (or remove the mark); "current": done now
 runs/skip         leave a run out of learning, or take it back in
@@ -37,7 +38,7 @@ from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_AREA_ID, DOMAIN
 from ..learn import MIN_MARKED, SEARCHES, Cancelled, forget_searches, search
-from ..runs import CURRENT, KEEP, compact, simulate, summary
+from ..runs import CURRENT, KEEP, RereadError, async_reread_run, compact, simulate, summary
 from ..stations import CONF_PRESETS, SUBENTRY_STATION, PowerConfig
 from .edit import check_options, check_presets, check_station, draft_power
 from .settings import async_save_settings, get_settings
@@ -49,7 +50,7 @@ PREFIX = DOMAIN
 @callback
 def async_setup_ws(hass: HomeAssistant) -> None:
     for command in (ws_config_get, ws_area_create, ws_area_save, ws_area_delete, ws_station_save, ws_station_delete, ws_settings_save,
-                    ws_runs_list, ws_runs_get, ws_runs_delete, ws_runs_preview,
+                    ws_runs_list, ws_runs_get, ws_runs_delete, ws_runs_reread, ws_runs_preview,
                     ws_runs_mark, ws_runs_skip, ws_runs_suggest, ws_runs_suggest_status, ws_runs_suggest_cancel):
         websocket_api.async_register_command(hass, command)
     # searches running in the executor stop with Home Assistant
@@ -277,6 +278,26 @@ def ws_runs_delete(hass: HomeAssistant, connection: websocket_api.ActiveConnecti
         connection.send_error(msg["id"], "not_found", "Unknown run")
         return
     connection.send_result(msg["id"], {"deleted": True})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): f"{PREFIX}/runs/reread", **RUN_SCHEMA, vol.Required("run_id"): str})
+@websocket_api.async_response
+async def ws_runs_reread(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
+    """A stored run read again from the history: ``{"run": summary}`` when it got more (an earlier
+    start, its whole curve; pieces of the same run joined), ``{"run": None}`` when not."""
+    if (engine := _engine(hass, connection, msg)) is None:
+        return
+    station = engine.stations.get(msg["station_id"])
+    if station is None or station.power is None or engine.runs.get(msg["station_id"], msg["run_id"]) is None:
+        connection.send_error(msg["id"], "not_found", "Unknown run")
+        return
+    try:  # (the user's click: pieces of the same run are joined)
+        run = await async_reread_run(hass, engine.runs, msg["station_id"], msg["run_id"], station.power)
+    except RereadError as err:
+        connection.send_error(msg["id"], str(err), str(err))
+        return
+    connection.send_result(msg["id"], {"run": summary(run) if run else None})
 
 
 def _preset_seconds(presets: list[Any], preset_id: str | None) -> float | None:
