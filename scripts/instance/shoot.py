@@ -115,6 +115,28 @@ def main() -> None:
             check("suggestions from the marked runs", page.locator("home-timer-panel .sug").count() >= 2)
             page.wait_for_timeout(800)
             page.screenshot(path=OUT / "panel-learn.png")
+            # "Use" a suggestion after picking rules by hand: the rule's select follows it (a select the
+            # user touched ignores the options' selected attribute – the bug this guards against)
+            select = page.locator("home-timer-panel select.inlsel").first
+            saved = select.input_value()
+            sugs = page.locator("home-timer-panel .sug")
+            target = next((i for i in range(sugs.count()) if sugs.nth(i).get_attribute("data-type") not in (None, saved)), None)
+            if target is None:
+                check("Use: a suggestion of another rule to try", False)
+            else:
+                rule = sugs.nth(target).get_attribute("data-type")
+                select.select_option(rule)  # picked by hand once …
+                page.wait_for_timeout(400)
+                select.select_option("off")  # … then another
+                page.wait_for_timeout(400)
+                sugs.nth(target).locator("button").click()
+                page.wait_for_timeout(600)
+                check("Use: the rule's select shows the suggested rule", select.input_value() == rule, (rule, select.input_value()))
+                discard = page.locator("home-timer-panel .savebar button").first
+                if discard.count():
+                    discard.click()
+                    page.wait_for_timeout(600)
+                check("Discard: the select shows the saved rule again", select.input_value() == saved, (saved, select.input_value()))
             page.set_viewport_size({"width": 1366, "height": 860})
         if want("panel-station"):
             go(page, f"/home-timer/station/{ref['entry']}/{ref['hob']['id']}")
