@@ -561,3 +561,16 @@ async def test_phases_over_the_websocket(hass: HomeAssistant, kitchen, freezer, 
     assert (await client.receive_json())["result"]["marks"] == {}
     await client.send_json_auto_id({**base, "run_id": "nope", "phases": None})
     assert (await client.receive_json())["error"]["code"] == "not_found"
+
+
+async def test_phases_of_a_run_picked_up_late_start_with_its_curve(hass: HomeAssistant) -> None:
+    from custom_components.home_timer.runs import RunStore
+
+    store = RunStore(hass, "e1")
+    trace = Trace()
+    for t, w in ((120, 2000), (600, 200), (900, 0)):
+        trace.add(t, w)
+    run = make_run(T0, 900, trace, on_above=5, rang=None, trigger="off")
+    store.add("s1", run)
+    marked = store.set_phases("s1", run["id"], [{"name": "Heat", "start": 120}, {"name": "Wash", "start": 600}])
+    assert marked["marks"]["phases"] == [{"name": "Heat", "start": 120.0}, {"name": "Wash", "start": 600.0}]

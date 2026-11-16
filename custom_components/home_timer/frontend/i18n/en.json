@@ -405,5 +405,6 @@
   "phases.this_run": "This run's phases:",
   "phases.hint": "Click on the bar where a phase starts – it snaps to the jump nearby. Drag an edge, or select a phase and move its start with ← → (Shift: 10 s). A phase lasts until the next one starts.",
   "phases.hint_first": "Click on the bar where the second phase starts (the first starts with the run) – it snaps to the jump nearby.",
-  "runs.legend.phases": "Phases (your marks)"
+  "runs.legend.phases": "Phases (your marks)",
+  "phases.too_many": "At most {n} phases per run."
 }

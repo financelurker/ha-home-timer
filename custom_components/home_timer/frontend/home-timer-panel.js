@@ -22,6 +22,7 @@ function loadFold() {
 }
 
 // the done rule as a list of steps (one step is stored as the plain rule)
+const MAX_PHASES = 40; // per run (as the store keeps them)
 const STEP_KEYS = ["phase", "repeat", "optional"]; // reserved per step for phases (later): kept as they are
 const keepKeys = (step) => Object.fromEntries(STEP_KEYS.filter((k) => step && k in step).map((k) => [k, step[k]]));
 const doneSteps = (done) => (done?.steps?.length ? done.steps : [done || { type: "off" }]);
@@ -1073,10 +1074,13 @@ class HomeTimerPanel extends LitElement {
   // A run's phases are marked by you on the bar under the curve: one after another, each until the next starts
   // (the first with the run). Saved at once, like marks.
 
-  // the names used in the station's runs, in their usual order (by where they start, on average)
+  // the names used in the station's runs, in their usual order (by where they start, on average) – worked out once
+  // per list of runs
   _phaseNames(key) {
+    const runs = this._runs[key]?.runs || [];
+    if (this._namesMemo?.runs === runs) return [...this._namesMemo.names];
     const at = new Map();
-    for (const r of this._runs[key]?.runs || []) {
+    for (const r of runs) {
       const list = r.marks?.phases || [];
       list.forEach((p) => {
         const share = r.duration ? p.start / r.duration : 0;
@@ -1084,19 +1088,25 @@ class HomeTimerPanel extends LitElement {
         at.set(p.name, { sum: x.sum + share, n: x.n + 1 });
       });
     }
-    return [...at.entries()].sort((a, b) => a[1].sum / a[1].n - b[1].sum / b[1].n).map(([name]) => name);
+    const names = [...at.entries()].sort((a, b) => a[1].sum / a[1].n - b[1].sum / b[1].n).map(([name]) => name);
+    // colours: by when a name was first used (oldest run first) – a new name does not change the others' colours
+    const first = [];
+    for (const r of [...runs].reverse()) for (const p of r.marks?.phases || []) if (!first.includes(p.name)) first.push(p.name);
+    this._namesMemo = { runs, names, first };
+    return [...names];
   }
 
   // one colour per name, the same in every run of the station
   _phaseColors(key, spans) {
-    const names = this._phaseNames(key);
-    for (const sp of spans) if (!names.includes(sp.name)) names.push(sp.name);
-    return spans.map((sp) => PHASE_COLORS[names.indexOf(sp.name) % PHASE_COLORS.length]);
+    this._phaseNames(key);
+    const first = [...(this._namesMemo?.first || [])];
+    for (const sp of spans) if (!first.includes(sp.name)) first.push(sp.name);
+    return spans.map((sp) => PHASE_COLORS[first.indexOf(sp.name) % PHASE_COLORS.length]);
   }
 
   _setPhases(area, station, run, list, save = true) {
     const key = this._runsKey(area.entry_id, station.id);
-    const phases = list.map((p, i) => ({ name: p.name, start: i === 0 ? 0 : Math.round(p.start * 10) / 10 }));
+    const phases = list.map((p, i) => ({ name: p.name, start: i === 0 ? run.from || 0 : Math.round(p.start * 10) / 10 }));
     const { phases: _old, ...others } = run.marks || {};
     const marks = phases.length ? { ...others, phases } : others;
     if (this._run?.key === key && this._run.id === run.id) this._run = { ...this._run, data: { ...this._run.data, marks } };
@@ -1138,13 +1148,15 @@ class HomeTimerPanel extends LitElement {
       return names.slice(k + 1).find((n) => !used.has(n)) || t("phases.default", { n: i + 1 });
     };
     const select = (sel) => (this._phaseEdit = { key: zkey, sel, hover: null });
+    const from = run.from || 0; // (a run picked up late: its curve – and its first phase – start there)
+    const end = run.duration || 0;
     const down = (e) => {
       if (e.button !== 0) return;
       const s = at(e);
       if (s == null) return;
-      if (!edit) { // not marking: a click on a phase starts marking with it selected
-        const i = spans.findIndex((sp) => s >= sp.from && s <= sp.to);
-        return select(i >= 0 ? i : null);
+      if (!edit) { // not marking: a tap on a phase starts marking with it selected (on letting go – not while scrolling)
+        this._phaseTap = { x: e.clientX, y: e.clientY, s };
+        return;
       }
       const px = m.x(s);
       const edge = list.findIndex((p, i) => i > 0 && Math.abs(m.x(p.start) - px) < 8);
@@ -1154,9 +1166,10 @@ class HomeTimerPanel extends LitElement {
         return select(edge);
       }
       const where = snap(s);
+      if (where <= from + 1 || where >= end - 1) return; // a phase starts within the run
+      if (list.length >= MAX_PHASES) return (this._notice = { kind: "warn", text: t("phases.too_many", { n: MAX_PHASES }) });
       if (!list.length) {
-        if (where <= 1) return;
-        const first = { name: names[0] || t("phases.default", { n: 1 }), start: 0 };
+        const first = { name: names[0] || t("phases.default", { n: 1 }), start: from };
         const fresh = [first, { name: names[1] || t("phases.default", { n: 2 }), start: where }];
         this._setPhases(area, station, run, fresh);
         return select(1);
@@ -1174,16 +1187,24 @@ class HomeTimerPanel extends LitElement {
       if (this._phaseDrag) {
         if (!(e.buttons & 1)) return (this._phaseDrag = null);
         const j = this._phaseDrag;
-        const lo = list[j - 1].start + 1;
-        const hi = j + 1 < list.length ? list[j + 1].start - 1 : run.duration;
+        const lo = Math.max(list[j - 1].start, from) + 1;
+        const hi = j + 1 < list.length ? list[j + 1].start - 1 : end - 1;
         list[j].start = Math.min(hi, Math.max(lo, snap(s)));
         this._phaseDragList = list;
         this._setPhases(area, station, run, list, false);
         return;
       }
-      this._phaseEdit = { ...edit, hover: snap(s) };
+      const hover = snap(s);
+      cancelAnimationFrame(this._phaseFrame); // (once a frame)
+      this._phaseFrame = requestAnimationFrame(() => this._phaseEdit?.key === zkey && (this._phaseEdit = { ...this._phaseEdit, hover }));
     };
-    const up = () => {
+    const up = (e) => {
+      const tap = this._phaseTap;
+      this._phaseTap = null;
+      if (tap && e?.type === "pointerup" && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) < 8) {
+        const i = spans.findIndex((sp) => tap.s >= sp.from && tap.s <= sp.to);
+        return select(i >= 0 ? i : null);
+      }
       if (!this._phaseDrag) return;
       this._phaseDrag = null;
       if (this._phaseDragList) this._setPhases(area, station, run, this._phaseDragList); // saved once it is let go
@@ -1195,8 +1216,8 @@ class HomeTimerPanel extends LitElement {
       if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && i > 0) {
         e.preventDefault();
         const step = (e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 10 : 1);
-        const lo = list[i - 1].start + 1;
-        const hi = i + 1 < list.length ? list[i + 1].start - 1 : run.duration;
+        const lo = Math.max(list[i - 1].start, from) + 1;
+        const hi = i + 1 < list.length ? list[i + 1].start - 1 : end - 1;
         list[i].start = Math.min(hi, Math.max(lo, list[i].start + step));
         this._setPhases(area, station, run, list);
       } else if (e.key === "Delete" || e.key === "Backspace") {
@@ -1216,14 +1237,14 @@ class HomeTimerPanel extends LitElement {
       this._setPhases(area, station, run, list);
     };
     const sel = edit?.sel != null && spans[edit.sel] ? edit.sel : null;
-    const bar = html`<div class="pbox ${edit ? "marking" : ""}" tabindex="0" role="group" aria-label=${t("phases.bar")}
+    const bar = html`<div class="pbox ${edit ? "marking" : ""}" tabindex=${edit ? "0" : "-1"} role="group" aria-label=${t("phases.bar")}
         @pointerdown=${down} @pointermove=${move} @pointerup=${up} @pointercancel=${up} @lostpointercapture=${up}
         @pointerleave=${() => edit && edit.hover != null && (this._phaseEdit = { ...edit, hover: null })} @keydown=${keys}>
         ${renderPhaseBar(m, spans, { colors, sel, split: edit && !this._phaseDrag ? edit.hover : null, empty: t("phases.empty"), marking: !!edit })}
       </div>`;
     if (!edit) return bar;
     return html`${bar}
-      <div class="ptool">
+      <div class="ptool" @keydown=${(e) => e.target.tagName !== "INPUT" && keys(e)}>
         ${spans.map((sp, i) => html`<button class="phchip ${i === sel ? "on" : ""}" @click=${() => select(i)}><i style="background:${colors[i]}"></i>${sp.name}</button>`)}
         ${sel != null ? html`<span class="psel">
             <input class="pname" .value=${spans[sel].name} list="ht-phase-names" maxlength="40" aria-label=${t("phases.name")}

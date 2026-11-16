@@ -777,7 +777,8 @@ def merge_reread(
     if ranges:
         marks["ranges"] = ranges
     if phases:
-        marks["phases"] = clean_phases(phases, 0.0, lambda x: round(min(max(0.0, x), duration), 1))
+        first = trace.start if trace.times else 0.0  # (the new run's own start of its curve)
+        marks["phases"] = clean_phases(phases, first, lambda x: round(min(max(first, x), duration), 1))
     # the ring: of the piece that rang by its rule (or countdown), else the last one's
     rang = trigger = None
     simulated = any(p.get("simulated") for p in pieces)

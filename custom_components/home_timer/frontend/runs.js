@@ -122,7 +122,8 @@ export function renderChart(run, m, { labels, hover, unit = "W", marks = [], win
   const flip = (k) => m.x(k.t) > m.width - 130; // a label near the right edge goes to the left of its line
   const zoneX = (s) => Math.max(m.x(s), left) + 4; // a zone's label stays in view
   // a ring's label where your mark's label is (both end there, e.g. done at switch-off) goes to the second row
-  const nearDone = (k) => done && seen(done.t) && (flip(k) || m.x(k.t) - m.x(done.t) < 8) && Math.abs(m.x(k.t) - m.x(done.t)) < 170;
+  const row2Free = !marks.some((k) => k.dash) && !crowded; // (the draft's label and "stopped" use the second row)
+  const nearDone = (k) => row2Free && done && seen(done.t) && (flip(k) || m.x(k.t) - m.x(done.t) < 8) && Math.abs(m.x(k.t) - m.x(done.t)) < 170;
   // zoomed in, the data is clipped to the plot; labels are drawn only for what is in view (never cut)
   const data = svg`
       ${phases.map((p) => svg`<rect class="phb ${p.sel ? "sel" : ""}" x=${m.x(p.from)} y=${top} width=${Math.max(0, m.x(p.to) - m.x(p.from))} height=${m.plotH} style="fill:${p.c}"></rect>`)}
@@ -215,7 +216,8 @@ export function snapAt(run, s, radius) {
     if (t[i] < s - radius) continue;
     if (t[i] > s + radius) break;
     const d = Math.abs(w[i] - w[i - 1]);
-    if (d > jump && d >= Math.max(10, 0.1 * Math.max(w[i], w[i - 1]))) {
+    // a jump: a tenth of the level at least, and clearly more than the sensor scatters (any unit: W or kW)
+    if (d > jump && d >= Math.max(3 * (run.noise || 0), 0.1 * Math.max(w[i], w[i - 1])) && d > 0) {
       jump = d;
       best = t[i];
     }
