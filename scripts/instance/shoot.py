@@ -99,6 +99,8 @@ def main() -> None:
                 if page.locator("home-timer-panel svg.chart line.mark.dash").count():
                     break
             check("the curve shows the draft's ring", page.locator("home-timer-panel svg.chart line.mark.dash").count() == 1)
+            page.locator("home-timer-panel .pane").first.evaluate("el => el.scrollTo(0, 0)")  # the clicks scrolled it
+            page.wait_for_timeout(600)
             page.screenshot(path=OUT / "panel-runs.png")
             page.set_viewport_size({"width": 1366, "height": 860})
         if want("panel-learn"):
@@ -164,22 +166,33 @@ def main() -> None:
             if seeded.count():
                 seeded.first.click()
                 page.wait_for_timeout(1500)
-            first = page.locator("home-timer-panel .step select.inlsel").first.input_value()
             page.locator("home-timer-panel .addstep button").click()
             page.wait_for_timeout(2500)
             steps = page.locator("home-timer-panel .steps.many .step")
             check("+ Add a step: two steps joined by then", steps.count() == 2 and page.locator("home-timer-panel .then").count() == 1, steps.count())
-            check("steps: the curve pins where a step was met", page.locator("home-timer-panel svg.chart g.pin").count() >= 1)
+            # for the docs: "it has run for 2 min, then the power falls by …" – the drop only counts once 2 min are past
+            steps.nth(1).locator("select.inlsel").select_option("drop")
+            page.wait_for_timeout(400)
+            steps.nth(0).locator("select.inlsel").select_option("time")
+            page.wait_for_timeout(400)
+            steps.nth(0).locator(".sentence input").first.fill("120")
+            steps.nth(1).locator(".sentence input").last.fill("0")  # its "ignore" counts from step 1: none needed
+            page.wait_for_timeout(2500)
+            check("steps: the curve pins where each step was met", page.locator("home-timer-panel svg.chart g.pin").count() == 2)
+            page.set_viewport_size({"width": 1366, "height": 1640})
+            page.locator("home-timer-panel .pane").first.evaluate("el => el.scrollTo(0, 0)")  # the selects scrolled it
+            page.wait_for_timeout(600)
             page.screenshot(path=OUT / "panel-steps.png")
+            types = [steps.nth(i).locator("select.inlsel").input_value() for i in range(2)]
             steps.nth(1).locator(".tools button").first.click()  # ▲
             page.wait_for_timeout(600)
             moved = [steps.nth(i).locator("select.inlsel").input_value() for i in range(2)]
-            check("▲ moves a step up", moved == ["trend", first], moved)
+            check("▲ moves a step up", moved == types[::-1], moved)
             # dragging the handle onto the other step moves it back
             steps.nth(1).locator(".handle").drag_to(steps.nth(0))
             page.wait_for_timeout(600)
             dragged = [steps.nth(i).locator("select.inlsel").input_value() for i in range(2)]
-            check("dragging moves a step", dragged == [first, "trend"], dragged)
+            check("dragging moves a step", dragged == types, dragged)
             check("a sequence offers no \"switches off\"", steps.nth(1).locator("option[value=off]").count() == 0)
             steps.nth(1).locator(".tools button").nth(2).click()  # ×
             page.wait_for_timeout(600)
@@ -221,8 +234,9 @@ def main() -> None:
             pp.screenshot(path=OUT / "phone-area.png")
             go(pp, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
             pp.screenshot(path=OUT / "phone-power.png")
+            pp.locator("home-timer-panel .runrow").first.scroll_into_view_if_needed()  # down to the runs
             pp.mouse.move(195, 600)
-            pp.mouse.wheel(0, 760)  # down to what the timer should do
+            pp.mouse.wheel(0, -260)  # … with the end of what the timer should do above them
             pp.wait_for_timeout(800)
             pp.screenshot(path=OUT / "phone-runs.png")
         browser.close()
