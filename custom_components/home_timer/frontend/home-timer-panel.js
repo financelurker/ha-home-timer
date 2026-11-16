@@ -1129,7 +1129,7 @@ class HomeTimerPanel extends LitElement {
     this._markSaves.set(id, { timer: setTimeout(send, 400), send });
   }
 
-  // the bar under the curve; marking: a click splits there (at the jump nearby), the edges are dragged, the chips
+  // the bar under the curve; marking: a click splits there (at the jump nearby with Alt or "snap" on), edges are dragged, the chips
   // below select a phase to rename, move (← →) or remove
   _renderPhases(area, station, run, m, zkey, spans, colors) {
     const t = this._t;
