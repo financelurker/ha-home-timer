@@ -582,7 +582,7 @@ class HomeTimerPanel extends LitElement {
     onChange = changed;
     if (kind === "select") {
       return html`<label class="fieldwrap"><span class="ff"><span class="fl">${label}</span>
-          <select ?disabled=${disabled} @change=${(e) => onChange(e.target.value || null)}>
+          <select ?disabled=${disabled} .value=${value || ""} @change=${(e) => onChange(e.target.value || null)}>
             <option value="" ?selected=${!value}>–</option>
             ${selector.select.options.map((o) => html`<option value=${o.value} ?selected=${o.value === value}>${o.label}</option>`)}
           </select></span>${helper ? html`<span class="help">${helper}</span>` : nothing}${this._err(key, field)}</label>`;
@@ -1174,7 +1174,7 @@ class HomeTimerPanel extends LitElement {
       ${sug?.error ? html`<div class="err">${sug.error}</div>` : nothing}
       ${sug?.data && sug.sig !== this._suggestSig(rkey, d) ? html`<div class="note">${t("learn.stale")}</div>` : nothing}
       ${sug?.data && !sug.data.suggestions.length ? html`<div class="note">${t(sug.data.marked < need ? "learn.not_usable" : "learn.none")}</div>` : nothing}
-      ${(sug?.data?.suggestions || []).map((x, i) => html`<div class="sug ${i === 0 ? "best" : ""}">
+      ${(sug?.data?.suggestions || []).map((x, i) => html`<div class="sug ${i === 0 ? "best" : ""}" data-type=${x.rule.type}>
           <div class="sugh"><span>${this._ruleText(x.rule)}</span>
             <button class="btn sm" @click=${() => this._useSuggestion(key, set, x.rule)}>${t("learn.use")}</button></div>
           <div class="chs"><span class=${x.on_time === x.runs ? "v on_time" : "v late"}>${t("learn.fits", { on: x.on_time, n: x.runs })}</span>
@@ -1291,7 +1291,9 @@ class HomeTimerPanel extends LitElement {
     const rule = d.power.done?.type || "off";
     const fields = Object.fromEntries(spec[rule].fields.map((f) => [f.key, f]));
     const clearRule = () => (this._errors = { ...this._errors, [key]: Object.fromEntries(Object.entries(this._errors[key] || {}).filter(([k]) => !k.startsWith("power.done."))) });
-    const typeSelect = html`<select class="inlsel" aria-label=${t("power.rule")} @change=${(e) => (clearRule(), set((x) => (x.power.done = { type: e.target.value, ...spec[e.target.value].defaults })))}>
+    // .value: the select follows the draft when the rule changes elsewhere (Use, Discard) – the browser ignores
+    // ?selected on an option the user once picked. ?selected stays: on a new select .value comes before its options.
+    const typeSelect = html`<select class="inlsel" aria-label=${t("power.rule")} .value=${rule} @change=${(e) => (clearRule(), set((x) => (x.power.done = { type: e.target.value, ...spec[e.target.value].defaults })))}>
         ${Object.keys(spec).map((r) => html`<option value=${r} ?selected=${rule === r}>${t(`rule_verb.${r}`)}</option>`)}
       </select>`;
     const parts = t(`rule_sentence.${rule}`).split(/(\{\w+\})/);
@@ -1308,7 +1310,7 @@ class HomeTimerPanel extends LitElement {
         const f = fields[k.split(".").pop()];
         return html`<div class="err" role="alert">${t(`error.${code}`)} ${t("allowed", { min: f.min, max: f.max, unit: f.unit })}</div>`;
       })}
-      ${this._used?.key === key && same(this._used.rule, d.power.done) ? html`<div class="note">${t("learn.used")}</div>` : nothing}
+      ${this._used?.key === key && same(this._used.rule, d.power.done) && station && !same(station.power.done, d.power.done) ? html`<div class="note">${t("learn.used")}</div>` : nothing}
       ${rule === "off" && !this._markedCount(station) ? nothing : this._previewSummary(station, d, preview)}
       ${this._renderSuggest(key, d, set, station)}
       ${this._help(`${t(`rule.${rule}_hint`)} ${t("power.done_hint")}`, t("rule.all_hint"), "rules")}`;
