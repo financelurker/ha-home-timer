@@ -744,6 +744,8 @@ def merge_reread(
         if best is not None:
             rang = float(best["rang"]) + (_span(best)[0] - start).total_seconds()
             trigger = best.get("trigger")
+        else:
+            trigger = run.get("trigger")
     new = make_run(
         start, duration, trace, on_above=config.on_above, rang=rang, trigger=trigger,
         source=run.get("source") or "live", simulated=simulated, sensor=config.sensor, marks=marks,
