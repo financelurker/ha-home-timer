@@ -426,31 +426,36 @@ class RunStore:
         while the steps are the same (``rule``: the done rule's data)."""
         self._pending_set(station_id, start, "steps", {"met": step, "at": at, "rule": rule} if step else None)
 
-    def set_curve(self, station_id: str, start: str, times: list[float], watts: list[float], at: str) -> None:
-        """The run going on so far (seconds after its start, W) when the area unloads – picked up
-        when it loads again (``at``: when it was kept)."""
-        if not times:
+    def set_curve(self, station_id: str, start: str, curve: dict[str, Any]) -> None:
+        """The run going on so far when the area unloads – picked up when it loads again.
+        ``curve``: ``t`` (seconds after ``run_start``), ``w``, ``run_start`` (the reading that began
+        the run), ``sensor``, ``at`` (when it was kept)."""
+        if not curve.get("t"):
             return
-        t, w = compact(list(times), list(watts), CURVE_KEEP)
-        self._pending_set(station_id, start, "curve", {"t": t, "w": w, "at": at})
+        t, w = compact(list(curve["t"]), list(curve["w"]), CURVE_KEEP)  # (the same step curve, rounded)
+        self._pending_set(station_id, start, "curve", {**curve, "t": t, "w": w})
 
-    def pending_curve(self, station_id: str, start: str) -> tuple[list[float], list[float], str] | None:
+    def pending_curve(self, station_id: str, start: str) -> dict[str, Any] | None:
         entry = self.pending.get(station_id)
         curve = entry.get("curve") if entry and entry.get("start") == start else None
         if not isinstance(curve, dict):
             return None
-        t, w, at = curve.get("t"), curve.get("w"), curve.get("at")
-        if not isinstance(t, list) or not isinstance(w, list) or len(t) != len(w) or not t or not isinstance(at, str):
+        t, w = curve.get("t"), curve.get("w")
+        if not isinstance(t, list) or not isinstance(w, list) or len(t) != len(w) or not t:
             return None
-        if not all(isinstance(x, int | float) for x in (*t, *w)):
+        if not all(isinstance(x, int | float) and not isinstance(x, bool) for x in (*t, *w)):
             return None
-        return [float(x) for x in t], [float(x) for x in w], at
+        if not all(isinstance(curve.get(k), str) for k in ("at", "run_start", "sensor")):
+            return None
+        return {**curve, "t": [float(x) for x in t], "w": [float(x) for x in w]}
 
     def drop_curve(self, station_id: str, start: str) -> None:
         self._pending_set(station_id, start, "curve", None)
 
     def _pending_set(self, station_id: str, start: str, key: str, value: Any) -> None:
         entry = self.pending.get(station_id)
+        if value is None and (not entry or entry.get("start") != start or key not in entry):
+            return  # nothing of this run to remove: other data stays
         entry = dict(entry) if entry and entry.get("start") == start else {"start": start}
         if value is None:
             entry.pop(key, None)
@@ -490,10 +495,11 @@ class RunStore:
 
     def prune(self, known: set[str]) -> None:
         """Forget the runs of deleted stations."""
-        gone = [s for s in {*self.runs, *self.imported} if s not in known]
+        gone = [s for s in {*self.runs, *self.imported, *self.pending} if s not in known]
         for station_id in gone:
             self.runs.pop(station_id, None)
             self.imported.discard(station_id)
+            self.pending.pop(station_id, None)
         if gone:
             self._save()
 

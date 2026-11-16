@@ -98,6 +98,6 @@ With marks, the preview judges each run: *on time*, *too early* or *too late*. A
 After a restart (or when the area reloads, e.g. after saving a preset) the first valid power reading decides – while the sensor is still unavailable, nothing happens:
 
 - **Still running:** its timer goes on with the run's curve so far – kept when the area unloaded, if it was back within 5 minutes (a reload, a quick restart); the last reading counts as holding through the gap. After a longer gap the readings in between are unknown: rules that look back (pause, drop, the trend changing, cycling) wait until they have a full window of new readings, and *energy* only counts from then. Steps already met stay met (while the steps are not changed).
-- **Off:** it is handled like switching off – *until it switches off* rings, a warning is cancelled (or acknowledged if it rang), a preset is cancelled if set so. The run is not counted (nor stored), because its end is unknown.
+- **Off:** with the curve kept (a short gap), *stopped after* counts on as if nothing happened – a pause goes on. Otherwise it is handled like switching off – *until it switches off* rings, a warning is cancelled (or acknowledged if it rang), a preset is cancelled if set so. The run is not counted (nor stored), because its end is unknown.
 
 A run that goes on across a longer gap is stored with the readings from the restart on; the panel says where its curve starts.
