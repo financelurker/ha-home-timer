@@ -6,7 +6,7 @@
 
 import { LitElement, html, svg, css, nothing } from "./vendor/lit.js";
 import { clone, formatDuration, looseTimers, parseDuration, parseRoute, same, stationLive, tempId, translator } from "./helpers.js";
-import { chartModel, renderChart, secondsAt, valueAt } from "./runs.js";
+import { MIN_VIEW, chartModel, overviewModel, renderChart, renderOverview, secondsAt, valueAt, zoomView } from "./runs.js";
 
 const PANEL = "home-timer";
 const WS = "home_timer";
@@ -46,6 +46,7 @@ class HomeTimerPanel extends LitElement {
     _run: { state: true },
     _hover: { state: true },
     _chartWidth: { state: true },
+    _zoom: { state: true },
     _reread: { state: true },
     _confirm: { state: true },
     _fold: { state: true },
@@ -98,6 +99,9 @@ class HomeTimerPanel extends LitElement {
 
   disconnectedCallback() {
     super.disconnectedCallback();
+    cancelAnimationFrame(this._wheelFrame);
+    this._wheelFrame = null;
+    this._wheelSum = null;
     clearInterval(this._searchPoll);
     this._searchPoll = null;
     clearInterval(this._timer);
@@ -972,7 +976,19 @@ class HomeTimerPanel extends LitElement {
     const tol = Number(p.tolerance ?? 60);
     const markT = this._learning(d) ? run.marks?.done ?? null : null;
     const done = learning && markT != null ? { t: markT, label: t("mark.mark", { time: formatDuration(markT) }), tol, tolLabel: `${tol} s` } : null;
-    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 250, onAbove: Number(p.on_above || 0), ignore: ignore ? ignore + (pv?.draft?.start || 0) : 0, extra: [...marks.map((k) => k.t), ...(done ? [done.t + tol] : [])] });
+    const extra = [...marks.map((k) => k.t), ...(done ? [done.t + tol] : [])];
+    const zkey = `${key}:${run.id}:${run.start}`; // the zoom belongs to the run shown (the run going on is always "current")
+    const view = this._zoom?.key === zkey ? this._zoom.view : null;
+    const m = chartModel(run, { width: this._chartWidth || 600, height: this.narrow ? 200 : 250, onAbove: Number(p.on_above || 0), ignore: ignore ? ignore + (pv?.draft?.start || 0) : 0, extra, view });
+    const zoomable = m.zoomed || m.end > 2 * MIN_VIEW;
+    const zoom = (factor, at) => (this._zoom = { key: zkey, view: zoomView(view, m.end, factor, at) });
+    const pan = (share) => (this._zoom = { key: zkey, view: zoomView({ from: m.from + share * m.span, to: m.to + share * m.span }, m.end, 1, m.from) });
+    // a button that disables itself (the whole run shown, the narrowest view) hands the focus to the chart
+    const keepFocus = () => this.updateComplete.then(() => {
+      if (this.shadowRoot?.activeElement?.disabled) this.shadowRoot.querySelector(".chartbox")?.focus();
+    });
+    // zooming in keeps your mark in view (where it is placed exactly); else the middle of what is shown
+    const centre = () => (markT != null && markT >= m.from && markT <= m.to ? markT : (m.from + m.to) / 2);
     const outlier = this._isOutlier(key, run.id);
     const hv = this._hover != null ? valueAt(run, this._hover) : null;
     const labels = { aria: t("runs.chart.aria"), stopped: t("runs.chart.stopped"), unknown: t("runs.chart.unknown"), ignored: t("runs.chart.ignored") };
@@ -988,12 +1004,33 @@ class HomeTimerPanel extends LitElement {
       </div>
       ${learning && run.skip ? html`<div class="note">${t("learn.left_out")}</div>` : nothing}
       ${this._renderRereadNote(run, key)}
-      <div class="chartbox ${learning ? "marking" : ""}" tabindex=${learning && markT != null ? "0" : "-1"} aria-label=${t("runs.chart.aria")}
+      ${zoomable ? html`<div class="zoombar" role="group" aria-label=${t("zoom.label")}>
+          ${m.zoomed ? html`<span class="chs">${formatDuration(m.from)} – ${formatDuration(m.to)}</span>` : this.narrow ? nothing : html`<span class="chs">${t("zoom.hint")}</span>`}
+          <button class="icon sm" aria-label=${t("zoom.out")} title=${t("zoom.out")} ?disabled=${!m.zoomed} @click=${() => (zoom(2, centre()), keepFocus())}><ha-icon icon="mdi:magnify-minus-outline"></ha-icon></button>
+          <button class="icon sm" aria-label=${t("zoom.in")} title=${t("zoom.in")} ?disabled=${m.span <= MIN_VIEW + 1e-6} @click=${() => (zoom(0.5, centre()), keepFocus())}><ha-icon icon="mdi:magnify-plus-outline"></ha-icon></button>
+          <button class="icon sm" aria-label=${t("zoom.all")} title=${t("zoom.all")} ?disabled=${!m.zoomed} @click=${() => ((this._zoom = null), keepFocus())}><ha-icon icon="mdi:arrow-expand-horizontal"></ha-icon></button>
+        </div>` : nothing}
+      <div class="chartbox ${learning ? "marking" : ""}" tabindex=${(learning && markT != null) || zoomable ? "0" : "-1"} role="group" aria-label=${t("runs.chart.aria")}
+        aria-keyshortcuts=${zoomable ? "+ - 0" : nothing} aria-description=${zoomable ? t("zoom.keys") : nothing}
         @pointermove=${(e) => this._pointer(m, e)} @pointerleave=${() => (cancelAnimationFrame(this._frame), (this._hover = null))}
         @pointerdown=${(e) => learning && this._dragStart(e, m, area, station, run)} @pointerup=${(e) => this._dragEnd(e)} @pointercancel=${(e) => this._dragEnd(e, true)}
-        @keydown=${(e) => learning && markT != null && this._markKey(e, area, station, run, markT)}>
+        @wheel=${(e) => zoomable && this._wheel(e, m, zoom, pan)}
+        @keydown=${(e) => {
+          if (zoomable && ["+", "=", "-", "0"].includes(e.key) && !e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            if (e.key === "0") this._zoom = null;
+            else zoom(e.key === "-" ? 2 : 0.5, centre());
+            return;
+          }
+          if (learning && markT != null) return this._markKey(e, area, station, run, markT);
+          if (m.zoomed && (e.key === "ArrowLeft" || e.key === "ArrowRight")) { // not marking: the arrows move along
+            e.preventDefault();
+            pan((e.key === "ArrowLeft" ? -1 : 1) * (e.shiftKey ? 0.5 : 0.1));
+          }
+        }}>
         ${renderChart(run, m, { labels, hover: this._hover, unit, marks, window, level, done, pins })}
       </div>
+      ${m.zoomed ? this._renderOverview(run, m, extra, zkey) : nothing}
       <div class="readout">${this._hover != null && hv != null ? `${formatDuration(this._hover)} · ${Math.round(hv * 10) / 10} ${unit}` : html`&nbsp;`}</div>
       ${this._learning(d) ? this._renderMarkBar(area, station, run, pv, outlier) : nothing}
       <div class="legend">
@@ -1059,11 +1096,23 @@ class HomeTimerPanel extends LitElement {
   }
 
   // a mark set, moved or removed: shown at once, saved after a short pause (nudges, drags)
+  // zoomed in: a mark moved out of view (buttons, keys) takes the view along
+  _followMark(run, done) {
+    const z = this._zoom;
+    if (!z?.view || !z.key.endsWith(`:${run.id}:${run.start}`)) return;
+    const { from, to } = z.view;
+    if (done >= from && done <= to) return;
+    const span = to - from;
+    const shift = done < from ? done - from - span * 0.1 : done - to + span * 0.1;
+    this._zoom = { key: z.key, view: { from: from + shift, to: to + shift } }; // (clamped to the run when drawn)
+  }
+
   _setMark(area, station, run, value, save = true) {
     const key = this._runsKey(area.entry_id, station.id);
     const done = value == null ? null : Math.max(0, Math.round(value * 10) / 10);
     const marks = done == null ? {} : { done };
     if (this._run?.key === key && this._run.id === run.id) this._run = { ...this._run, data: { ...this._run.data, marks } };
+    if (save && !this._drag && done != null) this._followMark(run, done);
     const list = this._runs[key];
     if (list) this._runs = { ...this._runs, [key]: { ...list, runs: list.runs.map((r) => (r.id === run.id ? { ...r, marks } : r)) } };
     if (!save) return;
@@ -1143,6 +1192,65 @@ class HomeTimerPanel extends LitElement {
   _clampMark(run, t) {
     const last = Math.max(run.duration || 0, (run.t || [0]).slice(-1)[0] || 0);
     return Math.min(Math.max(run.from || 0, t), last);
+  }
+
+  // Ctrl (or ⌘) + wheel, or pinching a touchpad: zoom around the pointer; zoomed in, a sideways wheel moves along.
+  // Wheel events come fast (a touchpad): they add up and are drawn once a frame.
+  _wheel(e, m, zoom, pan) {
+    if (this._drag) return; // the mark is being dragged on the scale of its start
+    const svgEl = e.currentTarget.querySelector("svg.chart");
+    if (!svgEl) return;
+    const unit = e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? m.plotW : 1; // lines, pages → pixels
+    const w = this._wheelSum || (this._wheelSum = { zoom: 0, pan: 0 });
+    if (e.ctrlKey || e.metaKey) {
+      e.preventDefault();
+      w.zoom += Math.max(-1, Math.min(1, (e.deltaY * unit) / 100)) * 0.35;
+      w.at = secondsAt(m, svgEl, e.clientX, true);
+    } else if (m.zoomed && Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+      e.preventDefault();
+      w.pan += (e.deltaX * unit) / m.plotW;
+    } else {
+      return;
+    }
+    if (this._wheelFrame) return;
+    this._wheelFrame = requestAnimationFrame(() => {
+      const sum = this._wheelSum;
+      this._wheelFrame = null;
+      this._wheelSum = null;
+      if (sum.zoom) zoom(Math.exp(sum.zoom), sum.at);
+      else if (sum.pan) pan(sum.pan);
+      this._hover = null; // the second under the pointer changed
+    });
+  }
+
+  // zoomed in: the whole run below the chart; drag it (or tap) to move the part shown – grabbing the window keeps
+  // where it was grabbed, a press beside it centres the window there
+  _renderOverview(run, m, extra, zkey) {
+    const o = overviewModel(run, this._chartWidth || 600, extra);
+    const at = (e) => {
+      const el = e.currentTarget.querySelector("svg.overview");
+      return el ? secondsAt(o, el, e.clientX, true) : null;
+    };
+    const place = (centre) => (this._zoom = { key: zkey, view: zoomView({ from: centre - m.span / 2, to: centre + m.span / 2 }, m.end, 1, centre) });
+    const down = (e) => {
+      if (e.button !== 0) return;
+      const s = at(e);
+      if (s == null) return;
+      e.currentTarget.setPointerCapture?.(e.pointerId);
+      const inside = s >= m.from && s <= m.to;
+      this._ovDrag = { offset: inside ? s - (m.from + m.to) / 2 : 0 };
+      if (!inside) place(s);
+    };
+    const move = (e) => {
+      if (!this._ovDrag || !(e.buttons & 1)) return (this._ovDrag = null);
+      const s = at(e);
+      if (s != null) place(s - this._ovDrag.offset);
+    };
+    const end = () => (this._ovDrag = null);
+    return html`<div class="ovbox" title=${this._t("zoom.overview")}
+      @pointerdown=${down} @pointermove=${move} @pointerup=${end} @pointercancel=${end} @lostpointercapture=${end}>
+      ${renderOverview(o, { from: m.from, to: m.to }, this._t("zoom.overview"))}
+    </div>`;
   }
 
   _markKey(e, area, station, run, mark) {
@@ -2107,6 +2215,14 @@ class HomeTimerPanel extends LitElement {
     .tag { font-size: 11.5px; font-weight: 500; padding: 2px 8px; border-radius: 10px; background: var(--ht-fill); color: var(--ht-s); white-space: nowrap; }
     .tag.live { background: color-mix(in srgb, var(--ht-run) 16%, transparent); color: var(--ht-run); }
     .chartbox { width: 100%; touch-action: pan-y; }
+    .zoombar { display: flex; align-items: center; justify-content: flex-end; gap: 2px; margin: 0 0 -4px; --mdc-icon-size: 18px; }
+    .zoombar .chs { margin-right: 6px; }
+    .zoombar .icon[disabled] { opacity: 0.35; cursor: default; }
+    .ovbox { width: 100%; touch-action: none; cursor: grab; margin-top: 2px; }
+    .ovbox svg { display: block; }
+    .overview .ovbg { fill: var(--secondary-background-color); }
+    .overview .ovcurve { fill: none; stroke: var(--ht-p); stroke-width: 1; opacity: 0.7; }
+    .overview .ovwin { fill: color-mix(in srgb, var(--primary-color) 14%, transparent); stroke: var(--primary-color); stroke-width: 1.5; }
     .chart { display: block; overflow: visible; }
     .chart .grid { stroke: var(--ht-d); stroke-width: 1; }
     .chart .axis { stroke: var(--ht-under); stroke-width: 1; }
