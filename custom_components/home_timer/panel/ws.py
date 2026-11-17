@@ -12,7 +12,6 @@ runs/delete       delete a stored run
 runs/reread       read a stored run again from the recorder's history (its real start, its whole curve)
 runs/preview      what saved settings and a draft make of each stored run (and of the current one)
 runs/mark         mark when a run was done (or remove the mark); "current": done now
-runs/phases       mark the phases of a run (one after another), or remove them
 runs/skip         leave a run out of learning, or take it back in
 runs/suggest      done rules that fit the marked runs (learn.py)
 runs/suggest_status   how far the station's search is (and its last result)
@@ -39,7 +38,7 @@ from homeassistant.helpers import entity_registry as er
 
 from ..const import CONF_AREA_ID, DOMAIN
 from ..learn import MIN_MARKED, SEARCHES, Cancelled, forget_searches, search
-from ..runs import CURRENT, KEEP, MAX_PHASE_NAME, MAX_PHASES, RereadError, async_reread_run, compact, simulate, summary
+from ..runs import CURRENT, KEEP, RereadError, async_reread_run, compact, simulate, summary
 from ..stations import CONF_PRESETS, SUBENTRY_STATION, PowerConfig
 from .edit import check_options, check_presets, check_station, draft_power
 from .settings import async_save_settings, get_settings
@@ -52,7 +51,7 @@ PREFIX = DOMAIN
 def async_setup_ws(hass: HomeAssistant) -> None:
     for command in (ws_config_get, ws_area_create, ws_area_save, ws_area_delete, ws_station_save, ws_station_delete, ws_settings_save,
                     ws_runs_list, ws_runs_get, ws_runs_delete, ws_runs_reread, ws_runs_preview,
-                    ws_runs_mark, ws_runs_phases, ws_runs_skip, ws_runs_suggest, ws_runs_suggest_status, ws_runs_suggest_cancel):
+                    ws_runs_mark, ws_runs_skip, ws_runs_suggest, ws_runs_suggest_status, ws_runs_suggest_cancel):
         websocket_api.async_register_command(hass, command)
     # searches running in the executor stop with Home Assistant
     hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, lambda _event: forget_searches())
@@ -372,34 +371,6 @@ async def ws_runs_preview(hass: HomeAssistant, connection: websocket_api.ActiveC
     result = await hass.async_add_executor_job(_run)
     _SAVED[key] = (sig, cached)
     connection.send_result(msg["id"], result)
-
-
-@websocket_api.require_admin
-@websocket_api.websocket_command(
-    {
-        vol.Required("type"): f"{PREFIX}/runs/phases",
-        **RUN_SCHEMA,
-        vol.Required("run_id"): str,
-        vol.Required("phases"): vol.Any(
-            None,
-            vol.All(
-                [{vol.Required("name"): vol.All(str, vol.Length(min=1, max=MAX_PHASE_NAME)),
-                  vol.Required("start"): vol.All(vol.Coerce(float), vol.Range(min=0, max=86400 * 2))}],
-                vol.Length(max=MAX_PHASES),
-            ),
-        ),
-    }
-)
-@callback
-def ws_runs_phases(hass: HomeAssistant, connection: websocket_api.ActiveConnection, msg: dict[str, Any]) -> None:
-    """Mark the phases of a stored run: ``[{"name", "start"}]`` (None or [] removes them)."""
-    if (engine := _engine(hass, connection, msg)) is None:
-        return
-    run = engine.runs.set_phases(msg["station_id"], msg["run_id"], msg["phases"])
-    if run is None:
-        connection.send_error(msg["id"], "not_found", "Unknown run")
-        return
-    connection.send_result(msg["id"], {"marks": run["marks"]})
 
 
 @websocket_api.require_admin

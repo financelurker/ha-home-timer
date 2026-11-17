@@ -56,16 +56,16 @@ def test_the_trend_changes_in_four_directions() -> None:
                 assert fired is None, (kind, other, fired)
 
 
-def test_steps_data_keeps_the_plain_rule_and_room_for_phases() -> None:
+def test_steps_data_keeps_the_plain_rule() -> None:
     plain = DoneSteps.from_data({"type": "drop", "percent": 10, "window": 60, "ignore": 120})
     assert plain.type == "drop" and plain.to_data() == {"type": "drop", "percent": 10.0, "window": 60.0, "ignore": 120.0}
     two = DoneSteps.from_data({"steps": [{"type": "time", "seconds": 60}, {"type": "pause", "below": 5, "seconds": 10, "ignore": 0}]})
     assert two.type == "steps" and len(two.steps) == 2
     assert two.describe() == "after 60 s, then " + two.steps[1].describe()
     assert DoneSteps.from_data(two.to_data()) == two
-    # keys for phases (later) are kept untouched
-    kept = DoneSteps.from_data({"steps": [{"type": "time", "seconds": 60, "phase": "Wash", "repeat": [1, 3], "optional": True}]})
-    assert kept.to_data() == {"steps": [{"type": "time", "seconds": 60.0, "phase": "Wash", "repeat": [1, 3], "optional": True}]}
+    # one step in a list is the plain rule; other keys of a step are not kept
+    one = DoneSteps.from_data({"steps": [{"type": "time", "seconds": 60, "phase": "Wash"}]})
+    assert one.to_data() == {"type": "time", "seconds": 60.0}
     # nothing usable: switches off
     assert DoneSteps.from_data({"steps": []}).type == "off" and DoneSteps.from_data(None).type == "off"
 
