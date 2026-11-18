@@ -26,7 +26,7 @@
 
 No custom card needed – a dashboard of plain tile cards:
 
-![A dashboard: Hob 1 with its presets, appliances on smart plugs, quick timers and the ringing timers as a to-do list](https://raw.githubusercontent.com/financelurker/ha-home-timer/main/docs/images/dashboard.png?v=70f44ac7ac)
+![A dashboard: Hob 1 with its presets, appliances on smart plugs, quick timers and the ringing timers as a to-do list](https://raw.githubusercontent.com/financelurker/ha-home-timer/main/docs/images/dashboard.png?v=5ddc137912)
 
 ## Installation
 

@@ -19,7 +19,7 @@ from .conftest import setup_area, tick
 
 SENSOR = "sensor.kitchen_home_timer_timers"
 RINGING = "binary_sensor.kitchen_home_timer_ringing"
-ACK_ALL = "button.kitchen_home_timer_acknowledge_all"
+ACK_ALL = "button.kitchen_home_timer_stop_ringing"
 
 
 def events(hass: HomeAssistant) -> dict[str, list]:

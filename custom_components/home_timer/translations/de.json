@@ -144,7 +144,7 @@
     },
     "button": {
       "acknowledge_all": {
-        "name": "Alle bestätigen"
+        "name": "Klingeln stoppen"
       },
       "start_preset": {
         "name": "{preset} starten"
@@ -156,7 +156,7 @@
         "name": "+1 Minute"
       },
       "stop": {
-        "name": "Stopp / Bestätigen"
+        "name": "Stopp"
       },
       "start_custom": {
         "name": "Eigenen Timer starten"

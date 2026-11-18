@@ -12,7 +12,7 @@ On the area's *Home Timer* device.
 |---|---|
 | `sensor.<area>_home_timer_timers` | *Timers*: how many timers the area has (active, paused or ringing) |
 | `binary_sensor.<area>_home_timer_ringing` | *Ringing* while a timer of the area without a station rings, else *Quiet* – device class *problem*, so Home Assistant shows it red while it rings. A station's timer shows on the station's own *Ringing* sensor only. |
-| `button.<area>_home_timer_acknowledge_all` | acknowledges the area's ringing timers without a station – stations have their own *Stop / acknowledge* button (does nothing while none rings). The `home_timer.acknowledge` action on the area still acknowledges all of them. |
+| `button.<area>_home_timer_stop_ringing` | *Stop ringing*: acknowledges the area's ringing timers without a station – stations have their own *Stop* button. Available only while one of them rings. The `home_timer.acknowledge` action on the area still acknowledges all of them. |
 | `button.<area>_home_timer_start_<quick timer>` | starts the quick timer (one per quick timer of the area) |
 | `number.<area>_home_timer_custom_timer` | custom duration in minutes (1–600) |
 | `button.<area>_home_timer_start_custom_timer` | starts a timer "Timer" with the custom duration |
@@ -59,10 +59,12 @@ On the station's device.
 | `binary_sensor.<area>_<station>_ringing` | *Ringing* while the station's timer rings, else *Quiet* – shown red while it rings (device class *problem*). With *Ring until acknowledged* off a timer never rings, so it stays *Quiet* |
 | `sensor.<area>_<station>_timer_end` | when the timer runs out (timestamp, while active); for an open timer the expected end |
 | `button.<area>_<station>_start_<preset>` | starts the preset (one per preset) |
-| `button.<area>_<station>_pause_resume` | pauses or resumes the timer |
-| `button.<area>_<station>_1_minute` | +1 minute (a ringing timer starts again) |
-| `button.<area>_<station>_stop_acknowledge` | acknowledges a ringing timer, cancels a running or paused one |
-| `button.<area>_<station>_done_now` | power stations that ring when done: marks the run going on as done (learning) |
+| `button.<area>_<station>_pause_resume` | pauses or resumes the timer – available while it runs (with an end) or is paused |
+| `button.<area>_<station>_1_minute` | +1 minute (a ringing timer starts again) – available while the station has a timer that has an end |
+| `button.<area>_<station>_stop` | *Stop*: acknowledges a ringing timer, cancels a running or paused one – available while the station has a timer |
+| `button.<area>_<station>_done_now` | power stations that ring when done: marks the run going on as done (learning) – available while the appliance runs |
+
+Buttons that act on a timer are *unavailable* while they could do nothing, so a dashboard only offers what makes sense right now. Stations and areas set up earlier keep their entity ids (`…_acknowledge_all`, `…_stop_acknowledge`); only the names changed.
 | `number.<area>_<station>_custom_timer` | custom duration in minutes (1–600) |
 | `button.<area>_<station>_start_custom_timer` | starts a timer "Timer" with the custom duration |
 | `text.<area>_<station>_save_as_preset` | enter a name: saves the custom timer as a preset of the station; attributes `custom_timer`, `duration` |

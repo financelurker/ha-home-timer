@@ -471,7 +471,7 @@ async def test_a_rearmed_warning_keeps_its_curve_from_the_run_start(hass: HomeAs
     station = await add_power_station(hass, kitchen, "Iron", "warn", warn_after=1)
     await watts(hass, freezer, 2000)
     await watts(hass, freezer, 2100, seconds_after=75)  # warned at 60 s
-    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_iron_stop_acknowledge"}, blocking=True)
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_iron_stop"}, blocking=True)
     await tick(hass, freezer, 30)  # re-armed: a new countdown, started later than the run
     assert await hass.config_entries.async_reload(kitchen.entry_id)
     await hass.async_block_till_done()

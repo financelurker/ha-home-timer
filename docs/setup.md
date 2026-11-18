@@ -10,7 +10,7 @@ Repeat this for every area that should have timers. An open kitchen-living room 
 
 ## The area's device
 
-Every area gets a device **"Home Timer"**, placed in its area when it is created. It carries the area's entities (see [Reference](reference.md)): *Timers*, *Ringing* and *Acknowledge all*. The area's ringing timers also show up in Home Timer's one to-do list for all areas (see [Timers](timers.md#to-do-list)).
+Every area gets a device **"Home Timer"**, placed in its area when it is created. It carries the area's entities (see [Reference](reference.md)): *Timers*, *Ringing* and *Stop ringing*. The area's ringing timers also show up in Home Timer's one to-do list for all areas (see [Timers](timers.md#to-do-list)).
 
 The device name does not repeat the area: Home Assistant shows the area next to it and puts the area into entity ids, e.g. `sensor.kitchen_home_timer_timers`. (Up to 0.0.1 the device was called "Kitchen: Home Timer"; it is renamed by itself.)
 
