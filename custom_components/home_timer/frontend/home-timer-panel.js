@@ -348,7 +348,7 @@ class HomeTimerPanel extends LitElement {
         // the errors may be on another tab of the station: go to the first one with errors
         const r = this._route;
         const station = this._area(r.entry)?.stations.find((s) => s.id === r.station);
-        const tabs = [...new Set(Object.keys(this._errors[`station:${r.entry}:${r.station}`] || {}).map((f) => HomeTimerPanel.fieldTab(f, station)))];
+        const tabs = [...new Set(Object.keys(this._errors[`station:${r.entry}:${r.station}`] || {}).map((f) => HomeTimerPanel.fieldTab(f, station, this._drafts[`station:${r.entry}:${r.station}`])))];
         if (station && tabs.length && !tabs.includes(this._stationTab(station))) this._go(`station/${r.entry}/${r.station}/${tabs[0]}`, { force: true });
       }
       if (failed && this._route.page === "home") {
@@ -900,9 +900,10 @@ class HomeTimerPanel extends LitElement {
   }
 
   // which tab of a station shows a field of its draft (for the dot on a tab and to show errors)
-  static fieldTab(field, station) {
-    if (station?.mode === "power" && /^power\.(done|tolerance)(\.|$)/.test(field)) return "runs";
-    if (/^presets(\.|$)/.test(field)) return station?.mode === "power" ? "settings" : "presets";
+  static fieldTab(field, station, d) {
+    const rule = station?.mode === "power" && (!d || (d.mode === "power" && d.power?.kind === "until_off"));
+    if (rule && /^power\.(done|tolerance)(\.|$)/.test(field)) return "runs"; // the rule is on Runs only for "ring when it's done"
+    if (/^presets(\.|$)/.test(field)) return station?.mode === "manual" && (!d || d.mode === "manual") ? "presets" : "settings";
     return "settings";
   }
 
@@ -913,9 +914,9 @@ class HomeTimerPanel extends LitElement {
     if (!d || !b || same(d, b)) return new Set();
     const tabs = new Set();
     for (const k of ["name", "icon", "mode"]) if (!same(d[k], b[k])) tabs.add("settings");
-    if (!same(d.presets, b.presets)) tabs.add(HomeTimerPanel.fieldTab("presets", station));
+    if (!same(d.presets, b.presets)) tabs.add(HomeTimerPanel.fieldTab("presets", station, d));
     for (const k of new Set([...Object.keys(d.power || {}), ...Object.keys(b.power || {})])) {
-      if (!same(d.power?.[k], b.power?.[k])) tabs.add(HomeTimerPanel.fieldTab(`power.${k}`, station));
+      if (!same(d.power?.[k], b.power?.[k])) tabs.add(HomeTimerPanel.fieldTab(`power.${k}`, station, d));
     }
     return tabs;
   }
@@ -952,7 +953,9 @@ class HomeTimerPanel extends LitElement {
     const showPresets = (!power && station?.mode !== "manual") || (power && (d.power.kind === "start_preset" || presetErrors));
     const data = savedPower ? this._runs[this._runsKey(area.entry_id, station.id)] : null;
     if (savedPower && !data) this._loadRunsSoon(area.entry_id, station.id);
-    const preview = savedPower && data && power ? this._previewFor(area, station, d) : null;
+    // the preview only where Settings shows it: the summary of "start a preset" / "warn"
+    const preview = savedPower && data && power && d.power.kind !== "until_off" ? this._previewFor(area, station, d) : null;
+    const ruleErrors = d.power.kind !== "until_off" || !power ? Object.entries(this._errors[key] || {}).filter(([k]) => /^power\.(done|tolerance)(\.|$)/.test(k)) : [];
     return html`<div class="cols ${power ? "wide" : ""}"><div class="col">
       <div class="card"><div class="cb ident">
         <div class="inarea"><ha-icon icon=${area.icon || "mdi:texture-box"}></ha-icon>${t("station.in_area", { area: area.name })}</div>
@@ -969,6 +972,7 @@ class HomeTimerPanel extends LitElement {
         ? html`${savedPower ? nothing : html`<div class="card"><div class="ch">${t("runs.title")}</div><div class="cb">
               <div class="emptycard"><b>${t("runs.after_save")}</b><span>${t("runs.after_save_hint")}</span></div></div></div>`}
             ${this._renderTodo(key, d, set, savedPower ? station : null, preview, !savedPower)}
+            ${ruleErrors.map(([k, code]) => html`<div class="err" role="alert">${t("power.rule")}: ${t(`error.${code}`)}</div>`)}
             ${this._renderOnOff(key, d, set, false, savedPower ? station : null)}
             ${data && !data.error ? this._renderSensor(data, station) : nothing}`
         : nothing}
@@ -988,15 +992,15 @@ class HomeTimerPanel extends LitElement {
       this.hass.callService("home_timer", service, data, { entity_id: station.entities.timer }).catch((err) => (this._notice = { kind: "error", text: err?.message || String(err) }));
     const busy = ["active", "paused", "ringing"].includes(live.status);
     return html`<div class="column wide">
-      ${this._renderNow(area, station, html`
+      ${this._renderNow(area, station, !station.entities.timer ? nothing : html`
         ${live.status === "ringing" ? html`<button class="btn" @click=${() => call("add_time", { duration: "00:01:00" })}>${t("act.plus_minute")}</button>
           <button class="btn filled" @click=${() => call("acknowledge")}>${t("hint.acknowledge")}</button>` : nothing}
-        ${live.status === "active" ? html`<button class="btn" @click=${() => call("pause")}>${t("act.pause")}</button>` : nothing}
+        ${live.status === "active" && live.kind !== "elapsed" ? html`<button class="btn" @click=${() => call("pause")}>${t("act.pause")}</button>` : nothing}
         ${live.status === "paused" ? html`<button class="btn" @click=${() => call("resume")}>${t("act.resume")}</button>` : nothing}
         ${["active", "paused"].includes(live.status) ? html`<button class="btn danger" @click=${() => call("cancel")}>${t("act.cancel")}</button>` : nothing}`)}
       <div class="sec">${t("act.start")}${busy ? html` <span class="lc">– ${t("act.start_replaces")}</span>` : nothing}</div>
       ${station.presets.length
-        ? html`<div class="qt">${station.presets.map((p) => html`<button class="q" @click=${() => call("start", { preset: p.name })}>${p.name}<i>${formatDuration(p.duration)}</i></button>`)}
+        ? html`<div class="qt">${station.presets.map((p) => html`<button class="q" ?disabled=${!station.entities.timer} @click=${() => call("start", { preset: p.id })}>${p.name}<i>${formatDuration(p.duration)}</i></button>`)}
             <button class="link" @click=${() => this._go(`station/${area.entry_id}/${station.id}/presets`)}><ha-icon icon="mdi:pencil-outline"></ha-icon>${t("presets")}</button></div>`
         : html`<div class="emptycard"><b>${t("presets.none")}</b><button class="btn filled" @click=${() => this._go(`station/${area.entry_id}/${station.id}/presets`)}>+ ${t("preset.add")}</button></div>`}
     </div>`;
@@ -1011,11 +1015,27 @@ class HomeTimerPanel extends LitElement {
     const runs = (data?.runs || []).slice(0, 6);
     const marked = (data?.runs || []).filter((r) => r.marks?.done != null && !r.skip).length;
     const runsPath = `station/${area.entry_id}/${station.id}/runs`;
-    const sug = this._suggest?.key === key && !this._suggest.loading && this._suggest.data?.suggestions?.length;
+    if (!this._suggest || this._suggest.key !== rkey) {
+      if (this._searchChecked !== rkey) {
+        this._searchChecked = rkey; // a search may be over from before the page was opened
+        this._attachSearch(area, station, rkey);
+      }
+    }
+    const sug = !this._suggest?.loading && this._freshSuggest(rkey)?.suggestions?.length;
+    const live = stationLive(this.hass, station, this._now);
+    const current = data?.current;
+    const ack = () => this.hass.callService("home_timer", "acknowledge", {}, { entity_id: station.entities.timer }).catch((err) => (this._notice = { kind: "error", text: err?.message || String(err) }));
+    // while it runs: "Done now" marks the run going on (learning); while it rings: acknowledge
+    const actions = html`${this._learning(d) && current && live.running
+        ? current.marks?.done != null
+          ? html`<span class="ok">✓ ${t("learn.marked_now", { time: formatDuration(current.marks.done) })}</span>`
+          : html`<button class="btn filled ok" @click=${() => this._doneNow(area, station).then(() => this._loadRuns(area.entry_id, station.id))}><ha-icon icon="mdi:check"></ha-icon>${t("learn.done_now")}</button>`
+        : nothing}
+      ${live.status === "ringing" && station.entities.timer ? html`<button class="btn filled" @click=${ack}>${t("hint.acknowledge")}</button>` : nothing}`;
     return html`<div class="cols wide"><div class="col">
       ${sug ? html`<div class="hints"><div class="hint"><ha-icon icon="mdi:lightbulb-on-outline"></ha-icon>
           <div class="txt"><b>${t("hint.suggestions")}</b></div><button class="btn" @click=${() => this._go(runsPath)}>${t("hint.open")}</button></div></div>` : nothing}
-      ${this._renderNow(area, station)}
+      ${this._renderNow(area, station, (this._learning(d) && current && live.running) || live.status === "ringing" ? actions : nothing)}
       <div class="card"><div class="ch">${t("runs.last")} <span class="chs">– ${data?.runs ? `${t("runs.summary", { count: data.runs.length })} · ${t("runs.marked", { count: marked })}` : t("loading")}</span></div>
         ${runs.length
           ? html`<div class="runs">${runs.map(
@@ -1041,7 +1061,9 @@ class HomeTimerPanel extends LitElement {
       <div class="rgl">${data && !data.error ? this._renderRunList(area, station, d, data, preview) : nothing}</div>
       <div class="rgr">
         ${this._renderCurve(area, station, d, data, preview)}
-        ${rule
+        ${d.mode !== "power"
+          ? html`<div class="card"><div class="cb help">${t("runs.manual_note")}</div></div>`
+          : rule
           ? html`<div class="card"><div class="ch">${t("kind.until_off")}</div><div class="cb">${this._ruleBody(key, d, set, station, preview)}</div></div>`
           : html`<div class="card"><div class="cb">${this._previewSummary(station, d, preview)}
               <div class="help">${t("runs.kind_note", { kind: t(`kind.${d.power.kind}`) })} <button class="link" @click=${() => this._go(`station/${area.entry_id}/${station.id}/settings`)}>${t("nav.settings")} ›</button></div></div></div>`}
@@ -1988,6 +2010,9 @@ class HomeTimerPanel extends LitElement {
     const parts = t("onoff.sentence").split(/(\{\w+\})/);
     const inl = { on_above: () => this._inline(key, "power.on_above", p.on_above, spec.on_above, "W", (v) => setP("on_above", v)), off_after: () => this._inline(key, "power.off_after", p.off_after, spec.off_after, "s", (v) => setP("off_after", v)) };
     const summary = `${p.sensor ? this._name(p.sensor) : t("onoff.no_sensor")} · ${t("onoff.short", { watts: p.on_above, unit })}`;
+    // another sensor than the stored runs were recorded with: say so where it is picked
+    const sensorNote = station && p.sensor && p.sensor !== station.power.sensor
+      ? html`<div class="note">${t("runs.sensor_changed", { old: this._name(station.power.sensor), new: this._name(p.sensor) })}</div>` : nothing;
     return html`<div class="card">
       ${foldable && this.narrow
         ? html`<button class="ch fold" aria-expanded=${open ? "true" : "false"} @click=${() => this._setFold("onoff", !open)}>
@@ -1996,6 +2021,7 @@ class HomeTimerPanel extends LitElement {
       ${open
         ? html`<div class="cb">
             ${this._selector(key, "power.sensor", t("power.sensor"), { entity: { filter: { domain: "sensor", device_class: "power" } } }, p.sensor, (v) => setP("sensor", v || ""), t("power.sensor_hint"))}
+            ${sensorNote}
             <div class="sentence">${parts.map((part) => {
               const m = part.match(/^\{(\w+)\}$/);
               return m && inl[m[1]] ? inl[m[1]]() : part;
@@ -2401,8 +2427,10 @@ class HomeTimerPanel extends LitElement {
     .runsgrid { display: grid; grid-template-columns: minmax(300px, 380px) minmax(0, 1fr); gap: 16px; align-items: start; }
     .runsgrid .rgl { position: sticky; top: 120px; }
     .runsgrid .runs { max-height: calc(100vh - 260px); }
-    .runsgrid .runrow { grid-template-columns: minmax(0, 1fr) 44px minmax(40px, 70px) 92px; }
-    .runsgrid .runrow .rr { display: none; }
+    .runsgrid { grid-template-columns: minmax(360px, 470px) minmax(0, 1fr); }
+    .runsgrid .runrow { grid-template-columns: minmax(0, 1fr) 44px auto 92px; }
+    .runsgrid .runrow .rr { white-space: nowrap; }
+    .runsgrid .runrow .rs { display: none; }
     @container (max-width: 820px) {
       .runsgrid { grid-template-columns: minmax(0, 1fr); }
       .runsgrid .rgl { position: static; order: 2; }
@@ -2464,7 +2492,6 @@ class HomeTimerPanel extends LitElement {
     .cols { display: flex; gap: 20px; align-items: flex-start; }
     .col { flex: 1; min-width: 0; max-width: 760px; }
     :host([narrow]) .cols { flex-direction: column; gap: 0; align-items: stretch; }
-    :host([narrow]) .colr { width: 100%; position: static; order: -1; }
     .fieldwrap + .pair { margin-top: 12px; }
     .pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px 14px; margin: 4px 0; }
     .pair.off { opacity: 0.6; }
@@ -2637,8 +2664,6 @@ class HomeTimerPanel extends LitElement {
     .ql { font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ht-s); margin-bottom: 2px; }
     .preview { background: var(--ht-fill); border-radius: 8px; padding: 10px 12px; margin: 8px 0 4px; line-height: 1.6; }
     .preview .warn { color: color-mix(in srgb, var(--ht-run) 85%, #000); }
-    :host([narrow]) .duo { grid-template-columns: 1fr; }
-    :host([narrow]) .duor { order: -1; }
     .chart .win { fill: color-mix(in srgb, var(--ht-err) 8%, transparent); }
     .chart .zone.win, .chart .zone.lvl { fill: var(--ht-err); }
     .chart .level { stroke: var(--ht-err); stroke-width: 1.2; stroke-dasharray: 2 3; }
@@ -2698,8 +2723,6 @@ class HomeTimerPanel extends LitElement {
     .outls { padding: 0 16px; }
     .outl { border: 1px solid color-mix(in srgb, var(--ht-err) 30%, transparent); background: color-mix(in srgb, var(--ht-err) 5%, transparent); border-radius: 10px; padding: 10px 12px; margin: 10px 0; line-height: 1.45; }
     .outla { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
-    @container (max-width: 920px) {
-    }
     @container (max-width: 780px) {
       .cols { flex-direction: column; gap: 0; align-items: stretch; }
       .col { max-width: none; }

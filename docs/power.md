@@ -77,7 +77,7 @@ Once a run is done, its timer is an ordinary ringing timer: adding time snoozes 
 
 ## Runs
 
-Every run is stored with its power curve when the appliance switches off (runs shorter than 10 s are blips and are not). The station's page in the [panel](panel.md#a-station-by-power) shows them: the curve with the *runs above* threshold, the start the done rule ignores, where the run stopped, and when the saved settings – and your changes, while they are not saved – would ring on it; when it really rang is written below. Per station the newest 30 runs are kept.
+Every run is stored with its power curve when the appliance switches off (runs shorter than 10 s are blips and are not). The station's *Runs* tab in the [panel](panel.md#a-station-by-power) shows them: the curve with the *runs above* threshold, the start the done rule ignores, where the run stopped, and when the saved settings – and your changes, while they are not saved – would ring on it; when it really rang is written below. Per station the newest 30 runs are kept.
 
 The first time Home Timer sees a power station, it reads the station's earlier runs once from the recorder's history of the sensor, as far as the recorder kept it (10 days by default). For those runs of a station *until it switches off*, when its done rule – as set at that moment – would have rung is worked out from the curve, and labelled as such. Only the history before the first run stored live is read, so no run appears twice. A station's runs are deleted with the station.
 
@@ -89,7 +89,7 @@ The tab also shows how often the sensor reports and how much its readings scatte
 
 Which rule and values fit your appliance is easiest to learn from your own runs:
 
-1. **Mark when it was done** – in a few runs, on the station's page: click the curve where the coffee was ready (or use *Mark done here*), then move the mark (drag it, ← → 1 s, Shift 10 s, or the −10/−1/+1/+10 s buttons; on a phone a tap sets it). In a long run, zoom in first (🔍, Ctrl + wheel) to place it to the second. While a run goes on, *Done now* marks it – also from a dashboard with the station's *Done now* button.
+1. **Mark when it was done** – in a few runs, on the station's *Runs* tab: click the curve where the coffee was ready (or use *Mark done here*), then move the mark (drag it, ← → 1 s, Shift 10 s, or the −10/−1/+1/+10 s buttons; on a phone a tap sets it). In a long run, zoom in first (🔍, Ctrl + wheel) to place it to the second. While a run goes on, *Done now* marks it – also from a dashboard with the station's *Done now* button.
 2. **Suggest from my runs** (from 3 marked runs): Home Timer tries every rule with many values on all marked runs. A suggestion must ring after each run's mark – never before comes first – and at most the **tolerance** after it (60 s by default, a setting of the station). The best of each rule type is offered (at most three), with how many runs it fits and its median and longest delay. Two steps (*A, then B*) are tried as well and offered first when they beat the best single rule – e.g. when a rule alone fires too early in some runs; longer sequences are set up by hand. It uses the newest 12 marked runs. A search takes a few seconds, longer with long runs: a bar shows how far it is, and *Cancel* stops it. It goes on when you leave the page – coming back shows its progress or its result.
 3. **Use** puts a suggestion into the draft; the preview shows it on all runs, and **Save** makes it the station's rule.
 

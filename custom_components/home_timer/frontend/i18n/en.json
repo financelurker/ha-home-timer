@@ -419,5 +419,6 @@
   "runs.all": "All runs",
   "runs.kind_note": "“{kind}” has no done rule; change what the timer does in the settings.",
   "power.steps_count": "{count} steps",
-  "power.edit_on_runs": "Change it on Runs"
+  "power.edit_on_runs": "Change it on Runs",
+  "runs.manual_note": "Your changes make it a station by hand: it keeps its runs, but nothing watches the power once saved."
 }
