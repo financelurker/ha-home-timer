@@ -22,7 +22,7 @@
 - **[Dashboard controls](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#starting-timers-from-a-dashboard)** for timers without a station: quick timers (one tap), a custom duration, "save as preset".
 - **[Power stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md):** a power sensor starts the timer – it rings when the appliance is done (e.g. a moka pot), starts a preset when switched on, or warns if it runs too long. Every run is [stored with its power curve](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md#runs).
 - **[Device triggers](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md#device-triggers)** per station and per area: started, finished, reminder, acknowledged.
-- **[Its own panel](https://github.com/financelurker/ha-home-timer/blob/main/docs/panel.md):** areas, stations, presets and options on one page, with what each station does right now – also on the phone.
+- **[Its own panel](https://github.com/financelurker/ha-home-timer/blob/main/docs/panel.md):** every station in one bar, its runs, rules and settings on tabs, with what each station does right now – also on the phone.
 
 No custom card needed – a dashboard of plain tile cards:
 

@@ -104,7 +104,7 @@ def main() -> None:
         if want("panel-runs"):
             # the moka pot's page with a draft of its done rule: the live preview on the stored runs
             page.set_viewport_size({"width": 1366, "height": 1500})
-            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/runs")
             rows = page.locator("home-timer-panel .runrow")
             check("the page lists the moka pot's runs", rows.count() >= 8, rows.count())
             seeded = rows.filter(has_not_text=re.compile("Today|Running"))
@@ -112,7 +112,7 @@ def main() -> None:
                 seeded.first.click()  # a run of seed_runs.py (today's come from scene.py's test runs)
                 page.wait_for_timeout(1500)
             check("the page draws the curve", page.locator("home-timer-panel svg.chart path.curve").count() == 1)
-            fields = page.locator("home-timer-panel .opt.on .sentence input")
+            fields = page.locator("home-timer-panel .rgr .sentence input")
             if fields.count() >= 2:
                 fields.nth(0).fill("8")  # at least 8 % …
                 fields.nth(1).fill("45")  # … within 45 s
@@ -133,7 +133,7 @@ def main() -> None:
         if want("panel-learn"):
             # learning: a marked run, and the suggestions from the marked runs
             page.set_viewport_size({"width": 1366, "height": 1900})
-            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/runs")
             seeded = page.locator("home-timer-panel .runrow").filter(has_not_text=re.compile("Today|Running"))
             if seeded.count():
                 seeded.first.click()
@@ -188,7 +188,7 @@ def main() -> None:
         if want("panel-steps"):
             # steps: add one, move it up, the pins on the curve, remove it again
             page.set_viewport_size({"width": 1366, "height": 1500})
-            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/runs")
             seeded = page.locator("home-timer-panel .runrow").filter(has_not_text=re.compile("Today|Running"))
             if seeded.count():
                 seeded.first.click()
@@ -231,7 +231,7 @@ def main() -> None:
             page.set_viewport_size({"width": 1366, "height": 860})
         if want("reread"):
             # "read again from the history" on a run that is complete: nothing more (and nothing changes)
-            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/runs")
             seeded = page.locator("home-timer-panel .runrow").filter(has_not_text=re.compile("Today|Running"))
             if seeded.count():
                 seeded.first.click()
@@ -243,7 +243,7 @@ def main() -> None:
         if want("zoom"):
             # zoom into the curve: buttons keep the mark in view, the overview moves along, Ctrl + wheel, the whole run again
             page.set_viewport_size({"width": 1366, "height": 1100})
-            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/runs")
             seeded = page.locator("home-timer-panel .runrow").filter(has_not_text=re.compile("Today|Running"))
             if seeded.count():
                 seeded.first.click()
@@ -300,8 +300,27 @@ def main() -> None:
             check("the whole run again: no overview", page.locator("home-timer-panel svg.overview").count() == 0)
             page.set_viewport_size({"width": 1366, "height": 860})
         if want("panel-station"):
-            go(page, f"/home-timer/station/{ref['entry']}/{ref['hob']['id']}")
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['hob']['id']}/presets")
+            check("a station by hand has its presets on a tab", page.locator("home-timer-panel .preset").count() >= 1)
             page.screenshot(path=OUT / "panel-station.png")
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['hob']['id']}")
+            check("… and its start buttons on the overview", page.locator("home-timer-panel .qt .q").count() >= 1)
+            page.screenshot(path=OUT / "panel-station-overview.png")
+        if want("panel-power"):
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            check("the power station's overview lists its last runs", page.locator("home-timer-panel .runrow.mini").count() >= 1)
+            page.screenshot(path=OUT / "panel-power-overview.png")
+            go(page, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/settings")
+            check("its settings: what the timer does, on and off", page.locator("home-timer-panel .opts").count() == 1 and page.locator("home-timer-panel .ruleline").count() == 1)
+            page.locator("home-timer-panel .ident input").first.fill("Moka pot 2")
+            page.wait_for_timeout(400)
+            check("a change marks the settings tab", page.locator("home-timer-panel .ntab.on .chg").count() == 1)
+            page.locator("home-timer-panel .ntab", has_text=re.compile("Runs", re.I)).click()
+            page.wait_for_timeout(800)
+            check("the draft stays on the runs tab", page.locator("home-timer-panel .savebar").count() == 1 and page.locator("home-timer-panel .dialog").count() == 0)
+            page.screenshot(path=OUT / "panel-power-settings.png")
+            page.locator("home-timer-panel .savebar button", has_text="Discard").click()
+            page.wait_for_timeout(300)
         if want("dashboard"):
             go(page, "/dashboard-timers/kitchen", 5000)
             page.screenshot(path=OUT / "dashboard.png")
@@ -330,7 +349,7 @@ def main() -> None:
             login(pp)
             go(pp, "/home-timer")
             pp.screenshot(path=OUT / "phone-area.png")
-            go(pp, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
+            go(pp, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}/runs")
             pp.screenshot(path=OUT / "phone-power.png")
             pp.locator("home-timer-panel .runrow").first.scroll_into_view_if_needed()  # down to the runs
             pp.mouse.move(195, 600)
