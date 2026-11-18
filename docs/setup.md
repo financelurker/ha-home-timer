@@ -10,7 +10,7 @@ Repeat this for every area that should have timers. An open kitchen-living room 
 
 ## The area's device
 
-Every area gets a device **"Home Timer"**, placed in its area when it is created. It carries the area's entities (see [Reference](reference.md)): *Timers*, *Ringing* and *Acknowledge all*. The area's ringing timers also show up in Home Timer's one to-do list for all areas (see [Timers](timers.md#to-do-list)).
+Every area gets a device **"Home Timer"**, placed in its area when it is created. It carries the area's entities (see [Reference](reference.md)): *Timers*, *Ringing* and *Stop ringing*. The area's ringing timers also show up in Home Timer's one to-do list for all areas (see [Timers](timers.md#to-do-list)).
 
 The device name does not repeat the area: Home Assistant shows the area next to it and puts the area into entity ids, e.g. `sensor.kitchen_home_timer_timers`. (Up to 0.0.1 the device was called "Kitchen: Home Timer"; it is renamed by itself.)
 
@@ -24,7 +24,7 @@ Stations (hob, rice cooker, bathtub …) are added in the [panel](panel.md); eac
 
 ## Options
 
-The cog of the area (Settings → Devices & services → Home Timer) opens the [panel](panel.md) at the area: **Ringing & reminders** holds what happens when a timer runs out (ringing, reminders, stop ringing, missed timers – see [Timers](timers.md#options)), **Quick timers** the area's presets without a station (see [Timers](timers.md#starting-timers-from-a-dashboard)).
+The cog of the area (Settings → Devices & services → Home Timer) opens the [panel](panel.md) at the area: **Ringing & reminders** holds what happens when a timer runs out (ringing, reminders, auto-dismiss, missed timers – see [Timers](timers.md#options)), **Quick timers** the area's presets without a station (see [Timers](timers.md#starting-timers-from-a-dashboard)).
 
 ## Removing an area
 

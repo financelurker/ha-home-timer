@@ -7,7 +7,6 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
 
 from custom_components.home_timer.learn import MIN_MARKED, search
 from custom_components.home_timer.power import DoneRule, Trace
@@ -100,17 +99,17 @@ async def test_marks_skip_suggest_and_done_now(hass: HomeAssistant, kitchen, fre
     hass.states.async_set(SENSOR, "0")
     station = await add_power_station(hass, kitchen, "Moka pot", "until_off", done={"type": "off"})
     button = "button.kitchen_moka_pot_done_now"
-    assert hass.states.get(button) is not None
-    with pytest.raises(HomeAssistantError):
-        await hass.services.async_call("button", "press", {"entity_id": button}, blocking=True)
+    assert hass.states.get(button).state == "unavailable"  # only while the appliance runs
     # a run, marked "done now" from the dashboard while it runs
     last = 0
     for t, w in moka.SAMPLES:
         await watts(hass, freezer, w, seconds_after=t - last)
         last = t
         if t == moka.MARK_DONE + 5:
+            assert hass.states.get(button).state != "unavailable"  # the appliance runs
             await hass.services.async_call("button", "press", {"entity_id": button}, blocking=True)
     await tick(hass, freezer, 31)
+    assert hass.states.get(button).state == "unavailable"  # off again
     (run,) = kitchen.runtime_data.runs.list(station)
     assert run["marks"]["done"] == pytest.approx(DONE + 5, abs=1)
     client = await hass_ws_client(hass)

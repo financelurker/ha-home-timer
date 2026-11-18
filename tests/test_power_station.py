@@ -44,7 +44,7 @@ async def test_until_off_with_switch_off_rule(hass: HomeAssistant, kitchen, free
     for name in ("button.kitchen_kettle_start_custom_timer", "number.kitchen_kettle_custom_timer",
                  "button.kitchen_kettle_pause_resume"):
         assert hass.states.get(name) is None, name
-    assert hass.states.get("button.kitchen_kettle_stop_acknowledge") is not None
+    assert hass.states.get("button.kitchen_kettle_stop") is not None
     await watts(hass, freezer, 2100)
     assert hass.states.get("binary_sensor.kitchen_kettle_running").state == "on"
     state = hass.states.get("sensor.kitchen_kettle")
@@ -60,7 +60,7 @@ async def test_until_off_with_switch_off_rule(hass: HomeAssistant, kitchen, free
     assert hass.states.get("sensor.kitchen_kettle_runs").state == "1"
     assert float(hass.states.get("sensor.kitchen_kettle_usual_duration").state) == pytest.approx(3, abs=0.1)
     # the next run shows the expected end
-    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_kettle_stop_acknowledge"}, blocking=True)
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_kettle_stop"}, blocking=True)
     await watts(hass, freezer, 2100, seconds_after=60)
     assert hass.states.get("sensor.kitchen_kettle_timer_end").state not in ("unknown", "unavailable")
 
@@ -104,7 +104,7 @@ async def test_warn_if_it_runs_too_long(hass: HomeAssistant, kitchen, freezer) -
     await watts(hass, freezer, 1200)
     await tick(hass, freezer, 3601)
     assert hass.states.get("sensor.kitchen_iron").state == "ringing"
-    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_iron_stop_acknowledge"}, blocking=True)
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_iron_stop"}, blocking=True)
     await tick(hass, freezer, 10)
     assert hass.states.get("sensor.kitchen_iron").state == "active"  # still on: warns again
     await watts(hass, freezer, 0)
@@ -131,7 +131,7 @@ async def test_running_across_a_reload(hass: HomeAssistant, kitchen, freezer) ->
     await tick(hass, freezer, 31)
     assert hass.states.get("sensor.kitchen_kettle").state == "ringing"
     # … without it (a long gap), at once
-    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_kettle_stop_acknowledge"}, blocking=True)
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_kettle_stop"}, blocking=True)
     await watts(hass, freezer, 2000, seconds_after=5)
     assert hass.states.get("sensor.kitchen_kettle").state == "active"
     assert await hass.config_entries.async_unload(kitchen.entry_id)
@@ -249,7 +249,7 @@ async def test_warn_stop_silences_the_run(hass: HomeAssistant, kitchen, freezer)
     await add_power_station(hass, kitchen, "Iron", "warn", warn_after=60)
     ev = events(hass)
     await watts(hass, freezer, 1200)
-    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_iron_stop_acknowledge"}, blocking=True)
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_iron_stop"}, blocking=True)
     await tick(hass, freezer, 10)
     assert hass.states.get("sensor.kitchen_iron").state == "idle"  # stopped: no new warning this run
     assert len(ev["started"]) == 1

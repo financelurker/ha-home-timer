@@ -144,7 +144,7 @@
     },
     "button": {
       "acknowledge_all": {
-        "name": "Acknowledge all"
+        "name": "Stop ringing"
       },
       "start_preset": {
         "name": "Start {preset}"
@@ -156,7 +156,7 @@
         "name": "+1 minute"
       },
       "stop": {
-        "name": "Stop / acknowledge"
+        "name": "Stop"
       },
       "start_custom": {
         "name": "Start custom timer"

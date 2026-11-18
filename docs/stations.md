@@ -27,9 +27,9 @@ The station's device carries its name and lies in the area (move it if you like)
 | `binary_sensor.kitchen_hob_1_ringing` | *Ringing* while its timer rings, else *Quiet*; Home Assistant shows it red while it rings – a tile of it stands out on any dashboard |
 | `sensor.kitchen_hob_1_timer_end` | when the timer runs out; the frontend shows "in 6 minutes" |
 | `button.kitchen_hob_1_start_rice` | one button per preset: starts it (replacing the station's timer) |
-| `button.kitchen_hob_1_pause_resume` | pauses or resumes the timer |
+| `button.kitchen_hob_1_pause_resume` | pauses or resumes the timer (available while it runs or is paused) |
 | `button.kitchen_hob_1_1_minute` | +1 minute; a ringing timer starts again with one minute |
-| `button.kitchen_hob_1_stop_acknowledge` | acknowledges a ringing timer, cancels a running or paused one |
+| `button.kitchen_hob_1_stop` | *Stop*: acknowledges a ringing timer, cancels a running or paused one (available while there is one; stations set up earlier keep `…_stop_acknowledge`, see [Reference](reference.md)) |
 | `number.kitchen_hob_1_custom_timer` | custom duration in minutes, kept for next time |
 | `button.kitchen_hob_1_start_custom_timer` | starts a timer "Timer" with the custom duration (replacing the station's timer) |
 | `text.kitchen_hob_1_save_as_preset` | enter a name: saves the custom timer as a preset (see below) |

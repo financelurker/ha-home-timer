@@ -1,5 +1,9 @@
-"""Buttons. Area: acknowledge all, its quick timers, start custom timer. Station: its
-presets, start custom timer, pause/resume, +1 minute, stop."""
+"""Buttons. Area: stop ringing, its quick timers, start custom timer. Station: its
+presets, start custom timer, pause/resume, +1 minute, stop, done now.
+
+Buttons that act on a timer are available only while they can do something
+(stop ringing while a timer without a station rings, pause/resume while the
+station's timer runs or is paused, …)."""
 
 from __future__ import annotations
 
@@ -55,9 +59,13 @@ def _run(func, *args, **kwargs) -> None:
 
 
 class AcknowledgeAllButton(AreaEntity, ButtonEntity):
-    """Acknowledges the ringing timers without a station (stations have their own button).
+    """Stop ringing: acknowledges the ringing timers without a station (stations have their own Stop).
 
-    Does nothing while none rings (always available, so a dashboard button stays usable)."""
+    Available only while one of them rings."""
+
+    @property
+    def available(self) -> bool:
+        return any(t.status == STATUS_RINGING and t.station is None for t in self.engine.timers.values())
 
     async def async_press(self) -> None:
         self.engine.acknowledge_all(by=BY_BUTTON, stations=False)
@@ -104,6 +112,13 @@ class StationStartCustomButton(StationEntity, ButtonEntity):
 
 
 class PauseResumeButton(StationEntity, ButtonEntity):
+    """Pauses the station's timer or resumes it; available while it runs (with an end) or is paused."""
+
+    @property
+    def available(self) -> bool:
+        timer = self.timer
+        return timer is not None and (timer.status == STATUS_PAUSED or (timer.status == STATUS_ACTIVE and not timer.open))
+
     async def async_press(self) -> None:
         timer = self.timer
         if timer is None:
@@ -115,7 +130,12 @@ class PauseResumeButton(StationEntity, ButtonEntity):
 
 
 class AddMinuteButton(StationEntity, ButtonEntity):
-    """+1 minute; a ringing timer starts again with one minute."""
+    """+1 minute; a ringing timer starts again with one minute. Available while that is possible."""
+
+    @property
+    def available(self) -> bool:
+        timer = self.timer
+        return timer is not None and timer.status in (STATUS_ACTIVE, STATUS_PAUSED, STATUS_RINGING) and not (timer.open and timer.status == STATUS_ACTIVE)
 
     async def async_press(self) -> None:
         if (timer := self.timer) is not None:
@@ -123,7 +143,11 @@ class AddMinuteButton(StationEntity, ButtonEntity):
 
 
 class StopButton(StationEntity, ButtonEntity):
-    """Acknowledges a ringing timer, cancels a running or paused one."""
+    """Stop: acknowledges a ringing timer, cancels a running or paused one. Available while there is one."""
+
+    @property
+    def available(self) -> bool:
+        return self.timer is not None
 
     async def async_press(self) -> None:
         timer = self.timer
@@ -139,7 +163,13 @@ class DoneNowButton(StationEntity, ButtonEntity):
     """Learning: the user says the appliance's run is done now (a mark on the run's curve).
 
     It does not ring or stop anything; the panel uses the marks to suggest done rules.
+    Available while the appliance runs.
     """
+
+    @property
+    def available(self) -> bool:
+        watcher = self.engine.watcher(self.station.id)
+        return bool(watcher and watcher.running)
 
     async def async_press(self) -> None:
         watcher = self.engine.watcher(self.station.id)

@@ -118,7 +118,7 @@ async def checks(ha: Instance, s: aiohttp.ClientSession, ctx: dict) -> None:
         await ha.service("todo", "update_item", {"entity_id": "todo.home_timer_ringing_timers", "item": todo["uid"], "status": "completed"})
         ack = await next_event(events, "home_timer_acknowledged", name="E2E", timeout=10)
         check("checking it off acknowledges it", ack is not None and ack["data"]["by"] == "todo", ack)
-    await ha.service("button", "press", {"entity_id": "button.kitchen_hob_1_stop_acknowledge"})
+    await ha.service("button", "press", {"entity_id": "button.kitchen_hob_1_stop"})
 
     # ------------------------------------------------------------ the panel saves; conflicts with "save as preset"
     res = await ha.call({"type": "home_timer/station/save", "entry_id": entry_id, "station": {

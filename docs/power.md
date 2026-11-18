@@ -68,8 +68,8 @@ When one rule is not enough – it would also fire earlier, at a dip that is not
 | `binary_sensor.<area>_<station>_ringing` | *Ringing* while its timer rings (done, or the warning), else *Quiet* – shown red while it rings |
 | `sensor.<area>_<station>_runs` | how often it ran |
 | `sensor.<area>_<station>_usual_duration` | median of the last 20 runs (until done, or until it stopped) |
-| `button.<area>_<station>_stop_acknowledge` | acknowledges the ringing timer, or cancels the running one (the run itself goes on) |
-| `button.<area>_<station>_done_now` | *ring when it's done* only: marks the run going on as done now – for [learning](#learning); it does not ring or stop anything |
+| `button.<area>_<station>_stop` | *Stop*: acknowledges the ringing timer, or cancels the running one (the run itself goes on); available while there is one |
+| `button.<area>_<station>_done_now` | *ring when it's done* only: marks the run going on as done now – for [learning](#learning); it does not ring or stop anything; available while the appliance runs |
 
 Events carry `trigger: rule` or `trigger: off` when a run finishes, `reason: power_off` when switching off cancels a timer, and `by: power` when switching off acknowledges a ringing warning.
 

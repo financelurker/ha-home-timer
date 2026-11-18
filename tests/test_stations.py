@@ -19,7 +19,7 @@ RICE = "button.kitchen_hob_1_start_rice"
 PASTA = "button.kitchen_hob_1_start_pasta"
 PAUSE = "button.kitchen_hob_1_pause_resume"
 PLUS = "button.kitchen_hob_1_1_minute"
-STOP = "button.kitchen_hob_1_stop_acknowledge"
+STOP = "button.kitchen_hob_1_stop"
 
 
 @pytest.fixture
@@ -238,7 +238,7 @@ async def test_upgrade_keeps_area_entities(hass: HomeAssistant, kitchen) -> None
     for entity_id in (
         "sensor.kitchen_home_timer_timers",
         "binary_sensor.kitchen_home_timer_ringing",
-        "button.kitchen_home_timer_acknowledge_all",
+        "button.kitchen_home_timer_stop_ringing",
     ):
         assert hass.states.get(entity_id) is not None
     assert kitchen.subentries == {}
@@ -260,10 +260,31 @@ async def test_ringing_sensors_are_red_while_ringing(hass: HomeAssistant, kitche
     await tick(hass, freezer, 31)
     assert hass.states.get("binary_sensor.kitchen_home_timer_ringing").state == "on"
     # the area's button acknowledges only timers without a station
-    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_home_timer_acknowledge_all"}, blocking=True)
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_home_timer_stop_ringing"}, blocking=True)
     assert hass.states.get("binary_sensor.kitchen_home_timer_ringing").state == "off"
     assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "on"
     # the action on the area still acknowledges every ringing timer of it, stations' included
     await hass.services.async_call(DOMAIN, "acknowledge", {"area_id": kitchen.data["area_id"]}, blocking=True)
     assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "off"
 
+
+
+async def test_buttons_are_available_only_when_they_can_act(hass: HomeAssistant, kitchen, freezer) -> None:
+    """Pause/resume, +1 minute, Stop and the area's Stop ringing are unavailable while they could do nothing."""
+    await add_station(hass, kitchen, "Hob 1", [("Rice", 60)])
+    ringing = "button.kitchen_home_timer_stop_ringing"
+    state = lambda e: hass.states.get(e).state  # noqa: E731
+    assert [state(e) for e in (PAUSE, PLUS, STOP, ringing)] == ["unavailable"] * 4
+    await hass.services.async_call("button", "press", {"entity_id": RICE}, blocking=True)
+    assert "unavailable" not in [state(e) for e in (PAUSE, PLUS, STOP)]
+    await hass.services.async_call("button", "press", {"entity_id": PAUSE}, blocking=True)  # paused: still all three
+    assert "unavailable" not in [state(e) for e in (PAUSE, PLUS, STOP)]
+    await hass.services.async_call("button", "press", {"entity_id": PAUSE}, blocking=True)
+    await tick(hass, freezer, 61)  # the station's timer rings
+    assert state(PAUSE) == "unavailable" and state(STOP) != "unavailable" and state(PLUS) != "unavailable"
+    assert state(ringing) == "unavailable"  # the area's button is for timers without a station
+    await hass.services.async_call("button", "press", {"entity_id": STOP}, blocking=True)
+    assert [state(e) for e in (PAUSE, PLUS, STOP)] == ["unavailable"] * 3
+    await start(hass, kitchen.data["area_id"], duration="00:00:30")
+    await tick(hass, freezer, 31)
+    assert state(ringing) != "unavailable"
