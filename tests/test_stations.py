@@ -11,7 +11,7 @@ from homeassistant.helpers import entity_registry as er
 from custom_components.home_timer.const import DOMAIN
 
 from .conftest import add_station, tick
-from .test_engine import events
+from .test_engine import events, start
 
 HOB = "sensor.kitchen_hob_1"
 HOB_END = "sensor.kitchen_hob_1_timer_end"
@@ -255,7 +255,15 @@ async def test_ringing_sensors_are_red_while_ringing(hass: HomeAssistant, kitche
     assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "off"
     await tick(hass, freezer, 61)
     assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "on"
+    assert hass.states.get("binary_sensor.kitchen_home_timer_ringing").state == "off"  # the station shows its own
+    await start(hass, kitchen.data["area_id"], duration="00:00:30")  # a timer without a station
+    await tick(hass, freezer, 31)
     assert hass.states.get("binary_sensor.kitchen_home_timer_ringing").state == "on"
-    await hass.services.async_call(DOMAIN, "acknowledge", {"entity_id": "sensor.kitchen_hob_1"}, blocking=True)
+    # the area's button acknowledges only timers without a station
+    await hass.services.async_call("button", "press", {"entity_id": "button.kitchen_home_timer_acknowledge_all"}, blocking=True)
+    assert hass.states.get("binary_sensor.kitchen_home_timer_ringing").state == "off"
+    assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "on"
+    # the action on the area still acknowledges every ringing timer of it, stations' included
+    await hass.services.async_call(DOMAIN, "acknowledge", {"area_id": kitchen.data["area_id"]}, blocking=True)
     assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "off"
 

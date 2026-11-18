@@ -47,7 +47,7 @@ Home Timer makes no sound itself. "Ringing" is a state, and events tell your aut
 
 - `home_timer_finished` when the timer runs out,
 - `home_timer_reminder` every few minutes while it rings (with the overtime),
-- `home_timer_acknowledged` when it is acknowledged – by the *Acknowledge all* button, the action, or by itself after a while (`by: timeout`).
+- `home_timer_acknowledged` when it is acknowledged – by a station's *Stop / acknowledge* or the area's *Acknowledge all* button, the to-do list, the action, or by itself after a while (`by: timeout`).
 
 What happens then is up to you: a phone notification, an announcement, a light. See [Automations](automations.md).
 

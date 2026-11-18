@@ -55,10 +55,12 @@ def _run(func, *args, **kwargs) -> None:
 
 
 class AcknowledgeAllButton(AreaEntity, ButtonEntity):
-    """Does nothing while nothing rings (always available, so a dashboard button stays usable)."""
+    """Acknowledges the ringing timers without a station (stations have their own button).
+
+    Does nothing while none rings (always available, so a dashboard button stays usable)."""
 
     async def async_press(self) -> None:
-        self.engine.acknowledge_all(by=BY_BUTTON)
+        self.engine.acknowledge_all(by=BY_BUTTON, stations=False)
 
 
 class PresetButton(StationEntity, ButtonEntity):

@@ -32,13 +32,13 @@ async def async_setup_entry(
 
 
 class RingingSensor(AreaEntity, BinarySensorEntity):
-    """Any timer of the area rings."""
+    """A timer of the area without a station rings (stations have their own)."""
 
     _attr_device_class = BinarySensorDeviceClass.PROBLEM
 
     @property
     def is_on(self) -> bool:
-        return any(t.status == STATUS_RINGING for t in self.engine.timers.values())
+        return any(t.status == STATUS_RINGING and t.station is None for t in self.engine.timers.values())
 
 
 class StationRingingSensor(StationEntity, BinarySensorEntity):

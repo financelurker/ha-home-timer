@@ -11,8 +11,8 @@ On the area's *Home Timer* device.
 | Entity | Description |
 |---|---|
 | `sensor.<area>_home_timer_timers` | *Timers*: how many timers the area has (active, paused or ringing) |
-| `binary_sensor.<area>_home_timer_ringing` | *Ringing* while any timer of the area rings, else *Quiet* – device class *problem*, so Home Assistant shows it red while it rings |
-| `button.<area>_home_timer_acknowledge_all` | acknowledges all ringing timers of the area (does nothing while none rings) |
+| `binary_sensor.<area>_home_timer_ringing` | *Ringing* while a timer of the area without a station rings, else *Quiet* – device class *problem*, so Home Assistant shows it red while it rings. A station's timer shows on the station's own *Ringing* sensor only. |
+| `button.<area>_home_timer_acknowledge_all` | acknowledges the area's ringing timers without a station – stations have their own *Stop / acknowledge* button (does nothing while none rings). The `home_timer.acknowledge` action on the area still acknowledges all of them. |
 | `button.<area>_home_timer_start_<quick timer>` | starts the quick timer (one per quick timer of the area) |
 | `number.<area>_home_timer_custom_timer` | custom duration in minutes (1–600) |
 | `button.<area>_home_timer_start_custom_timer` | starts a timer "Timer" with the custom duration |
@@ -22,7 +22,7 @@ On the area's *Home Timer* device.
 
 | Attribute | Description |
 |---|---|
-| `ringing` | *Ringing timers*: how many timers ring |
+| `ringing` | *Ringing timers*: how many timers of the area ring, stations' included |
 | `next_end` | when the next active timer runs out (ISO timestamp), or empty |
 | `next_name` | that timer's name |
 | `timers` | all timers, ringing first, then by remaining time, open timers last (not recorded in the history) |
