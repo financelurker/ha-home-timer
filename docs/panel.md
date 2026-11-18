@@ -4,11 +4,11 @@
 
 Areas, stations, presets and options are set up in Home Timer's own panel – not in dialogs. It is for administrators and works on the phone as well.
 
-![The panel: areas on the left, the kitchen's stations with their live state on the right](images/panel.png)
+![The panel: every station in a bar at the top, the overview with their live state below](images/panel.png)
 
 ## Opening it
 
-- **The cog of an area:** Settings → Devices & services → Home Timer → the cog next to an area opens the panel at that area.
+- **The cog of an area:** Settings → Devices & services → Home Timer → the cog next to an area opens the panel at that area's card (*Ringing & reminders*).
 - **A device's link:** on the page of an area's *Home Timer* device or of a station's device, the configuration link (*Visit*) opens the panel there.
 - **After adding an area:** the confirmation links to the panel.
 - **The sidebar (optional):** the panel is hidden from the sidebar by default. Turn it on in the panel: ⋮ at the top right → *Panel settings* → *Show in the sidebar* (for all areas and users with admin rights).
@@ -19,27 +19,23 @@ The panel exists while Home Timer is loaded, i.e. while at least one area is set
 
 ## Layout
 
-On a computer the areas are on the left and the chosen area or station on the right. On a phone you go from the list of areas to an area and on to a station.
+A bar at the top shows **Overview** and then every station of every area, A–Z, each with what it does right now (a red dot and the overtime while it rings, an orange dot and the time while it runs). One click opens a station; **+ Station** adds one (with more than one area, it asks for the area first). The bar and the tabs stay at the top while the page scrolls; on a phone the bar scrolls sideways. The header shows how many timers ring in the whole house.
 
-**An area** shows its options in short, its **stations** as cards with what they do right now (timer and remaining time, ringing, the appliance's power) and its **quick timers**. Timers running without a station are listed below. The panel shows this live, but it does not operate timers – that is what dashboards, the devices' buttons and the actions are for.
+The overview has three tabs:
 
-**+ Add area** offers Home Assistant's areas that have no Home Timer yet. **Area options** (or a quick timer) opens the area's options and quick timers.
+- **Overview:** what rings right now, with *Acknowledge*; then every station as a card – ringing and running ones first, then A–Z – with its area, what it does and what it does right now (timer and remaining time, ringing, the appliance's power). Timers running without a station are listed below. The panel shows this live, but besides *Acknowledge* it does not operate timers – that is what dashboards, the devices' buttons and the actions are for.
+- **Quick timers:** the quick timers of all areas in one list – presets without a station: name, duration, optional note and (with more than one area) the area. Sort them by dragging or with the arrows.
+- **Ringing & reminders:** one card per area with how its timers ring – ring until acknowledged, reminder, stop ringing after, report missed timers (see [Timers](timers.md#options)) – links to its device and entities, and **Remove**, which deletes the area's entry with its stations, devices and stored timers. **+ Add area** offers Home Assistant's areas that have no Home Timer yet.
 
-The ⋮ menu at the top right holds the panel settings, a link to this documentation and – on an area or a station – removing it.
+Areas stay what they are in Home Assistant – one entry per area with its devices and entities; the panel just does not group the stations by them.
 
-## Area options
-
-| Setting | |
-|---|---|
-| Ring until acknowledged, reminder, stop ringing after, report missed timers | see [Timers](timers.md#options) |
-| Quick timers | presets without a station: name, duration, optional note; sort them by dragging or with the arrows |
-| ⋮ → Remove Home Timer from this area | deletes the area's entry with its stations, devices and stored timers |
+The ⋮ menu at the top right holds the panel settings, a link to this documentation and – on a station – deleting it.
 
 ## Stations
 
-**+ Add station** on an area, or a station's card, opens the station:
+**+ Station** in the bar, or a station's chip or card, opens the station:
 
-- **At the top:** name, icon (Home Assistant's icon picker) and how it **starts**: *By hand* – presets and buttons, see [Stations and presets](stations.md) – or *By power* – a power sensor drives the timer, see [Power stations](power.md) and [below](#a-station-by-power). Names are unique within the area.
+- **At the top:** the area it is in, name, icon (Home Assistant's icon picker) and how it **starts**: *By hand* – presets and buttons, see [Stations and presets](stations.md) – or *By power* – a power sensor drives the timer, see [Power stations](power.md) and [below](#a-station-by-power). Names are unique within the area.
 - **Presets:** name, duration (`9` = 9 minutes, `9:30`, `1:05:00`), optional note. Sort them by dragging or with the arrows (on a phone, note and delete are behind ⋯); the buttons follow. Renaming a preset keeps its button.
 - **⋮ → Delete station:** a timer running on it is cancelled (`reason: station_removed`).
 
@@ -49,7 +45,7 @@ The card **Now** (on a phone at the top) shows what a station by hand does right
 
 On a phone:
 
-<img src="images/phone-area.png" alt="The kitchen on a phone" width="300">
+<img src="images/phone-area.png" alt="The overview on a phone" width="300">
 
 ## A station by power
 
@@ -67,6 +63,6 @@ Everything is on one page, so a change shows at once what it does with the stati
 
 ## Saving
 
-Changes collect in a bar at the bottom: **Save** or **Discard**. Saving reloads the area once; running timers go on. Leaving the page within the panel, reloading or closing the tab with unsaved changes asks first; leaving it otherwise (browser back, the sidebar, a link) discards them.
+Changes collect in a bar at the bottom: **Save** or **Discard**; a dot marks the tab with changes, and *Quick timers* and *Ringing & reminders* keep them while you switch between the two. Saving reloads each changed area once; running timers go on. Leaving the page within the panel, reloading or closing the tab with unsaved changes asks first; leaving it otherwise (browser back, the sidebar, a link) discards them.
 
 Errors are shown next to their field, and nothing is saved until they are fixed. If the area or station was changed elsewhere in the meantime – e.g. *Save as preset* on a dashboard – the save is refused and the current state is loaded, so nothing is overwritten.
