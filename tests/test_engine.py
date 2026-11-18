@@ -186,11 +186,12 @@ async def test_several_timers_without_station(hass: HomeAssistant, kitchen, free
 async def test_acknowledge_all_button(hass: HomeAssistant, kitchen, freezer) -> None:
     ev = events(hass)
     await start(hass, kitchen.data["area_id"], duration="00:01:00")
-    await hass.services.async_call("button", "press", {"entity_id": ACK_ALL}, blocking=True)  # nothing rings yet
+    assert hass.states.get(ACK_ALL).state == "unavailable"  # nothing rings yet
     await tick(hass, freezer, 61)
     await hass.services.async_call("button", "press", {"entity_id": ACK_ALL}, blocking=True)
     await hass.async_block_till_done()
     assert [e.data["by"] for e in ev["acknowledged"]] == ["button"]
+    assert hass.states.get(ACK_ALL).state == "unavailable"  # nothing rings any more
 
 
 async def test_errors(hass: HomeAssistant, kitchen) -> None:

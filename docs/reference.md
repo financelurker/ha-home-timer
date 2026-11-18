@@ -64,10 +64,11 @@ On the station's device.
 | `button.<area>_<station>_stop` | *Stop*: acknowledges a ringing timer, cancels a running or paused one – available while the station has a timer |
 | `button.<area>_<station>_done_now` | power stations that ring when done: marks the run going on as done (learning) – available while the appliance runs |
 
-Buttons that act on a timer are *unavailable* while they could do nothing, so a dashboard only offers what makes sense right now. Stations and areas set up earlier keep their entity ids (`…_acknowledge_all`, `…_stop_acknowledge`); only the names changed.
 | `number.<area>_<station>_custom_timer` | custom duration in minutes (1–600) |
 | `button.<area>_<station>_start_custom_timer` | starts a timer "Timer" with the custom duration |
 | `text.<area>_<station>_save_as_preset` | enter a name: saves the custom timer as a preset of the station; attributes `custom_timer`, `duration` |
+
+Buttons that act on a timer are *unavailable* while they could do nothing, so a dashboard only offers what makes sense right now. Pressing an unavailable button does nothing (Home Assistant logs a warning) – in automations, use the `home_timer.*` actions or check the state first. Stations and areas set up earlier keep their entity ids (`…_acknowledge_all`, `…_stop_acknowledge`); only the names changed.
 
 The preset, custom timer, pause and +1 minute entities exist on manual stations and on power stations that start a preset. [Power stations](power.md) also have:
 

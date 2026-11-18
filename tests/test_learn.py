@@ -106,8 +106,10 @@ async def test_marks_skip_suggest_and_done_now(hass: HomeAssistant, kitchen, fre
         await watts(hass, freezer, w, seconds_after=t - last)
         last = t
         if t == moka.MARK_DONE + 5:
+            assert hass.states.get(button).state != "unavailable"  # the appliance runs
             await hass.services.async_call("button", "press", {"entity_id": button}, blocking=True)
     await tick(hass, freezer, 31)
+    assert hass.states.get(button).state == "unavailable"  # off again
     (run,) = kitchen.runtime_data.runs.list(station)
     assert run["marks"]["done"] == pytest.approx(DONE + 5, abs=1)
     client = await hass_ws_client(hass)

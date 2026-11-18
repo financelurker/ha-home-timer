@@ -25,7 +25,7 @@ The overview has three tabs:
 
 - **Overview:** what rings right now, with *Acknowledge*; then every station as a card – ringing and running ones first, then A–Z – with its area, what it does and what it does right now (timer and remaining time, ringing, the appliance's power). Timers running without a station are listed below. The panel shows this live, but besides *Acknowledge* it does not operate timers – that is what dashboards, the devices' buttons and the actions are for.
 - **Quick timers:** the quick timers of all areas in one list – presets without a station: name, duration, optional note and (with more than one area) the area. Sort them by dragging or with the arrows.
-- **Ringing & reminders:** one card per area with how its timers ring – ring until acknowledged, reminder, stop ringing after, report missed timers (see [Timers](timers.md#options)) – links to its device and entities, and **Remove**, which deletes the area's entry with its stations, devices and stored timers. **+ Add area** offers Home Assistant's areas that have no Home Timer yet.
+- **Ringing & reminders:** one card per area with how its timers ring – ring until acknowledged, reminder, auto-dismiss (*stop ringing after*), report missed timers (see [Timers](timers.md#options)) – links to its device and entities, and **Remove**, which deletes the area's entry with its stations, devices and stored timers. **+ Add area** offers Home Assistant's areas that have no Home Timer yet.
 
 Areas stay what they are in Home Assistant – one entry per area with its devices and entities; the panel just does not group the stations by them.
 

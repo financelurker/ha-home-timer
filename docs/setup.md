@@ -24,7 +24,7 @@ Stations (hob, rice cooker, bathtub …) are added in the [panel](panel.md); eac
 
 ## Options
 
-The cog of the area (Settings → Devices & services → Home Timer) opens the [panel](panel.md) at the area: **Ringing & reminders** holds what happens when a timer runs out (ringing, reminders, stop ringing, missed timers – see [Timers](timers.md#options)), **Quick timers** the area's presets without a station (see [Timers](timers.md#starting-timers-from-a-dashboard)).
+The cog of the area (Settings → Devices & services → Home Timer) opens the [panel](panel.md) at the area: **Ringing & reminders** holds what happens when a timer runs out (ringing, reminders, auto-dismiss, missed timers – see [Timers](timers.md#options)), **Quick timers** the area's presets without a station (see [Timers](timers.md#starting-timers-from-a-dashboard)).
 
 ## Removing an area
 

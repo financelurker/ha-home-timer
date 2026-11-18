@@ -277,6 +277,9 @@ async def test_buttons_are_available_only_when_they_can_act(hass: HomeAssistant,
     assert [state(e) for e in (PAUSE, PLUS, STOP, ringing)] == ["unavailable"] * 4
     await hass.services.async_call("button", "press", {"entity_id": RICE}, blocking=True)
     assert "unavailable" not in [state(e) for e in (PAUSE, PLUS, STOP)]
+    await hass.services.async_call("button", "press", {"entity_id": PAUSE}, blocking=True)  # paused: still all three
+    assert "unavailable" not in [state(e) for e in (PAUSE, PLUS, STOP)]
+    await hass.services.async_call("button", "press", {"entity_id": PAUSE}, blocking=True)
     await tick(hass, freezer, 61)  # the station's timer rings
     assert state(PAUSE) == "unavailable" and state(STOP) != "unavailable" and state(PLUS) != "unavailable"
     assert state(ringing) == "unavailable"  # the area's button is for timers without a station
