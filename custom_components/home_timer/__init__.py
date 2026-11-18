@@ -63,7 +63,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: HomeTimerConfigEntry) ->
         manufacturer=NAME,
         model="Area",
         entry_type=dr.DeviceEntryType.SERVICE,
-        configuration_url=f"homeassistant://{PANEL_URL}/area/{entry.entry_id}",  # the area in the panel
+        configuration_url=f"homeassistant://{PANEL_URL}/ringing/{entry.entry_id}",  # the area's card in the panel
     )
     if is_new:
         place_in_area(hass, device, area_id)

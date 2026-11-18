@@ -72,8 +72,35 @@ def main() -> None:
         page.on("console", lambda m: m.type == "error" and "home-timer" in (m.location.get("url") or "") and ERRORS.append(m.text))
         login(page)
         if want("panel"):
-            go(page, f"/home-timer/area/{ref['entry']}")
+            go(page, "/home-timer")
+            chips = page.locator("home-timer-panel .stbar .schip")
+            names = [chips.nth(i).locator("b").inner_text() for i in range(chips.count()) if chips.nth(i).locator("b").count()]
+            stations = names[1:]
+            check("the bar lists every station A–Z", stations == sorted(stations, key=str.casefold) and "Moka pot" in stations, names)
             page.screenshot(path=OUT / "panel.png")
+            page.locator("home-timer-panel .stbar .schip", has_text="Moka pot").click()
+            page.wait_for_timeout(1500)
+            check("a station's chip opens it", f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}" in page.url, page.url)
+        if want("panel-quick"):
+            go(page, "/home-timer/quick")
+            check("the quick timers are listed", page.locator("home-timer-panel .preset").count() >= 1)
+            page.screenshot(path=OUT / "panel-quick.png")
+        if want("panel-ringing"):
+            go(page, "/home-timer/ringing")
+            cards = page.locator("home-timer-panel .card.area")
+            check("one card per area", cards.count() >= 1, cards.count())
+            page.locator("home-timer-panel .card.area input.switch").nth(0).click()  # a change shows the save bar and the dot on the tab
+            page.wait_for_timeout(500)
+            check("a change shows the save bar", page.locator("home-timer-panel .savebar").count() == 1)
+            check("… and a dot on its tab", page.locator("home-timer-panel .ntab.on .chg").count() == 1)
+            page.locator("home-timer-panel .ntab", has_text=re.compile("Quick", re.I)).click()
+            page.wait_for_timeout(500)
+            check("the draft stays on the other tab", page.locator("home-timer-panel .savebar").count() == 1 and page.locator("home-timer-panel .dialog").count() == 0)
+            page.locator("home-timer-panel .ntab", has_text=re.compile("Ringing", re.I)).click()
+            page.wait_for_timeout(500)
+            page.screenshot(path=OUT / "panel-ringing.png")
+            page.locator("home-timer-panel .savebar button", has_text="Discard").click()
+            page.wait_for_timeout(300)
         if want("panel-runs"):
             # the moka pot's page with a draft of its done rule: the live preview on the stored runs
             page.set_viewport_size({"width": 1366, "height": 1500})
@@ -288,7 +315,8 @@ def main() -> None:
                          f"ha-icon-button[href*='config_entry={ref['entry']}']").first.click()
             page.wait_for_timeout(3000)
             check("cog of an area opens the panel", "/home-timer" in page.url and ref["entry"] in page.url, page.url)
-            check("panel shows the area", page.locator("home-timer-panel h1").first.inner_text() == "Kitchen", page.url)
+            focus = page.locator("home-timer-panel .card.area.focus")
+            check("panel shows the area's card", focus.count() == 1 and "Kitchen" in focus.inner_text(), page.url)
             go(page, f"/config/devices/device/{ref['hob']['device_id']}", 4000)
             link = page.locator("a[href*='/home-timer/station/']").first
             check("device page links to the station", link.count() > 0, page.url)
@@ -300,7 +328,7 @@ def main() -> None:
             phone = browser.new_context(viewport={"width": 390, "height": 844}, device_scale_factor=3, is_mobile=True, has_touch=True)
             pp = phone.new_page()
             login(pp)
-            go(pp, f"/home-timer/area/{ref['entry']}")
+            go(pp, "/home-timer")
             pp.screenshot(path=OUT / "phone-area.png")
             go(pp, f"/home-timer/station/{ref['entry']}/{ref['moka']['id']}")
             pp.screenshot(path=OUT / "phone-power.png")

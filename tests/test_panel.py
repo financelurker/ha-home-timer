@@ -210,7 +210,7 @@ def test_check_station_rule_ranges() -> None:
 
 async def test_area_device_links_to_the_panel(hass: HomeAssistant, kitchen) -> None:
     device = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, kitchen.entry_id), kitchen.entry_id)
-    assert device.configuration_url == f"homeassistant://home-timer/area/{kitchen.entry_id}"
+    assert device.configuration_url == f"homeassistant://home-timer/ringing/{kitchen.entry_id}"
 
 
 async def test_panel_registered_hidden_and_follows_the_setting(hass: HomeAssistant, kitchen, hass_ws_client) -> None:

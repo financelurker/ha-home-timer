@@ -45,14 +45,17 @@ export function parseDuration(text) {
   return parts.length === 2 ? nums[0] * 60 + nums[1] : nums[0] * 3600 + nums[1] * 60 + nums[2];
 }
 
-// the panel's routes: "" | area/<entry> | area/<entry>/options | station/<entry>/<id|new>
+// the panel's routes: "" | quick | ringing[/<entry>] | station/<entry>/<id|new>[/<tab>]
+// (area/<entry>[/options] and ?config_entry=<entry> – the area's device and cog – open "ringing" at that area)
 export function parseRoute(path, search) {
   const parts = String(path || "").replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
   const fromCog = new URLSearchParams(search || "").get("config_entry");
-  if (!parts.length && fromCog) return { page: "area", entry: fromCog };
-  if (parts[0] === "area" && parts[1]) return { page: parts[2] === "options" ? "options" : "area", entry: parts[1] };
-  if (parts[0] === "station" && parts[1] && parts[2]) return { page: "station", entry: parts[1], station: parts[2] };
-  return { page: "home" };
+  if (!parts.length && fromCog) return { page: "home", tab: "ringing", entry: fromCog };
+  if (parts[0] === "quick") return { page: "home", tab: "quick" };
+  if (parts[0] === "ringing") return { page: "home", tab: "ringing", entry: parts[1] || null };
+  if (parts[0] === "area" && parts[1]) return { page: "home", tab: "ringing", entry: parts[1] };
+  if (parts[0] === "station" && parts[1] && parts[2]) return { page: "station", entry: parts[1], station: parts[2], tab: parts[3] || null };
+  return { page: "home", tab: "overview" };
 }
 
 // a station's live state from its entities: {status, name, seconds, kind: countdown|elapsed|overtime|paused}
