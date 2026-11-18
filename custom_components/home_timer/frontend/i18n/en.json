@@ -395,5 +395,8 @@
   "station.area": "Area",
   "station.in_area": "in {area}",
   "station.pick_area": "Which area is the station in?",
-  "ringing.count_one": "1 ringing"
+  "ringing.count_one": "1 ringing",
+  "live.state_ring": "ringing",
+  "live.state_run": "running",
+  "live.state_pause": "paused"
 }

@@ -395,5 +395,8 @@
   "area.delete_short": "Entfernen",
   "station.area": "Bereich",
   "station.in_area": "in {area}",
-  "station.pick_area": "In welchem Bereich steht die Station?"
+  "station.pick_area": "In welchem Bereich steht die Station?",
+  "live.state_ring": "klingelt",
+  "live.state_run": "läuft",
+  "live.state_pause": "pausiert"
 }

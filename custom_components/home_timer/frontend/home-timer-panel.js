@@ -4,7 +4,7 @@
 // saves or discards them, because saving reloads the area. Live state comes from the entities, not from the panel's
 // own data. The checks are the integration's (panel/edit.py); errors show at the field.
 
-import { LitElement, html, svg, css, nothing } from "./vendor/lit.js";
+import { LitElement, html, svg, css, nothing, repeat } from "./vendor/lit.js";
 import { clone, formatDuration, looseTimers, parseDuration, parseRoute, same, stationLive, tempId, translator } from "./helpers.js";
 import { MIN_VIEW, chartModel, overviewModel, renderChart, renderOverview, secondsAt, valueAt, zoomView } from "./runs.js";
 
@@ -64,7 +64,6 @@ class HomeTimerPanel extends LitElement {
     this._drafts = {}; // key → draft; key: "options:<entry>" | "station:<entry>:<id|new>"
     this._base = {}; // key → the draft as loaded (what "unsaved" is measured against)
     this._versions = {}; // key → the stored version the draft started from (sent with the save)
-    this._lastKeys = [];
     this._errors = {}; // key → {field: error}
     this._t = (k) => k;
     this._lang = null;
@@ -118,9 +117,11 @@ class HomeTimerPanel extends LitElement {
     if (changed.has("route") || (changed.has("_config") && !changed.get("_config"))) {
       // the chosen station's chip in view (on a phone the bar scrolls sideways)
       requestAnimationFrame(() => {
-        const chip = this.shadowRoot?.querySelector(".stbar .schip.on");
-        const bar = chip?.parentElement;
-        if (chip && bar.scrollWidth > bar.clientWidth) bar.scrollTo({ left: chip.offsetLeft - (bar.clientWidth - chip.offsetWidth) / 2 });
+        for (const sel of [".stbar .schip.on", ".ntabs .ntab.on"]) {
+          const el = this.shadowRoot?.querySelector(sel);
+          const bar = el?.parentElement;
+          if (el && bar.scrollWidth > bar.clientWidth) bar.scrollTo({ left: el.offsetLeft - bar.offsetLeft - (bar.clientWidth - el.offsetWidth) / 2 });
+        }
       });
     }
     if (changed.has("route")) {
@@ -134,13 +135,13 @@ class HomeTimerPanel extends LitElement {
       // left a page by any way (browser back, a link …): drafts the new page does not show are dropped
       const keys = this._keys();
       let dirty = false;
-      for (const key of this._lastKeys || []) {
-        if (keys.includes(key) || !this._drafts[key]) continue;
+      for (const key of Object.keys(this._drafts)) {
+        if (keys.includes(key)) continue;
         dirty ||= !same(this._drafts[key], this._base[key]);
         this._drop(key);
       }
       if (dirty) this._notice = { kind: "warn", text: this._t("notice.discarded") };
-      this._lastKeys = keys;
+      if (this._route.tab !== "ringing") this._focused = null; // opening an area's card again scrolls to it again
     }
     if (changed.has("hass") && this.hass) {
       if (this._lang !== this.hass.language) {
@@ -298,8 +299,11 @@ class HomeTimerPanel extends LitElement {
     let failed = false;
     let changed = false;
     let created = null;
+    // a quick timer moved between areas: the area that gains it first, so a failure leaves it twice, never lost
+    const gain = (k) => (k.startsWith("options:") ? (this._drafts[k].quick_timers.length - this._base[k].quick_timers.length) : 0);
+    const order = [...keys].sort((a, b) => gain(b) - gain(a));
     try {
-      for (const key of keys) {
+      for (const key of order) {
         const [kind, entry, id] = key.split(":");
         const area = this._area(entry);
         const draft = this._drafts[key];
@@ -332,7 +336,7 @@ class HomeTimerPanel extends LitElement {
         if (result.errors) {
           this._errors = { ...this._errors, [key]: result.errors };
           failed = true;
-          continue;
+          break; // the rest stays unsaved: nothing half-moved
         }
         changed ||= !!result.changed;
         if (!result.changed && kind === "station" && id === "new") created = `station/${area.entry_id}/${result.station_id}`;
@@ -340,11 +344,16 @@ class HomeTimerPanel extends LitElement {
       }
       await this._load();
       if (created) this._go(created, { replace: true, force: true });
-      this._notice = failed
-        ? { kind: "error", text: this._t("notice.fix_errors") }
-        : changed
-          ? { kind: "warn", text: this._t("notice.changed") }
-          : { kind: "ok", text: this._t("notice.saved") };
+      if (failed && this._route.page === "home") {
+        // the errors may be on the other tab (quick timers and ringing share the drafts): go there
+        const fields = keys.flatMap((k) => Object.keys(this._errors[k] || {}));
+        const quick = fields.some((f) => f.startsWith("quick_timers."));
+        const other = fields.some((f) => !f.startsWith("quick_timers."));
+        const here = this._route.tab === "quick" ? quick : other;
+        if (!here) this._go(quick ? "quick" : "ringing", { force: true });
+      }
+      const texts = [failed && this._t("notice.fix_errors"), changed && this._t("notice.changed")].filter(Boolean);
+      this._notice = texts.length ? { kind: failed ? "error" : "warn", text: texts.join(" ") } : { kind: "ok", text: this._t("notice.saved") };
     } catch (err) {
       this._notice = { kind: "error", text: err?.message || String(err) };
     } finally {
@@ -486,7 +495,7 @@ class HomeTimerPanel extends LitElement {
     const t = this._t;
     const home = r.page === "home";
     const chip = (on, label, cls, small, go, extra = "") =>
-      html`<button class="schip ${on ? "on" : ""} ${extra}" aria-current=${on ? "page" : "false"} @click=${go}>${cls != null ? html`<i class="sdot ${cls}"></i>` : nothing}<b>${label}</b>${small ? html`<small>${small}</small>` : nothing}</button>`;
+      html`<button class="schip ${on ? "on" : ""} ${extra}" aria-current=${on ? "page" : "false"} title=${cls ? t(`live.state_${cls}`) : nothing} @click=${go}>${cls != null ? html`<i class="sdot ${cls}"></i>` : nothing}<b>${label}</b>${small ? html`<small>${small}</small>` : nothing}</button>`;
     const bar = html`<div class="stbar" role="navigation" aria-label=${t("nav.stations")}>
       ${chip(home, t("nav.overview"), null, "", () => this._go(""), "home")}
       <span class="ssep"></span>
@@ -504,9 +513,9 @@ class HomeTimerPanel extends LitElement {
     const quickDirty = drafts.some((k) => !same(this._drafts[k].quick_timers, this._base[k].quick_timers));
     const ringDirty = drafts.some((k) => !same(this._drafts[k].options, this._base[k].options));
     const tab = (id, path, label, dirty) =>
-      html`<button class="ntab ${r.tab === id ? "on" : ""}" role="tab" aria-selected=${r.tab === id ? "true" : "false"} @click=${() => this._go(path)}>${label}${dirty ? html`<i class="chg" title=${t("unsaved")}></i>` : nothing}</button>`;
+      html`<button class="ntab ${r.tab === id ? "on" : ""}" aria-current=${r.tab === id ? "page" : "false"} @click=${() => this._go(path)}>${label}${dirty ? html`<i class="chg" title=${t("unsaved")}></i><span class="vh">(${t("unsaved")})</span>` : nothing}</button>`;
     return html`<div class="nav">${bar}
-      <div class="ntabs" role="tablist">
+      <div class="ntabs">
         ${tab("overview", "", t("nav.overview"), false)}
         ${tab("quick", "quick", t("quick_timers"), quickDirty)}
         ${tab("ringing", "ringing", t("nav.ringing"), ringDirty)}
@@ -580,7 +589,9 @@ class HomeTimerPanel extends LitElement {
       ${hints.length
         ? html`<div class="hints">${hints.map(
             (h) => html`<div class="hint ring"><ha-icon icon="mdi:bell-ring"></ha-icon>
-              <button class="txt" @click=${h.open || (() => {})}><b>${t("hint.ringing", { name: h.name })}</b><span>${h.sub}</span></button>
+              ${h.open
+                ? html`<button class="txt" @click=${h.open}><b>${t("hint.ringing", { name: h.name })}</b><span>${h.sub}</span></button>`
+                : html`<div class="txt"><b>${t("hint.ringing", { name: h.name })}</b><span>${h.sub}</span></div>`}
               <button class="btn filled" @click=${h.ack}>${t("hint.acknowledge")}</button></div>`
           )}</div>`
         : nothing}
@@ -604,6 +615,7 @@ class HomeTimerPanel extends LitElement {
     const many = areas.length > 1;
     // a quick timer moved to another area: out of one draft, at the end of the other
     const move = (from, i, toEntry) => {
+      if (from === `options:${toEntry}`) return;
       const p = this._drafts[from].quick_timers[i];
       this._change(from, (x) => x.quick_timers.splice(i, 1));
       this._change(`options:${toEntry}`, (x) => x.quick_timers.push(p));
@@ -614,15 +626,15 @@ class HomeTimerPanel extends LitElement {
         <select .value=${area.entry_id} @change=${(e) => move(key, i, e.target.value)}>
           ${areas.map((a) => html`<option value=${a.entry_id} ?selected=${a.entry_id === area.entry_id}>${a.name}</option>`)}
         </select></label>`;
-    const first = drafts[0];
+    const last = drafts[drafts.length - 1]; // a new one goes to the end of the list
     return html`<div class="column wide">
       <div class="card"><div class="ch">${t("quick_timers")} <span class="chs">– ${t("quick_timers.long_hint")}</span></div><div class="cb">
         ${drafts.map(({ area, key, d }) =>
           d.quick_timers.length ? this._presetTable(key, d.quick_timers, "quick_timers", (fn) => this._change(key, (x) => fn(x.quick_timers)), { extra: many ? areaCell(area, key) : null, foot: false }) : nothing
         )}
         <div class="presetfoot">
-          <button class="btn" @click=${() => this._change(first.key, (x) => x.quick_timers.push({ id: tempId(), name: "", duration: null, text: "", note: "" }))}>+ ${t("quick_timers.add")}</button>
-          <span class="help">${t("preset.duration_hint")}${many ? ` ${t("quick_timers.area_hint", { area: first.area.name })}` : ""}</span>
+          <button class="btn" @click=${() => this._change(last.key, (x) => x.quick_timers.push({ id: tempId(), name: "", duration: null, text: "", note: "" }))}>+ ${t("quick_timers.add")}</button>
+          <span class="help">${t("preset.duration_hint")}${many ? ` ${t("quick_timers.area_hint", { area: last.area.name })}` : ""}</span>
         </div>
       </div></div>
     </div>`;
@@ -637,7 +649,7 @@ class HomeTimerPanel extends LitElement {
       this._focused = focus;
       requestAnimationFrame(() => this.shadowRoot?.querySelector(`[data-area="${focus}"]`)?.scrollIntoView?.({ block: "center" }));
     }
-    return html`<div class="sub">${t("ringing.hint")}</div>
+    return html`<div class="lead">${t("ringing.hint")}</div>
       <div class="agrid">
         ${areas.map((area) => this._renderAreaCard(area, area.entry_id === focus))}
         <button class="card addcard" @click=${() => (this._dialog = { type: "add_area" })}>+ ${t("area.add")}</button>
@@ -698,7 +710,7 @@ class HomeTimerPanel extends LitElement {
   }
 
   _liveClass(live) {
-    return live.status === "ringing" ? "ring" : live.running || live.status === "active" ? "run" : "";
+    return live.status === "ringing" ? "ring" : live.running || live.status === "active" ? "run" : live.status === "paused" ? "pause" : "";
   }
 
   _renderStationCard(area, s) {
@@ -811,13 +823,18 @@ class HomeTimerPanel extends LitElement {
         <input .value=${value} placeholder=${opts.placeholder || ""} inputmode=${opts.numeric ? "numeric" : "text"}
           @input=${(e) => change((l) => opts.input(l[i], e.target.value))} @blur=${opts.blur ? () => change((l) => opts.blur(l[i])) : null} /></label>`;
     return html`<div class="presets">
-      ${presets.map((p, i) => {
+      ${repeat(presets, (p) => p.id, (p, i) => {
         const open = this.narrow && this._open?.[`${key}:${p.id}`];
         const durErr = this._err(key, `${prefix}.${i}.duration`);
         return html`<div class="preset ${open ? "open" : ""}" draggable=${this.narrow ? "false" : "true"}
-            @dragstart=${(e) => ((this._dragIndex = i), e.dataTransfer.setData("text/plain", String(i)))}
+            @dragstart=${(e) => ((this._dragIndex = { key, prefix, i }), e.dataTransfer.setData("text/plain", String(i)))}
             @dragover=${(e) => e.preventDefault()}
-            @drop=${(e) => (e.preventDefault(), this._dragIndex != null && move(this._dragIndex, i), (this._dragIndex = null))}>
+            @drop=${(e) => {
+              e.preventDefault();
+              const from = this._dragIndex;
+              this._dragIndex = null;
+              if (from && from.key === key && from.prefix === prefix) move(from.i, i); // within this list only
+            }}>
           ${this.narrow ? nothing : html`<span class="handle" title=${t("preset.drag")}><ha-icon icon="mdi:drag"></ha-icon></span>`}
           ${field(i, "name", t("preset.name"), p.name, { input: (x, v) => (x.name = v) })}
           ${field(i, "duration", t("preset.duration"), p.text, {
@@ -827,7 +844,7 @@ class HomeTimerPanel extends LitElement {
             blur: (x) => x.duration != null && (x.text = formatDuration(x.duration)),
           })}
           ${!this.narrow || open ? field(i, "note", t("preset.note"), p.note, { placeholder: t("preset.note_placeholder"), input: (x, v) => (x.note = v) }) : nothing}
-          ${extra && (!this.narrow || open) ? extra(i) : nothing}
+          ${extra ? extra(i) : nothing}
           ${this.narrow
             ? html`<span class="acts">
                 <button class="icon sm" aria-label=${t("preset.up")} ?disabled=${i === 0} @click=${() => move(i, i - 1)}><ha-icon icon="mdi:chevron-up"></ha-icon></button>
@@ -2215,9 +2232,7 @@ class HomeTimerPanel extends LitElement {
     .menu .danger, .menu .danger ha-icon { color: var(--ht-err); }
     .menusep { border-top: 1px solid var(--ht-d); margin: 4px 0; }
     .body { flex: 1; min-height: 0; display: flex; }
-    .h { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--ht-s); text-transform: uppercase; margin: 6px 10px 8px; }
     .ai { display: flex; align-items: center; gap: 12px; padding: 10px 12px; border-radius: 10px; width: 100%; margin-bottom: 2px; }
-    .ai.sel { background: var(--ht-tint); }
     .ai:hover { background: rgba(127, 127, 127, 0.08); }
     .txt { display: flex; flex-direction: column; min-width: 0; flex: 1; }
     .txt b { font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -2244,18 +2259,21 @@ class HomeTimerPanel extends LitElement {
     .schip.add { border-style: dashed; color: var(--ht-s); }
     .sdot { width: 9px; height: 9px; border-radius: 50%; background: color-mix(in srgb, var(--ht-s) 45%, transparent); flex: none; }
     .sdot.run { background: var(--ht-run); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ht-run) 22%, transparent); }
+    .sdot.pause { background: var(--ht-p); }
     .sdot.ring { background: var(--ht-err); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ht-err) 22%, transparent); }
     .ssep { width: 1px; align-self: stretch; background: var(--ht-d); margin: 4px 2px; flex: none; }
     .ntabs { display: flex; border-bottom: 1px solid var(--ht-d); margin-top: 12px; overflow-x: auto; scrollbar-width: none; }
     .ntab { padding: 11px 18px; font-size: 13px; font-weight: 500; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ht-s); border-bottom: 2px solid transparent;
       white-space: nowrap; text-align: center; }
     .ntab.on { color: var(--ht-p); border-bottom-color: var(--ht-p); }
+    .vh { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
     .ntab .chg { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--ht-warn); margin-left: 6px; vertical-align: 2px; }
-    .hints { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 12px; margin-bottom: 6px; }
+    .hints { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(320px, 100%), 1fr)); gap: 12px; margin-bottom: 6px; }
     .hint { display: flex; align-items: center; gap: 12px; background: var(--ht-card); border: 1px solid var(--ht-d); border-radius: 12px; padding: 10px 12px 10px 14px; }
     .hint.ring { border-color: color-mix(in srgb, var(--ht-err) 55%, transparent); }
     .hint.ring > ha-icon { color: var(--ht-err); }
     .hint .txt { padding: 0; }
+    .lead { color: var(--ht-s); margin-bottom: 12px; line-height: 1.45; }
     .agrid { display: grid; grid-template-columns: repeat(auto-fill, minmax(340px, 1fr)); gap: 14px; align-items: start; }
     :host([narrow]) .agrid { grid-template-columns: 1fr; }
     .card.area { margin: 0; }
@@ -2267,11 +2285,8 @@ class HomeTimerPanel extends LitElement {
     .inarea { grid-column: 1 / -1; display: flex; align-items: center; gap: 6px; color: var(--ht-s); font-size: 13px; --mdc-icon-size: 16px; }
     h1 { font-size: 24px; font-weight: 400; margin: 0 0 10px; }
     .sub { color: var(--ht-s); margin-bottom: 12px; line-height: 1.45; }
-    .chips { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin-bottom: 4px; }
-    .chip { background: rgba(127, 127, 127, 0.12); border-radius: 8px; padding: 3px 10px; font-size: 12.5px; }
     .btn { color: var(--ht-p); font-weight: 500; padding: 8px 16px; border-radius: 18px; border: 1px solid var(--ht-line); font-size: 14px; white-space: nowrap; }
     .btn:hover { background: var(--ht-tint); }
-    .btn.push { margin-left: auto; }
     .btn.filled { background: var(--ht-p); color: var(--text-primary-color, #fff); border-color: var(--ht-p); }
     .btn.danger { color: var(--ht-err); border-color: color-mix(in srgb, var(--ht-err) 40%, transparent); }
     .btn.danger.filled { background: var(--ht-err); color: #fff; }
@@ -2280,8 +2295,6 @@ class HomeTimerPanel extends LitElement {
     .link:hover { background: var(--ht-tint); }
     .link.danger { color: var(--ht-err); }
     .sec { font-size: 12px; font-weight: 600; letter-spacing: 0.06em; color: var(--ht-s); text-transform: uppercase; margin: 22px 0 10px; }
-    .sechead { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 14px 0 10px; }
-    .sechead .sec { margin: 0; }
     .lc { text-transform: none; font-weight: 400; letter-spacing: 0; }
     .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
     .card { background: var(--ht-card); border: 1px solid var(--ht-d); border-radius: var(--ha-card-border-radius, 12px); margin-bottom: 14px; display: block; width: 100%; overflow: hidden; }
@@ -2342,7 +2355,6 @@ class HomeTimerPanel extends LitElement {
     .lbl { display: flex; flex-direction: column; }
     .lbl b { font-weight: 500; }
     .lbl span { font-size: 12.5px; color: var(--ht-s); }
-    .sub { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--ht-d); }
     .sentence { font-size: 15px; line-height: 2.7; }
     .steps.many { display: flex; flex-direction: column; }
     .steps.many .step { display: grid; grid-template-columns: auto auto 1fr auto; gap: 0 8px; align-items: start; border: 1px solid var(--divider-color); border-radius: 10px; padding: 4px 10px; background: var(--card-background-color); }
@@ -2376,7 +2388,8 @@ class HomeTimerPanel extends LitElement {
     :host([narrow]) .preset { grid-template-columns: 1fr 92px auto; }
     :host([narrow]) .preset.open label:nth-of-type(3) { grid-column: 1 / 3; }
     .preset:has(.areacol) { grid-template-columns: 24px 1.3fr 0.7fr 1.4fr 0.9fr auto; }
-    :host([narrow]) .preset.open .areacol { grid-column: 1 / 3; }
+    :host([narrow]) .preset .areacol { grid-column: 1 / 3; }
+    :host([narrow]) .preset:has(.areacol) .acts { grid-column: 3; grid-row: 1; }
     .preset .rowerr { grid-column: 1 / -1; }
     .preset .rowerr:empty { display: none; }
     .handle { color: var(--ht-s); cursor: grab; display: flex; justify-content: center; }
