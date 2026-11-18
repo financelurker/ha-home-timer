@@ -722,8 +722,9 @@ class AreaTimers:
         self._changed()
 
     @callback
-    def acknowledge_all(self, *, by: str) -> int:
-        ringing = [t for t in self.timers.values() if t.status == STATUS_RINGING]
+    def acknowledge_all(self, *, by: str, stations: bool = True) -> int:
+        """Acknowledge the ringing timers of the area; with ``stations=False`` only those without a station."""
+        ringing = [t for t in self.timers.values() if t.status == STATUS_RINGING and (stations or t.station is None)]
         for timer in ringing:
             self.acknowledge(timer.id, by=by)
         return len(ringing)

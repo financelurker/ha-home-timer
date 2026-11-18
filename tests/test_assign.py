@@ -45,6 +45,18 @@ async def test_assign_keeps_time_and_state(hass: HomeAssistant, kitchen, freezer
     assert ev["finished"][0].data["station_name"] == "Hob 1"
 
 
+async def test_assigning_a_ringing_timer_moves_its_ringing(hass: HomeAssistant, kitchen, freezer) -> None:
+    """The area's Ringing sensor is for timers without a station: assigned, the station's shows it."""
+    await add_station(hass, kitchen, "Hob 1", [("Rice", 600)])
+    timer = kitchen.runtime_data.start("Dough", 30)
+    await tick(hass, freezer, 31)
+    assert hass.states.get("binary_sensor.kitchen_home_timer_ringing").state == "on"
+    await assign(hass, timer.id, {"entity_id": HOB})
+    await hass.async_block_till_done()
+    assert hass.states.get("binary_sensor.kitchen_home_timer_ringing").state == "off"
+    assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "on"
+
+
 async def test_assign_replaces_and_moves(hass: HomeAssistant, kitchen) -> None:
     hob = await add_station(hass, kitchen, "Hob 1", [("Rice", 600)])
     oven = await add_station(hass, kitchen, "Oven")
