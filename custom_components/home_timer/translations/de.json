@@ -152,9 +152,6 @@
       "acknowledge_all": {
         "name": "Klingeln stoppen"
       },
-      "start_preset": {
-        "name": "{preset} starten"
-      },
       "pause_resume": {
         "name": "Pause / Fortsetzen"
       },
@@ -163,9 +160,6 @@
       },
       "stop": {
         "name": "Stopp"
-      },
-      "start_custom": {
-        "name": "Eigenen Timer starten"
       },
       "done_now": {
         "name": "Jetzt fertig"
@@ -203,6 +197,9 @@
       },
       "custom_timer": {
         "name": "Eigener Timer"
+      },
+      "station_preset": {
+        "name": "{preset}"
       }
     }
   },

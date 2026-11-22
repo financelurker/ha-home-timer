@@ -19,19 +19,19 @@ How you set up your stations is up to you – by place (*Hob 1*, *Hob 2*) with d
 
 ## The station's device
 
-The station's device carries its name and lies in the area (move it if you like). Its entities, e.g. for *Hob 1* in the kitchen (entity ids come from the names in your system language when the entities are created; the examples are for an English system – on a German one e.g. `button.kuche_kochfeld_1_reis_starten`):
+The station's device carries its name and lies in the area (move it if you like). Its entities, e.g. for *Hob 1* in the kitchen (entity ids come from the names in your system language when the entities are created; the examples are for an English system – on a German one e.g. `switch.kuche_kochfeld_1_reis`):
 
 | Entity | Description |
 |---|---|
 | `sensor.kitchen_hob_1` | the station's timer: *idle*, *active*, *paused* or *ringing*; details as attributes (see [Reference](reference.md#station)) |
 | `binary_sensor.kitchen_hob_1_ringing` | *Ringing* while its timer rings, else *Quiet*; Home Assistant shows it red while it rings – a tile of it stands out on any dashboard |
 | `sensor.kitchen_hob_1_timer_end` | when the timer runs out; the frontend shows "in 6 minutes" |
-| `button.kitchen_hob_1_start_rice` | one button per preset: starts it (replacing the station's timer) |
+| `switch.kitchen_hob_1_rice` | one switch per preset: on while the station's timer is this preset's; on starts it (replacing the station's timer, so at most one is on), off stops it – or acknowledges it while it rings |
 | `button.kitchen_hob_1_pause_resume` | pauses or resumes the timer (available while it runs or is paused) |
 | `button.kitchen_hob_1_1_minute` | +1 minute; a ringing timer starts again with one minute |
 | `button.kitchen_hob_1_stop` | *Stop*: acknowledges a ringing timer, cancels a running or paused one (available while there is one; stations set up earlier keep `…_stop_acknowledge`, see [Reference](reference.md)) |
 | `number.kitchen_hob_1_custom_timer_minutes` | *Custom timer minutes*: custom duration in minutes, kept for next time |
-| `button.kitchen_hob_1_start_custom_timer` | starts a timer "Timer" with the custom duration (replacing the station's timer) |
+| `switch.kitchen_hob_1_custom_timer` | *Custom timer*: on starts a timer "Timer" with the custom duration (replacing the station's timer), off stops it |
 | `text.kitchen_hob_1_save_as_preset` | enter a name: saves the custom timer as a preset (see below) |
 
 ![Hob 1's device: buttons per preset, custom timer, pause, +1 minute, stop](images/device.png)
@@ -40,7 +40,7 @@ Renaming a preset keeps its button (its entity id stays); deleting a preset remo
 
 ## Creating presets while cooking
 
-Presets do not have to be set up beforehand: set *Custom timer minutes* (e.g. 9 minutes), press *Start custom timer*, and while it runs enter "Pasta" in *Save as preset*. The station gets a preset *Pasta* (9 min) with its button *Start Pasta*, and its timer is renamed "Pasta". A preset of the same name gets the new duration; if the custom timer is gone (acknowledged, cancelled, replaced or moved), the custom duration is saved. Saved presets show up in the station in the [panel](panel.md), where they can be changed or deleted. Saving reloads the area; the timer goes on.
+Presets do not have to be set up beforehand: set *Custom timer minutes* (e.g. 9 minutes), turn on *Custom timer*, and while it runs enter "Pasta" in *Save as preset*. The station gets a preset *Pasta* (9 min) with its switch *Pasta*, and its timer is renamed "Pasta" and is that switch's. A preset of the same name gets the new duration; if the custom timer is gone (acknowledged, cancelled, replaced or moved), the custom duration is saved. Saved presets show up in the station in the [panel](panel.md), where they can be changed or deleted. Saving reloads the area; the timer goes on.
 
 ## One timer per station
 

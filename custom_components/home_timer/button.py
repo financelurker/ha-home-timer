@@ -1,5 +1,5 @@
-"""Buttons. Area: stop ringing (its quick timers and custom timer are switches). Station:
-its presets, start custom timer, pause/resume, +1 minute, stop, done now.
+"""Buttons. Area: stop ringing. Station: pause/resume, +1 minute, stop, done now. (Quick
+timers, presets and custom timers are switches.)
 
 Buttons that act on a timer are available only while they can do something
 (stop ringing while a timer without a station rings, pause/resume while the
@@ -16,9 +16,8 @@ from . import HomeTimerConfigEntry
 from .const import BY_BUTTON, DOMAIN, STATUS_ACTIVE, STATUS_PAUSED, STATUS_RINGING
 from .engine import TimerError
 from .entity import AreaEntity, StationEntity, remove_orphans
-from .stations import KIND_UNTIL_OFF, Preset
+from .stations import KIND_UNTIL_OFF
 
-PRESET_KEY = "start_preset"
 
 
 async def async_setup_entry(
@@ -33,9 +32,7 @@ async def async_setup_entry(
     for station in engine.stations.values():
         buttons: list[ButtonEntity] = []
         if station.manual_controls:
-            buttons += [PresetButton(engine, station, p) for p in station.presets]
             buttons += [
-                StationStartCustomButton(engine, station, "start_custom"),
                 PauseResumeButton(engine, station, "pause_resume"),
                 AddMinuteButton(engine, station, "add_minute"),
             ]
@@ -67,26 +64,6 @@ class AcknowledgeAllButton(AreaEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         self.engine.acknowledge_all(by=BY_BUTTON, stations=False)
-
-
-class PresetButton(StationEntity, ButtonEntity):
-    """Starts the preset on the station, replacing a timer the station has."""
-
-    def __init__(self, engine, station, preset: Preset) -> None:
-        super().__init__(engine, station, PRESET_KEY)
-        self.preset = preset
-        self._attr_unique_id = f"{station.id}_preset_{preset.id}"
-        self._attr_translation_placeholders = {"preset": preset.name}
-
-    async def async_press(self) -> None:
-        _run(self.engine.start_preset, self.station.id, self.preset.id)
-
-
-class StationStartCustomButton(StationEntity, ButtonEntity):
-    """Starts a timer "Timer" with the station's custom duration, replacing its timer."""
-
-    async def async_press(self) -> None:
-        _run(self.engine.start_custom, self.station.id)
 
 
 class PauseResumeButton(StationEntity, ButtonEntity):

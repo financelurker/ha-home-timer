@@ -15,7 +15,7 @@ MINUTES = "number.kitchen_home_timer_custom_timer_minutes"
 CUSTOM = "switch.kitchen_home_timer_custom_timer"
 SAVE = "text.kitchen_home_timer_save_as_preset"
 HOB_MINUTES = "number.kitchen_hob_1_custom_timer_minutes"
-HOB_START = "button.kitchen_hob_1_start_custom_timer"
+HOB_CUSTOM = "switch.kitchen_hob_1_custom_timer"
 HOB_SAVE = "text.kitchen_hob_1_save_as_preset"
 
 
@@ -101,15 +101,15 @@ async def test_station_custom_and_save(hass: HomeAssistant, kitchen) -> None:
     hob = await add_station(hass, kitchen, "Hob 1", [("Rice", 600)])
     ev = events(hass)
     await set_minutes(hass, HOB_MINUTES, 9)
-    await press(hass, "button.kitchen_hob_1_start_rice")
-    await press(hass, HOB_START)  # replaces Rice
+    await on(hass, "switch.kitchen_hob_1_rice")
+    await on(hass, HOB_CUSTOM)  # replaces Rice
     assert ev["cancelled"][0].data["reason"] == "replaced"
     assert hass.states.get("sensor.kitchen_hob_1").attributes["timer_name"] == "Timer"
     await save(hass, HOB_SAVE, "Pasta")
     presets = kitchen.subentries[hob].data["presets"]
     assert [(p["name"], p["duration"]) for p in presets] == [("Rice", 600), ("Pasta", 540)]
     assert hass.states.get("sensor.kitchen_hob_1").attributes["timer_name"] == "Pasta"
-    assert hass.states.get("button.kitchen_hob_1_start_pasta") is not None
+    assert hass.states.get("switch.kitchen_hob_1_pasta").state == "on"  # the custom timer's run is Pasta's now
     assert kitchen.options.get("presets", []) == []
 
 
@@ -171,7 +171,7 @@ async def test_unknown_quick_timer_message(hass: HomeAssistant, kitchen) -> None
 async def test_save_while_ringing_and_onto_a_preset_in_other_case(hass: HomeAssistant, kitchen, freezer) -> None:
     hob = await add_station(hass, kitchen, "Hob 1", [("Rice", 600, "Lid on")])
     await set_minutes(hass, HOB_MINUTES, 1)
-    await press(hass, HOB_START)
+    await on(hass, HOB_CUSTOM)
     await tick(hass, freezer, 61)
     assert hass.states.get("sensor.kitchen_hob_1").state == "ringing"
     await save(hass, HOB_SAVE, "RICE")

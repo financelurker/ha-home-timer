@@ -152,9 +152,6 @@
       "acknowledge_all": {
         "name": "Stop ringing"
       },
-      "start_preset": {
-        "name": "Start {preset}"
-      },
       "pause_resume": {
         "name": "Pause / resume"
       },
@@ -163,9 +160,6 @@
       },
       "stop": {
         "name": "Stop"
-      },
-      "start_custom": {
-        "name": "Start custom timer"
       },
       "done_now": {
         "name": "Done now"
@@ -203,6 +197,9 @@
       },
       "custom_timer": {
         "name": "Custom timer"
+      },
+      "station_preset": {
+        "name": "{preset}"
       }
     }
   },

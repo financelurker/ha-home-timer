@@ -15,8 +15,8 @@ from .test_engine import events, start
 
 HOB = "sensor.kitchen_hob_1"
 HOB_END = "sensor.kitchen_hob_1_timer_end"
-RICE = "button.kitchen_hob_1_start_rice"
-PASTA = "button.kitchen_hob_1_start_pasta"
+RICE = "switch.kitchen_hob_1_rice"
+PASTA = "switch.kitchen_hob_1_pasta"
 PAUSE = "button.kitchen_hob_1_pause_resume"
 PLUS = "button.kitchen_hob_1_1_minute"
 STOP = "button.kitchen_hob_1_stop"
@@ -28,7 +28,9 @@ async def hob(hass: HomeAssistant, kitchen) -> str:
 
 
 async def press(hass: HomeAssistant, entity_id: str) -> None:
-    await hass.services.async_call("button", "press", {"entity_id": entity_id}, blocking=True)
+    """A button is pressed, a switch (a preset) turned on."""
+    domain, service = ("switch", "turn_on") if entity_id.startswith("switch.") else ("button", "press")
+    await hass.services.async_call(domain, service, {"entity_id": entity_id}, blocking=True)
     await hass.async_block_till_done()
 
 
@@ -166,7 +168,7 @@ async def test_renaming_a_preset_keeps_its_button(hass: HomeAssistant, kitchen, 
     await hass.async_block_till_done()
     entry = er.async_get(hass).async_get(RICE)
     assert entry is not None
-    assert hass.states.get(RICE).attributes["friendly_name"].endswith("Start Basmati")
+    assert hass.states.get(RICE).attributes["friendly_name"].endswith("Basmati")
 
 
 async def test_station_timer_survives_a_reload(hass: HomeAssistant, kitchen, hob, freezer) -> None:
@@ -251,7 +253,7 @@ async def test_ringing_sensors_are_red_while_ringing(hass: HomeAssistant, kitche
     area = hass.states.get("binary_sensor.kitchen_home_timer_ringing")
     assert station.state == area.state == "off"
     assert station.attributes["device_class"] == area.attributes["device_class"] == "problem"
-    await hass.services.async_call("button", "press", {"entity_id": RICE}, blocking=True)
+    await hass.services.async_call("switch", "turn_on", {"entity_id": RICE}, blocking=True)
     assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "off"
     await tick(hass, freezer, 61)
     assert hass.states.get("binary_sensor.kitchen_hob_1_ringing").state == "on"
@@ -275,7 +277,7 @@ async def test_buttons_are_available_only_when_they_can_act(hass: HomeAssistant,
     ringing = "button.kitchen_home_timer_stop_ringing"
     state = lambda e: hass.states.get(e).state  # noqa: E731
     assert [state(e) for e in (PAUSE, PLUS, STOP, ringing)] == ["unavailable"] * 4
-    await hass.services.async_call("button", "press", {"entity_id": RICE}, blocking=True)
+    await hass.services.async_call("switch", "turn_on", {"entity_id": RICE}, blocking=True)
     assert "unavailable" not in [state(e) for e in (PAUSE, PLUS, STOP)]
     await hass.services.async_call("button", "press", {"entity_id": PAUSE}, blocking=True)  # paused: still all three
     assert "unavailable" not in [state(e) for e in (PAUSE, PLUS, STOP)]

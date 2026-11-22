@@ -178,3 +178,72 @@ async def test_custom_timer_keeps_its_id_next_to_a_quick_timer_of_that_name(hass
     from homeassistant.helpers import entity_registry as er
     entity = er.async_get(hass).async_get(CUSTOM)
     assert entity is not None and entity.unique_id.endswith("_custom_timer")
+
+
+async def test_a_station_has_at_most_one_switch_on(hass: HomeAssistant, kitchen, freezer) -> None:
+    await add_station(hass, kitchen, "Hob 1", [("Rice", 60), ("Pasta", 540)])
+    rice, pasta, custom = "switch.kitchen_hob_1_rice", "switch.kitchen_hob_1_pasta", "switch.kitchen_hob_1_custom_timer"
+    ev = events(hass)
+    assert hass.states.get("button.kitchen_hob_1_start_rice") is None  # the start buttons are gone
+    await switch(hass, rice, True)
+    assert [hass.states.get(e).state for e in (rice, pasta, custom)] == ["on", "off", "off"]
+    await switch(hass, pasta, True)  # replaces Rice
+    assert [hass.states.get(e).state for e in (rice, pasta, custom)] == ["off", "on", "off"]
+    assert ev["cancelled"][0].data["reason"] == "replaced"
+    await switch(hass, custom, True)
+    assert [hass.states.get(e).state for e in (rice, pasta, custom)] == ["off", "off", "on"]
+    await switch(hass, custom, False)
+    assert hass.states.get("sensor.kitchen_hob_1").state == "idle"
+    await switch(hass, rice, True)
+    await tick(hass, freezer, 61)
+    assert hass.states.get(rice).attributes["icon"] == "mdi:bell-ring"
+    await switch(hass, rice, False)
+    assert ev["acknowledged"][0].data["by"] == "switch"
+
+
+async def test_assigned_to_a_station_with_that_preset_it_is_its_run(hass: HomeAssistant, kitchen) -> None:
+    await quick(hass, kitchen, ("Rice", 600))
+    await add_station(hass, kitchen, "Hob 1", [("Rice", 900)])
+    await switch(hass, "switch.kitchen_home_timer_rice", True)
+    timer = next(iter(kitchen.runtime_data.timers.values()))
+    await hass.services.async_call(DOMAIN, "assign", {"timer_id": timer.id, "entity_id": "sensor.kitchen_hob_1"}, blocking=True)
+    await hass.async_block_till_done()
+    assert hass.states.get("switch.kitchen_home_timer_rice").state == "off"
+    assert hass.states.get("switch.kitchen_hob_1_rice").state == "on"
+
+
+async def test_station_timers_are_linked_on_update(hass: HomeAssistant, hass_storage) -> None:
+    """Stored after the area's switches came (quick_linked: true), before the stations' did."""
+    from homeassistant.helpers import area_registry as ar
+    from homeassistant.util import dt as dt_util
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.home_timer.const import CONF_AREA_ID
+
+    area = ar.async_get(hass).async_create("Kitchen")
+    entry = MockConfigEntry(
+        domain=DOMAIN, title="Kitchen", unique_id=area.id, data={CONF_AREA_ID: area.id},
+        options={"presets": [{"id": "q0", "name": "Tea", "duration": 600}]},
+        subentries_data=[
+            {"subentry_id": "hob1", "subentry_type": "station", "title": "Hob 1", "unique_id": None,
+             "data": {"name": "Hob 1", "presets": [{"id": "p1", "name": "Rice", "duration": 600}]}},
+            {"subentry_id": "hob2", "subentry_type": "station", "title": "Hob 2", "unique_id": None,
+             "data": {"name": "Hob 2", "presets": []}},
+        ],
+    )
+    now = dt_util.utcnow()
+
+    def stored(tid, name, preset, station):
+        return {"id": tid, "name": name, "duration": 600, "status": "active", "started_at": now.isoformat(),
+                "ends_at": (now + dt_util.dt.timedelta(seconds=600)).isoformat(), "preset": preset, "station": station}
+
+    hass_storage[storage_key(entry.entry_id)] = {"version": STORAGE_VERSION, "key": storage_key(entry.entry_id), "data": {
+        "timers": [stored("rice", "Rice", "Rice", "hob1"), stored("custom", "Timer", None, "hob2"), stored("tea", "Tea", "Tea", None)],
+        "last_custom": {"hob2": {"timer_id": "custom", "duration": 600}}, "quick_linked": True}}
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    assert {t.id: t.quick for t in entry.runtime_data.timers.values()} == {"rice": "p1", "custom": "custom", "tea": None}
+    assert hass.states.get("switch.kitchen_hob_1_rice").state == "on"
+    assert hass.states.get("switch.kitchen_hob_2_custom_timer").state == "on"
+    assert hass.states.get(TEA).state == "off"  # the area's timers were linked before (and Tea was not Tea's run then)

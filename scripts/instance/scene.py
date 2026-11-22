@@ -22,9 +22,9 @@ DASHBOARD = {
                 {"type": "heading", "heading": "Hob 1", "icon": "mdi:stove"},
                 tile("sensor.kitchen_hob_1", "Timer"),
                 {"type": "tile", "entity": "sensor.kitchen_hob_1_timer_end", "name": "Ends", "grid_options": {"columns": 6}},
-                {"type": "tile", "entity": "button.kitchen_hob_1_start_rice", "name": "Rice", "vertical": True, "hide_state": True, "grid_options": {"columns": 4}},
-                {"type": "tile", "entity": "button.kitchen_hob_1_start_pasta", "name": "Pasta", "vertical": True, "hide_state": True, "grid_options": {"columns": 4}},
-                {"type": "tile", "entity": "button.kitchen_hob_1_start_eggs_soft", "name": "Eggs", "vertical": True, "hide_state": True, "grid_options": {"columns": 4}},
+                {"type": "tile", "entity": "switch.kitchen_hob_1_rice", "name": "Rice", "vertical": True, "grid_options": {"columns": 4}},
+                {"type": "tile", "entity": "switch.kitchen_hob_1_pasta", "name": "Pasta", "vertical": True, "grid_options": {"columns": 4}},
+                {"type": "tile", "entity": "switch.kitchen_hob_1_eggs_soft", "name": "Eggs", "vertical": True, "grid_options": {"columns": 4}},
                 {"type": "tile", "entity": "button.kitchen_hob_1_pause_resume", "name": "Pause", "vertical": True, "hide_state": True, "grid_options": {"columns": 4}},
                 {"type": "tile", "entity": "button.kitchen_hob_1_1_minute", "name": "+1 min", "vertical": True, "hide_state": True, "grid_options": {"columns": 4}},
                 {"type": "tile", "entity": "button.kitchen_hob_1_stop", "name": "Stop", "vertical": True, "hide_state": True, "grid_options": {"columns": 4}},
@@ -73,11 +73,11 @@ async def main() -> None:
         await svc("input_number", "set_value", {"entity_id": "input_number.kettle_watts", "value": 2150})
         await svc("input_number", "set_value", {"entity_id": "input_number.moka_watts", "value": 265})
         await asyncio.sleep(2)
-        await svc("button", "press", {"entity_id": "button.kitchen_hob_1_start_rice"})
-        await svc("button", "press", {"entity_id": "button.kitchen_oven_start_bread"})
+        await svc("switch", "turn_on", {"entity_id": "switch.kitchen_hob_1_rice"})
+        await svc("switch", "turn_on", {"entity_id": "switch.kitchen_oven_bread"})
         await svc("switch", "turn_on", {"entity_id": "switch.kitchen_home_timer_let_dough_rest"})
-        await svc("button", "press", {"entity_id": "button.bathroom_bathtub_start_fill"})
-        await svc("button", "press", {"entity_id": "button.kitchen_hob_2_start_sauce"})
+        await svc("switch", "turn_on", {"entity_id": "switch.bathroom_bathtub_fill"})
+        await svc("switch", "turn_on", {"entity_id": "switch.kitchen_hob_2_sauce"})
         await asyncio.sleep(1)
         await svc("button", "press", {"entity_id": "button.kitchen_hob_2_pause_resume"})
         for watts in (230, 222, 218, 214, 212, 209):
