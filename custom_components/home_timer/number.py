@@ -1,4 +1,4 @@
-"""Custom duration (minutes) of the area and of each station, for "Start custom timer"."""
+"""Custom duration (minutes) of the area and of each station, for its "Custom timer" switch."""
 
 from __future__ import annotations
 

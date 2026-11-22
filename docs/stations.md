@@ -2,7 +2,7 @@
 
 [← Back to the overview](../README.md)
 
-A **station** is anything a timer belongs to: a hob, the rice cooker, the oven, the bathtub, the washing machine. Each station is its own device in the area, with **one timer at a time**, and has **presets** – known durations you start with one button.
+A **station** is anything a timer belongs to: a hob, the rice cooker, the oven, the bathtub, the washing machine. Each station is its own device in the area, with **one timer at a time**, and has **presets** – known durations you start with one switch.
 
 ## Adding a station
 
@@ -34,9 +34,9 @@ The station's device carries its name and lies in the area (move it if you like)
 | `switch.kitchen_hob_1_custom_timer` | *Custom timer*: on starts a timer "Timer" with the custom duration (replacing the station's timer), off stops it |
 | `text.kitchen_hob_1_save_as_preset` | enter a name: saves the custom timer as a preset (see below) |
 
-![Hob 1's device: buttons per preset, custom timer, pause, +1 minute, stop](images/device.png)
+![Hob 1's device: a switch per preset, custom timer, pause, +1 minute, stop](images/device.png)
 
-Renaming a preset keeps its button (its entity id stays); deleting a preset removes it.
+Renaming a preset keeps its switch (its entity id stays); deleting a preset removes it.
 
 ## Creating presets while cooking
 

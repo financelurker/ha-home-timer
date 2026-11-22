@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from homeassistant.core import HomeAssistant
+from homeassistant.helpers import entity_registry as er
 
 from custom_components.home_timer.const import DOMAIN, STORAGE_VERSION
 from custom_components.home_timer.engine import storage_key
@@ -184,7 +185,6 @@ async def test_a_station_has_at_most_one_switch_on(hass: HomeAssistant, kitchen,
     await add_station(hass, kitchen, "Hob 1", [("Rice", 60), ("Pasta", 540)])
     rice, pasta, custom = "switch.kitchen_hob_1_rice", "switch.kitchen_hob_1_pasta", "switch.kitchen_hob_1_custom_timer"
     ev = events(hass)
-    assert hass.states.get("button.kitchen_hob_1_start_rice") is None  # the start buttons are gone
     await switch(hass, rice, True)
     assert [hass.states.get(e).state for e in (rice, pasta, custom)] == ["on", "off", "off"]
     await switch(hass, pasta, True)  # replaces Rice
@@ -247,3 +247,15 @@ async def test_station_timers_are_linked_on_update(hass: HomeAssistant, hass_sto
     assert hass.states.get("switch.kitchen_hob_1_rice").state == "on"
     assert hass.states.get("switch.kitchen_hob_2_custom_timer").state == "on"
     assert hass.states.get(TEA).state == "off"  # the area's timers were linked before (and Tea was not Tea's run then)
+
+
+async def test_the_old_station_start_buttons_are_removed(hass: HomeAssistant, kitchen) -> None:
+    station = await add_station(hass, kitchen, "Hob 1", [("Rice", 60)])
+    registry = er.async_get(hass)
+    for unique_id in (f"{station}_preset_Hob 1-0", f"{station}_start_custom"):
+        registry.async_get_or_create("button", DOMAIN, unique_id, config_entry=kitchen, config_subentry_id=station)
+    await hass.config_entries.async_reload(kitchen.entry_id)
+    await hass.async_block_till_done()
+    buttons = {e.unique_id for e in er.async_entries_for_config_entry(registry, kitchen.entry_id) if e.domain == "button"}
+    assert not buttons & {f"{station}_preset_Hob 1-0", f"{station}_start_custom"}
+    assert registry.async_get_entity_id("switch", DOMAIN, f"{station}_preset_Hob 1-0")

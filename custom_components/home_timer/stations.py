@@ -8,7 +8,7 @@ name the subentry title. ``data`` holds the icon and the presets:
 
     {"icon": "mdi:stove", "presets": [{"id": "…", "name": "Rice", "duration": 600, "note": "…"}]}
 
-Each preset has its own id, so renaming it keeps its button's entity.
+Each preset has its own id, so renaming it keeps its switch's entity.
 """
 
 from __future__ import annotations
