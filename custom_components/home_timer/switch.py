@@ -25,8 +25,8 @@ async def async_setup_entry(
 ) -> None:
     engine = entry.runtime_data
     switches: list[SwitchEntity] = [
+        CustomTimerSwitch(engine, "custom_timer"),  # first: a quick timer called "Custom timer" must not take its id
         *(QuickTimerSwitch(engine, p) for p in engine.presets(None)),
-        CustomTimerSwitch(engine, "custom_timer"),
     ]
     async_add_entities(switches)
     remove_orphans(hass, entry.entry_id, "switch", {s.unique_id for s in switches if s.unique_id})

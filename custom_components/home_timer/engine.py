@@ -287,7 +287,8 @@ class AreaTimers:
                 _LOGGER.warning("%s: skipping a stored timer (%s): %s", self.entry.title, err, raw)
                 continue
             self.timers[timer.id] = timer
-        self._link_quick_timers()
+        if not (isinstance(data, dict) and data.get("quick_linked")):
+            self._link_quick_timers()  # once, on the update that brought the switches
 
     def _link_quick_timers(self) -> None:
         """Timers stored before quick timers had switches: link a running quick timer (by its
@@ -901,6 +902,7 @@ class AreaTimers:
             "custom": dict(self.custom_seconds),
             "last_custom": {k: dict(v) for k, v in self._last_custom.items()},
             "power_stats": {k: dict(v) for k, v in self.power_stats.items()},
+            "quick_linked": True,  # timers are linked to their quick timer's switch when started
         }
 
     def _changed(self) -> None:

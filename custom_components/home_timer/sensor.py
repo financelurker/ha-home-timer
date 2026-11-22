@@ -25,8 +25,8 @@ async def async_setup_entry(
     engine = entry.runtime_data
     area_sensors: list[SensorEntity] = [
         TimersSensor(engine, "timers"),
+        QuickTimerEndSensor(engine, QUICK_CUSTOM, "custom_timer_ends"),  # before the quick timers (entity ids)
         *(QuickTimerEndSensor(engine, p.id, "quick_timer_ends", {"preset": p.name}) for p in engine.presets(None)),
-        QuickTimerEndSensor(engine, QUICK_CUSTOM, "custom_timer_ends"),
     ]
     async_add_entities(area_sensors)
     wanted = {s.unique_id for s in area_sensors if s.unique_id}

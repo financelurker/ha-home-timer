@@ -105,7 +105,7 @@ async def test_the_area_list_of_timers(hass: HomeAssistant, kitchen, freezer) ->
     await tick(hass, freezer, 61)
     listed = await items(hass)
     assert [i["summary"] for i in listed] == ["Tea", "Rice · Hob 1", "Dough"]  # by due: ringing (overdue) first, paused last
-    assert listed[0]["description"] == "ringing" and "paused" in listed[2]["description"]
+    assert listed[0]["description"] == "Ringing" and listed[2]["description"] == "Paused · 30 min"
     assert "due" in listed[1] and "due" not in listed[2]
     ev = events(hass)
     for item in listed[:2]:
@@ -146,3 +146,35 @@ async def test_running_timers_are_linked_on_update(hass: HomeAssistant, hass_sto
     assert hass.states.get(CUSTOM).state == "on"
     await switch(hass, TEA, False)
     assert "new-tea" not in engine.timers and "old-tea" in engine.timers  # the older one goes on as a plain timer
+    # linked once: after a reload the older one does not become Tea's run
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    assert hass.states.get(TEA).state == "off" and entry.runtime_data.timers["old-tea"].quick is None
+
+
+async def test_the_list_on_a_leap_day_and_in_a_deleted_area(hass: HomeAssistant, freezer) -> None:
+    from homeassistant.helpers import area_registry as ar
+    from homeassistant.helpers import entity_registry as er
+    from pytest_homeassistant_custom_component.common import MockConfigEntry
+
+    from custom_components.home_timer.const import CONF_AREA_ID
+
+    freezer.move_to("2028-02-29 12:00:00+00:00")
+    entry = MockConfigEntry(domain=DOMAIN, title="Attic", unique_id="gone", data={CONF_AREA_ID: "gone"})
+    entry.add_to_hass(hass)
+    assert await hass.config_entries.async_setup(entry.entry_id)
+    await hass.async_block_till_done()
+    entry.runtime_data.start("Dough", 60)
+    paused = entry.runtime_data.start("Bread", 60)
+    entry.runtime_data.pause(paused.id)
+    await hass.async_block_till_done()
+    assert hass.states.get("todo.attic_timers").state == "2"
+    assert er.async_get(hass).async_get("todo.attic_timers").area_id is None  # no area that does not exist
+    assert ar.async_get(hass).async_get_area("gone") is None
+
+
+async def test_custom_timer_keeps_its_id_next_to_a_quick_timer_of_that_name(hass: HomeAssistant, kitchen) -> None:
+    await quick(hass, kitchen, ("Custom timer", 60))
+    from homeassistant.helpers import entity_registry as er
+    entity = er.async_get(hass).async_get(CUSTOM)
+    assert entity is not None and entity.unique_id.endswith("_custom_timer")

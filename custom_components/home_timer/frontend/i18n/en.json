@@ -24,7 +24,7 @@
   "options.report_missed_hint": "Timers that ran out while Home Assistant was down still fire their events after the start.",
   "quick_timers": "Quick timers",
   "quick_timers.add": "Add quick timer",
-  "quick_timers.long_hint": "Presets without a station: each gets a start button on the area's device.",
+  "quick_timers.long_hint": "Presets without a station: each gets a switch on the area's device (on starts it, off stops it).",
   "loose": "Running without a station",
   "station.add": "Add station",
   "station.new_title": "New station",

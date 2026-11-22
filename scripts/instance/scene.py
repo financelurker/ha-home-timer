@@ -75,7 +75,7 @@ async def main() -> None:
         await asyncio.sleep(2)
         await svc("button", "press", {"entity_id": "button.kitchen_hob_1_start_rice"})
         await svc("button", "press", {"entity_id": "button.kitchen_oven_start_bread"})
-        await svc("button", "press", {"entity_id": "button.kitchen_home_timer_start_let_dough_rest"})
+        await svc("switch", "turn_on", {"entity_id": "switch.kitchen_home_timer_let_dough_rest"})
         await svc("button", "press", {"entity_id": "button.bathroom_bathtub_start_fill"})
         await svc("button", "press", {"entity_id": "button.kitchen_hob_2_start_sauce"})
         await asyncio.sleep(1)

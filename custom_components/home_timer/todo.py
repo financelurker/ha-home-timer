@@ -10,6 +10,8 @@ moved, so it never holds anything but Home Timer's own items.
 
 from __future__ import annotations
 
+import math
+
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.components.todo import TodoItem, TodoItemStatus, TodoListEntity, TodoListEntityFeature
 from homeassistant.core import Event, HomeAssistant, callback
@@ -164,8 +166,15 @@ async def async_setup_entry(
     # named "<area> timers" (not after the hub device, "Home Timer", which every area has)
     strings = await async_get_translations(hass, hass.config.language, "entity", {DOMAIN})
     pattern = strings.get(f"component.{DOMAIN}.entity.todo.area_timers.name") or "{area} timers"
+    states = {
+        status: strings.get(f"component.{DOMAIN}.entity.sensor.station.state.{status}") or status
+        for status in (STATUS_ACTIVE, STATUS_PAUSED, STATUS_RINGING)
+    }
+    engine = entry.runtime_data
+    area = ar.async_get(hass).async_get_area(engine.area_id) if engine.area_id else None
+    name = pattern.replace("{area}", area.name if area else entry.title)
     new = er.async_get(hass).async_get_entity_id("todo", DOMAIN, f"{entry.entry_id}_area_timers") is None
-    async_add_entities([AreaTimersList(entry.runtime_data, "area_timers", pattern.replace("{area}", entry.title), new)])
+    async_add_entities([AreaTimersList(engine, "area_timers", name, new, states)])
 
 
 def _check_off(engine: AreaTimers, uid: str) -> None:
@@ -192,9 +201,10 @@ class AreaTimersList(AreaEntity, TodoListEntity):
     _attr_has_entity_name = False  # "Kitchen timers", not "Home Timer …": every area's hub device is "Home Timer"
     _attr_supported_features = TodoListEntityFeature.UPDATE_TODO_ITEM
 
-    def __init__(self, engine: AreaTimers, key: str, name: str, new: bool) -> None:
+    def __init__(self, engine: AreaTimers, key: str, name: str, new: bool, states: dict[str, str]) -> None:
         super().__init__(engine, key)
         self._new = new
+        self._states = states  # "Running", "Paused", "Ringing" in the system language
         self._attr_name = name
         # not on the hub device: Home Assistant would put its name ("Home Timer") in front
         self._attr_device_info = None
@@ -205,7 +215,8 @@ class AreaTimersList(AreaEntity, TodoListEntity):
         # in the area (it has no device to take the area from) – once, when it is new, so a changed area stays
         registry = er.async_get(self.hass)
         entry = registry.async_get(self.entity_id)
-        if self._new and entry is not None and entry.area_id is None and self.engine.area_id:
+        area = ar.async_get(self.hass).async_get_area(self.engine.area_id) if self.engine.area_id else None
+        if self._new and entry is not None and entry.area_id is None and area is not None:
             registry.async_update_entity(self.entity_id, area_id=self.engine.area_id)
 
     def _item(self, timer: Timer) -> TodoItem:
@@ -213,12 +224,13 @@ class AreaTimersList(AreaEntity, TodoListEntity):
         station_name = station.name if station else timer.station_name
         summary = f"{timer.name} · {station_name}" if station_name and station_name != timer.name else timer.name
         now = dt_util.utcnow()
+        state = self._states.get(timer.status, timer.status)
         if timer.status == STATUS_RINGING:
-            due, state = timer.finished_at, "ringing"
+            due = timer.finished_at
         elif timer.status == STATUS_PAUSED:
-            due, state = None, f"paused · {round(timer.remaining(now) / 60)} min left"
+            due, state = None, f"{state} · {max(1, math.ceil(timer.remaining(now) / 60))} min"
         else:
-            due, state = self.engine.expected_end(timer), "running" if timer.status == STATUS_ACTIVE else timer.status
+            due = self.engine.expected_end(timer)
             if timer.open and due is not None and due <= now:
                 due = None  # an appliance taking longer than usual is not overdue
         description = " · ".join(x for x in (state, timer.note) if x)
@@ -226,9 +238,8 @@ class AreaTimersList(AreaEntity, TodoListEntity):
 
     @property
     def todo_items(self) -> list[TodoItem]:
-        far = dt_util.utcnow().replace(year=9999)
         items = [self._item(t) for t in self.engine.timers.values()]
-        return sorted(items, key=lambda item: item.due or far)
+        return sorted(items, key=lambda item: (item.due is None, item.due or dt_util.utcnow()))
 
     async def async_create_todo_item(self, item: TodoItem) -> None:
         raise intent.IntentHandleError("Items cannot be added to the list of timers")
