@@ -128,6 +128,12 @@
             "name": "Dauern"
           }
         }
+      },
+      "quick_timer_ends": {
+        "name": "{preset} endet"
+      },
+      "custom_timer_ends": {
+        "name": "Eigener Timer endet"
       }
     },
     "binary_sensor": {
@@ -168,11 +174,14 @@
     "todo": {
       "ringing_timers": {
         "name": "Home Timer: klingelnde Timer"
+      },
+      "area_timers": {
+        "name": "{area} Timer"
       }
     },
     "number": {
       "custom_minutes": {
-        "name": "Eigener Timer"
+        "name": "Eigener Timer Minuten"
       }
     },
     "text": {
@@ -186,6 +195,14 @@
             "name": "Dauer"
           }
         }
+      }
+    },
+    "switch": {
+      "quick_timer": {
+        "name": "{preset}"
+      },
+      "custom_timer": {
+        "name": "Eigener Timer"
       }
     }
   },

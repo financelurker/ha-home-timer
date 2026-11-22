@@ -25,6 +25,12 @@
       },
       "usual_duration": {
         "default": "mdi:timer-sand-complete"
+      },
+      "quick_timer_ends": {
+        "default": "mdi:timer-alert-outline"
+      },
+      "custom_timer_ends": {
+        "default": "mdi:timer-alert-outline"
       }
     },
     "binary_sensor": {
@@ -67,6 +73,9 @@
     "todo": {
       "ringing_timers": {
         "default": "mdi:bell-ring-outline"
+      },
+      "area_timers": {
+        "default": "mdi:timer-outline"
       }
     },
     "number": {
@@ -77,6 +86,20 @@
     "text": {
       "save_preset": {
         "default": "mdi:content-save-outline"
+      }
+    },
+    "switch": {
+      "quick_timer": {
+        "default": "mdi:timer-outline",
+        "state": {
+          "on": "mdi:timer-sand"
+        }
+      },
+      "custom_timer": {
+        "default": "mdi:timer-cog-outline",
+        "state": {
+          "on": "mdi:timer-sand"
+        }
       }
     }
   },

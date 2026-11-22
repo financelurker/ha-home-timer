@@ -11,10 +11,10 @@ from custom_components.home_timer.const import DOMAIN
 from .conftest import add_station, tick
 from .test_engine import events
 
-MINUTES = "number.kitchen_home_timer_custom_timer"
-START = "button.kitchen_home_timer_start_custom_timer"
+MINUTES = "number.kitchen_home_timer_custom_timer_minutes"
+CUSTOM = "switch.kitchen_home_timer_custom_timer"
 SAVE = "text.kitchen_home_timer_save_as_preset"
-HOB_MINUTES = "number.kitchen_hob_1_custom_timer"
+HOB_MINUTES = "number.kitchen_hob_1_custom_timer_minutes"
 HOB_START = "button.kitchen_hob_1_start_custom_timer"
 HOB_SAVE = "text.kitchen_hob_1_save_as_preset"
 
@@ -28,6 +28,16 @@ async def press(hass, entity_id):
     await hass.async_block_till_done()
 
 
+async def on(hass, entity_id):
+    await hass.services.async_call("switch", "turn_on", {"entity_id": entity_id}, blocking=True)
+    await hass.async_block_till_done()
+
+
+async def off(hass, entity_id):
+    await hass.services.async_call("switch", "turn_off", {"entity_id": entity_id}, blocking=True)
+    await hass.async_block_till_done()
+
+
 async def save(hass, entity_id, name):
     await hass.services.async_call("text", "set_value", {"entity_id": entity_id, "value": name}, blocking=True)
     await hass.async_block_till_done()
@@ -35,14 +45,14 @@ async def save(hass, entity_id, name):
 
 async def test_area_entities(hass: HomeAssistant, kitchen) -> None:
     assert hass.states.get(MINUTES).state == "5"
-    assert hass.states.get(START) is not None
+    assert hass.states.get(CUSTOM).state == "off"
     assert hass.states.get(SAVE).state == ""
 
 
 async def test_custom_timer_then_save_as_preset(hass: HomeAssistant, kitchen, freezer) -> None:
     ev = events(hass)
     await set_minutes(hass, MINUTES, 4)
-    await press(hass, START)
+    await on(hass, CUSTOM)
     started = ev["started"][0].data
     assert (started["name"], started["duration"], started["station"]) == ("Timer", 240, None)
     await tick(hass, freezer, 60)
@@ -50,20 +60,19 @@ async def test_custom_timer_then_save_as_preset(hass: HomeAssistant, kitchen, fr
     assert [(p["name"], p["duration"]) for p in kitchen.options["presets"]] == [("Tea", 240)]
     timer = next(iter(kitchen.runtime_data.timers.values()))
     assert (timer.name, timer.preset, round(timer.remaining(timer.started_at) )) == ("Tea", "Tea", 240)
-    assert hass.states.get("button.kitchen_home_timer_start_tea") is not None
-    assert hass.states.get(START) is not None  # the custom row stays
+    assert hass.states.get("switch.kitchen_home_timer_tea").state == "on"  # the custom timer's run is Tea's now
+    assert hass.states.get(CUSTOM).state == "off"
     assert hass.states.get(SAVE).state == ""
-    await press(hass, "button.kitchen_home_timer_start_tea")
-    assert ev["started"][-1].data["preset"] == "Tea"
+    await on(hass, CUSTOM)
     assert len(kitchen.runtime_data.timers) == 2  # timers without a station run side by side
 
 
 async def test_same_name_updates_the_preset(hass: HomeAssistant, kitchen) -> None:
     await set_minutes(hass, MINUTES, 4)
-    await press(hass, START)
+    await on(hass, CUSTOM)
     await save(hass, SAVE, "Tea")
     await set_minutes(hass, MINUTES, 5)
-    await press(hass, START)
+    await on(hass, CUSTOM)
     await save(hass, SAVE, "tea")
     assert [(p["name"], p["duration"]) for p in kitchen.options["presets"]] == [("Tea", 300)]
 
@@ -75,14 +84,17 @@ async def test_save_without_a_custom_timer_saves_the_duration(hass: HomeAssistan
     assert kitchen.runtime_data.timers == {}
 
 
-async def test_last_custom_timer_is_meant(hass: HomeAssistant, kitchen) -> None:
+async def test_the_custom_timer_has_one_run(hass: HomeAssistant, kitchen) -> None:
     await set_minutes(hass, MINUTES, 3)
-    await press(hass, START)
+    await on(hass, CUSTOM)
     await set_minutes(hass, MINUTES, 9)
-    await press(hass, START)
+    await on(hass, CUSTOM)  # on already: nothing
+    assert [round(t.duration) for t in kitchen.runtime_data.timers.values()] == [180]
+    await off(hass, CUSTOM)
+    assert kitchen.runtime_data.timers == {}
+    await on(hass, CUSTOM)
     await save(hass, SAVE, "Nine")
-    names = sorted((t.name, round(t.duration)) for t in kitchen.runtime_data.timers.values())
-    assert names == [("Nine", 540), ("Timer", 180)]
+    assert [(t.name, round(t.duration)) for t in kitchen.runtime_data.timers.values()] == [("Nine", 540)]
 
 
 async def test_station_custom_and_save(hass: HomeAssistant, kitchen) -> None:
@@ -130,7 +142,7 @@ async def test_quick_timer_by_action(hass: HomeAssistant, kitchen) -> None:
 async def test_moved_custom_timer_is_no_longer_meant(hass: HomeAssistant, kitchen) -> None:
     await add_station(hass, kitchen, "Hob 1")
     await set_minutes(hass, MINUTES, 4)
-    await press(hass, START)
+    await on(hass, CUSTOM)
     timer = next(iter(kitchen.runtime_data.timers.values()))
     await hass.services.async_call(DOMAIN, "assign", {"timer_id": timer.id, "entity_id": "sensor.kitchen_hob_1"}, blocking=True)
     await save(hass, SAVE, "Tea")
@@ -140,7 +152,7 @@ async def test_moved_custom_timer_is_no_longer_meant(hass: HomeAssistant, kitche
 
 async def test_saved_duration_is_the_started_one(hass: HomeAssistant, kitchen) -> None:
     await set_minutes(hass, MINUTES, 3)
-    await press(hass, START)
+    await on(hass, CUSTOM)
     timer = next(iter(kitchen.runtime_data.timers.values()))
     kitchen.runtime_data.add_time(timer.id, 120)
     await hass.async_block_till_done()
