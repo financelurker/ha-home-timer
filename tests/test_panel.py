@@ -87,7 +87,7 @@ async def test_area_save(hass: HomeAssistant, kitchen, hass_ws_client) -> None:
     await hass.async_block_till_done()
     assert kitchen.options["reminder_minutes"] == 5
     assert kitchen.options["presets"] == [{"id": "new-1", "name": "Tea", "duration": 240}]
-    assert hass.states.get("button.kitchen_home_timer_start_tea") is not None
+    assert hass.states.get("switch.kitchen_home_timer_tea") is not None
     # the old version is stale now
     msg = await call(client, "area/save", entry_id=kitchen.entry_id, version=area["version"], options=options, quick_timers=[])
     assert msg["result"] == {"changed": True}

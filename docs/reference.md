@@ -13,10 +13,14 @@ On the area's *Home Timer* device.
 | `sensor.<area>_home_timer_timers` | *Timers*: how many timers the area has (active, paused or ringing) |
 | `binary_sensor.<area>_home_timer_ringing` | *Ringing* while a timer of the area without a station rings, else *Quiet* – device class *problem*, so Home Assistant shows it red while it rings. A station's timer shows on the station's own *Ringing* sensor only. |
 | `button.<area>_home_timer_stop_ringing` | *Stop ringing*: acknowledges the area's ringing timers without a station – stations have their own *Stop* button. Available only while one of them rings. The `home_timer.acknowledge` action on the area still acknowledges all of them. |
-| `button.<area>_home_timer_start_<quick timer>` | starts the quick timer (one per quick timer of the area) |
-| `number.<area>_home_timer_custom_timer` | custom duration in minutes (1–600) |
-| `button.<area>_home_timer_start_custom_timer` | starts a timer "Timer" with the custom duration |
+| `switch.<area>_home_timer_<quick timer>` | one per quick timer: on while its timer runs, is paused or rings; on starts it, off stops it (or acknowledges it while it rings). Attributes `status`, `timer_id` while on |
+| `sensor.<area>_home_timer_<quick timer>_ends` | when that quick timer's timer runs out (timestamp) – or ran out, while it rings |
+| `number.<area>_home_timer_custom_timer_minutes` | custom duration in minutes (1–600) |
+| `switch.<area>_home_timer_custom_timer` | on starts a timer "Timer" with the custom duration, off stops it (or acknowledges it while it rings) |
+| `sensor.<area>_home_timer_custom_timer_ends` | when that timer runs out – or ran out, while it rings |
 | `text.<area>_home_timer_save_as_preset` | enter a name: saves the last custom timer (or the custom duration) as a quick timer; attributes `custom_timer`, `duration` |
+
+Also per area, but not on its device: `todo.<area>_timers` (*Kitchen timers*) – all timers of the area, see [Timers › To-do lists](timers.md#to-do-lists). Areas set up earlier keep `number.<area>_home_timer_custom_timer` (only its name changed to *Custom timer minutes*).
 
 ## Attributes of *Timers*
 
@@ -47,7 +51,7 @@ Each entry of `timers`:
 
 | Entity | Description |
 |---|---|
-| `todo.home_timer_ringing_timers` | one to-do list for all areas: the ringing timers; checking one off acknowledges it (see [Timers](timers.md#to-do-list)) |
+| `todo.home_timer_ringing_timers` | one to-do list for all areas: the ringing timers; checking one off acknowledges it (see [Timers](timers.md#to-do-lists)) |
 
 ## Station
 
@@ -64,7 +68,7 @@ On the station's device.
 | `button.<area>_<station>_stop` | *Stop*: acknowledges a ringing timer, cancels a running or paused one – available while the station has a timer |
 | `button.<area>_<station>_done_now` | power stations that ring when done: marks the run going on as done (learning) – available while the appliance runs |
 
-| `number.<area>_<station>_custom_timer` | custom duration in minutes (1–600) |
+| `number.<area>_<station>_custom_timer_minutes` | *Custom timer minutes*: custom duration in minutes (1–600); stations set up earlier keep `…_custom_timer` |
 | `button.<area>_<station>_start_custom_timer` | starts a timer "Timer" with the custom duration |
 | `text.<area>_<station>_save_as_preset` | enter a name: saves the custom timer as a preset of the station; attributes `custom_timer`, `duration` |
 

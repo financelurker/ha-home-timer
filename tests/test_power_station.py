@@ -41,7 +41,7 @@ async def test_until_off_with_switch_off_rule(hass: HomeAssistant, kitchen, free
     await add_power_station(hass, kitchen, "Kettle", "until_off", done={"type": "off"})
     ev = events(hass)
     assert hass.states.get("binary_sensor.kitchen_kettle_running").state == "off"
-    for name in ("button.kitchen_kettle_start_custom_timer", "number.kitchen_kettle_custom_timer",
+    for name in ("button.kitchen_kettle_start_custom_timer", "number.kitchen_kettle_custom_timer_minutes",
                  "button.kitchen_kettle_pause_resume"):
         assert hass.states.get(name) is None, name
     assert hass.states.get("button.kitchen_kettle_stop") is not None

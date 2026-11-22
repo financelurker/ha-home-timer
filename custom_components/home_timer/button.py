@@ -1,5 +1,5 @@
-"""Buttons. Area: stop ringing, its quick timers, start custom timer. Station: its
-presets, start custom timer, pause/resume, +1 minute, stop, done now.
+"""Buttons. Area: stop ringing (its quick timers and custom timer are switches). Station:
+its presets, start custom timer, pause/resume, +1 minute, stop, done now.
 
 Buttons that act on a timer are available only while they can do something
 (stop ringing while a timer without a station rings, pause/resume while the
@@ -27,8 +27,6 @@ async def async_setup_entry(
     engine = entry.runtime_data
     area_buttons: list[ButtonEntity] = [
         AcknowledgeAllButton(engine, "acknowledge_all"),
-        *(AreaPresetButton(engine, p) for p in engine.presets(None)),
-        AreaStartCustomButton(engine, "start_custom"),
     ]
     async_add_entities(area_buttons)
     wanted: set[str] = {b.unique_id for b in area_buttons if b.unique_id}
@@ -82,26 +80,6 @@ class PresetButton(StationEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         _run(self.engine.start_preset, self.station.id, self.preset.id)
-
-
-class AreaPresetButton(AreaEntity, ButtonEntity):
-    """Starts a quick timer of the area (a timer without a station)."""
-
-    def __init__(self, engine, preset: Preset) -> None:
-        super().__init__(engine, PRESET_KEY)
-        self.preset = preset
-        self._attr_unique_id = f"{engine.entry.entry_id}_preset_{preset.id}"
-        self._attr_translation_placeholders = {"preset": preset.name}
-
-    async def async_press(self) -> None:
-        _run(self.engine.start_preset, None, self.preset.id)
-
-
-class AreaStartCustomButton(AreaEntity, ButtonEntity):
-    """Starts a timer "Timer" with the area's custom duration."""
-
-    async def async_press(self) -> None:
-        _run(self.engine.start_custom, None)
 
 
 class StationStartCustomButton(StationEntity, ButtonEntity):

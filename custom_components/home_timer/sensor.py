@@ -13,6 +13,7 @@ from homeassistant.util import dt as dt_util
 
 from . import HomeTimerConfigEntry
 from .const import STATUS_ACTIVE, STATUS_PAUSED, STATUS_RINGING
+from .engine import QUICK_CUSTOM
 from .entity import AreaEntity, StationEntity, remove_orphans
 
 STATE_IDLE = "idle"
@@ -22,8 +23,13 @@ async def async_setup_entry(
     hass: HomeAssistant, entry: HomeTimerConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
     engine = entry.runtime_data
-    async_add_entities([TimersSensor(engine, "timers")])
-    wanted = {f"{engine.entry.entry_id}_timers"}
+    area_sensors: list[SensorEntity] = [
+        TimersSensor(engine, "timers"),
+        QuickTimerEndSensor(engine, QUICK_CUSTOM, "custom_timer_ends"),  # before the quick timers (entity ids)
+        *(QuickTimerEndSensor(engine, p.id, "quick_timer_ends", {"preset": p.name}) for p in engine.presets(None)),
+    ]
+    async_add_entities(area_sensors)
+    wanted = {s.unique_id for s in area_sensors if s.unique_id}
     for station in engine.stations.values():
         sensors: list[SensorEntity] = [StationTimerSensor(engine, station, "station"), StationEndSensor(engine, station, "ends")]
         if station.by_power:
@@ -127,6 +133,28 @@ class StationEndSensor(StationEntity, SensorEntity):
     def native_value(self) -> datetime | None:
         timer = self.timer
         return self.engine.expected_end(timer) if timer else None
+
+
+class QuickTimerEndSensor(AreaEntity, SensorEntity):
+    """When the run of a quick timer (or the custom timer) runs out – or ran out, while it rings."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+
+    def __init__(self, engine, key: str, translation_key: str, placeholders: dict[str, str] | None = None) -> None:
+        super().__init__(engine, translation_key)
+        self.key = key
+        self._attr_unique_id = f"{engine.entry.entry_id}_quick_{key}_ends"
+        if placeholders:
+            self._attr_translation_placeholders = placeholders
+
+    @property
+    def native_value(self) -> datetime | None:
+        run = self.engine.quick_timer(self.key)
+        if run is None:
+            return None
+        if run.status == STATUS_RINGING:
+            return run.finished_at
+        return run.ends_at if run.status == STATUS_ACTIVE else None
 
 
 class RunsSensor(StationEntity, SensorEntity):

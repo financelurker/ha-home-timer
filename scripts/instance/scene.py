@@ -40,11 +40,12 @@ DASHBOARD = {
             ]},
             {"type": "grid", "cards": [
                 {"type": "heading", "heading": "Quick timers", "icon": "mdi:timer-outline"},
-                {"type": "tile", "entity": "button.kitchen_home_timer_start_tea", "name": "Tea", "vertical": True, "hide_state": True, "grid_options": {"columns": 4}},
-                {"type": "tile", "entity": "button.kitchen_home_timer_start_eggs", "name": "Eggs", "vertical": True, "hide_state": True, "grid_options": {"columns": 4}},
-                {"type": "tile", "entity": "button.kitchen_home_timer_start_let_dough_rest", "name": "Dough", "vertical": True, "hide_state": True, "grid_options": {"columns": 4}},
-                {"type": "tile", "entity": "number.kitchen_home_timer_custom_timer", "name": "Custom timer", "features": [{"type": "numeric-input", "style": "buttons"}], "grid_options": {"columns": 12}},
-                {"type": "todo-list", "entity": "todo.home_timer_ringing_timers", "title": "Ringing", "hide_create": True, "hide_completed": True},
+                {"type": "tile", "entity": "switch.kitchen_home_timer_tea", "name": "Tea", "vertical": True, "grid_options": {"columns": 4}},
+                {"type": "tile", "entity": "switch.kitchen_home_timer_eggs", "name": "Eggs", "vertical": True, "grid_options": {"columns": 4}},
+                {"type": "tile", "entity": "switch.kitchen_home_timer_let_dough_rest", "name": "Dough", "vertical": True, "grid_options": {"columns": 4}},
+                {"type": "tile", "entity": "switch.kitchen_home_timer_custom_timer", "name": "Custom timer", "grid_options": {"columns": 6}},
+                {"type": "tile", "entity": "number.kitchen_home_timer_custom_timer", "name": "Minutes", "features": [{"type": "numeric-input", "style": "buttons"}], "grid_options": {"columns": 6}},
+                {"type": "todo-list", "entity": "todo.kitchen_timers", "title": "Kitchen timers", "hide_create": True, "hide_completed": True},
             ]},
         ],
     }],
@@ -74,7 +75,7 @@ async def main() -> None:
         await asyncio.sleep(2)
         await svc("button", "press", {"entity_id": "button.kitchen_hob_1_start_rice"})
         await svc("button", "press", {"entity_id": "button.kitchen_oven_start_bread"})
-        await svc("button", "press", {"entity_id": "button.kitchen_home_timer_start_let_dough_rest"})
+        await svc("switch", "turn_on", {"entity_id": "switch.kitchen_home_timer_let_dough_rest"})
         await svc("button", "press", {"entity_id": "button.bathroom_bathtub_start_fill"})
         await svc("button", "press", {"entity_id": "button.kitchen_hob_2_start_sauce"})
         await asyncio.sleep(1)

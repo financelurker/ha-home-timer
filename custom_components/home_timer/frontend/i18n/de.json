@@ -24,7 +24,7 @@
   "options.report_missed_hint": "Timer, die abliefen, während Home Assistant aus war, lösen ihre Ereignisse nach dem Start noch aus.",
   "quick_timers": "Schnell-Timer",
   "quick_timers.add": "Schnell-Timer hinzufügen",
-  "quick_timers.long_hint": "Vorlagen ohne Station: Jede bekommt einen Start-Button am Gerät des Bereichs.",
+  "quick_timers.long_hint": "Vorlagen ohne Station: Jede bekommt einen Schalter am Gerät des Bereichs (an startet, aus stoppt).",
   "loose": "Laufen ohne Station",
   "station.add": "Station hinzufügen",
   "station.new_title": "Neue Station",

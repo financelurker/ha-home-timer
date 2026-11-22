@@ -70,6 +70,7 @@ from .stations import CONF_PRESETS, Preset, Station, area_presets, find_preset, 
 
 AREA = ""  # scope key of the area itself (timers without a station)
 CUSTOM_NAME = "Timer"
+QUICK_CUSTOM = "custom"  # Timer.quick of the area's custom timer (else a quick timer's id)
 DEFAULT_CUSTOM_SECONDS = 300.0
 
 _LOGGER = logging.getLogger(__name__)
@@ -102,6 +103,9 @@ class Timer:
     note: str | None = None
     source: dict[str, Any] = field(default_factory=dict)
     open: bool = False  # runs until something finishes it (a power station), no end time
+    # the area's quick timer (its id) or custom timer (QUICK_CUSTOM) this timer is the run of:
+    # one run each, shown by its switch; None for other timers and on stations
+    quick: str | None = None
 
     def remaining(self, now: datetime) -> float:
         if self.status == STATUS_ACTIVE and self.ends_at is not None:
@@ -155,6 +159,7 @@ class Timer:
             "note": self.note,
             "source": self.source,
             "open": self.open,
+            "quick": self.quick,
         }
 
     @classmethod
@@ -189,6 +194,7 @@ class Timer:
             note=data.get("note"),
             source=data.get("source") or {},
             open=bool(data.get("open", False)),
+            quick=str(data["quick"]) if data.get("quick") and not data.get("station") else None,
         )
         if status == STATUS_ACTIVE and timer.ends_at is None and not timer.open:
             raise ValueError("active timer without end")
@@ -281,6 +287,29 @@ class AreaTimers:
                 _LOGGER.warning("%s: skipping a stored timer (%s): %s", self.entry.title, err, raw)
                 continue
             self.timers[timer.id] = timer
+        if not (isinstance(data, dict) and data.get("quick_linked")):
+            self._link_quick_timers()  # once, on the update that brought the switches
+
+    def _link_quick_timers(self) -> None:
+        """Timers stored before quick timers had switches: link a running quick timer (by its
+        preset's name) and the last custom timer of the area to their switch – one run each,
+        the newest wins; the others go on as plain timers."""
+        quick = {p.name.casefold(): p.id for p in area_presets(self.entry)}
+        last = self._last_custom.get(AREA, {}).get("timer_id")
+        taken = {t.quick for t in self.timers.values() if t.quick}
+        for timer in sorted(self.timers.values(), key=lambda t: t.started_at, reverse=True):
+            if timer.station is not None or timer.quick:
+                continue
+            key = quick.get(timer.preset.casefold()) if timer.preset else None
+            if key is None and timer.id == last:
+                key = QUICK_CUSTOM
+            if key is not None and key not in taken:
+                timer.quick = key
+                taken.add(key)
+
+    def quick_timer(self, key: str) -> Timer | None:
+        """The run of a quick timer (by id) or of the custom timer (QUICK_CUSTOM), if it has one."""
+        return next((t for t in self.timers.values() if t.quick == key and t.station is None), None)
 
     @callback
     def async_start(self, _hass: HomeAssistant | None = None) -> None:
@@ -384,8 +413,12 @@ class AreaTimers:
         note: str | None = None,
         source: dict[str, Any] | None = None,
         open_ended: bool = False,
+        quick: str | None = None,
     ) -> Timer:
-        """Start a timer; ``open_ended``: no duration, it runs until ``finish`` (power stations)."""
+        """Start a timer; ``open_ended``: no duration, it runs until ``finish`` (power stations).
+
+        ``quick``: the area's quick timer (or custom timer) this is the run of; its run so
+        far is replaced."""
         if duration <= 0 and not open_ended:
             raise TimerError("invalid_duration")
         known = self.stations
@@ -399,6 +432,8 @@ class AreaTimers:
             for other in list(self.timers.values()):
                 if other.station == station:
                     self.cancel(other.id, reason=REASON_REPLACED)
+        elif quick is not None and (other := self.quick_timer(quick)) is not None:
+            self.cancel(other.id, reason=REASON_REPLACED)  # one run per quick timer
         now = dt_util.utcnow()
         timer = Timer(
             id=ulid_now(),
@@ -413,6 +448,7 @@ class AreaTimers:
             preset=preset,
             note=note,
             source=source,
+            quick=quick if station is None else None,
         )
         self.timers[timer.id] = timer
         self._schedule(timer)
@@ -442,7 +478,8 @@ class AreaTimers:
         note: str | None = None,
         source: dict[str, Any] | None = None,
     ) -> Timer:
-        """Start a preset (by id or name): a station's (replacing its timer) or a quick timer of the area.
+        """Start a preset (by id or name): a station's (replacing its timer) or a quick timer of
+        the area (replacing that quick timer's run).
 
         ``note`` replaces the preset's note.
         """
@@ -458,6 +495,7 @@ class AreaTimers:
             preset=preset.name,
             note=note if note is not None else preset.note,
             source=source,
+            quick=preset.id if station_id is None else None,
         )
 
     # -------------------------------------------------------- power stations
@@ -530,7 +568,7 @@ class AreaTimers:
     def start_custom(self, station_id: str | None) -> Timer:
         """Start a timer "Timer" with the custom duration (on the station, or in the area)."""
         seconds = self.custom_duration(station_id)
-        timer = self.start(CUSTOM_NAME, seconds, station=station_id)
+        timer = self.start(CUSTOM_NAME, seconds, station=station_id, quick=QUICK_CUSTOM if station_id is None else None)
         self._last_custom[station_id or AREA] = {"timer_id": timer.id, "duration": seconds}
         self._changed()
         return timer
@@ -568,11 +606,15 @@ class AreaTimers:
         if existing is not None:
             existing["duration"] = seconds
             name = existing["name"]
+            preset_id = existing["id"]
         else:
-            presets.append({"id": ulid_now(), "name": name, "duration": seconds})
+            preset_id = ulid_now()
+            presets.append({"id": preset_id, "name": name, "duration": seconds})
         if timer is not None:
             timer.name = name
             timer.preset = name
+            if station_id is None:  # the custom timer's run becomes the quick timer's (if it has none)
+                timer.quick = preset_id if self.quick_timer(preset_id) is None else None
             if existing is not None and not timer.note:
                 timer.note = existing.get("note")
             self._last_custom.pop(station_id or AREA, None)
@@ -698,6 +740,7 @@ class AreaTimers:
         previous_name = (known[previous_id].name if previous_id in known else timer.station_name) if previous_id else None
         timer.station = station_id
         timer.station_name = station.name
+        timer.quick = None  # a station's timer now, no longer a quick timer's run
         if timer.preset is not None and station.preset(timer.preset) is None:
             timer.preset = None  # not a preset of the new station
         self._fire(EVENT_ASSIGNED, timer, previous_station=previous_id, previous_station_name=previous_name)
@@ -859,6 +902,7 @@ class AreaTimers:
             "custom": dict(self.custom_seconds),
             "last_custom": {k: dict(v) for k, v in self._last_custom.items()},
             "power_stats": {k: dict(v) for k, v in self.power_stats.items()},
+            "quick_linked": True,  # timers are linked to their quick timer's switch when started
         }
 
     def _changed(self) -> None:

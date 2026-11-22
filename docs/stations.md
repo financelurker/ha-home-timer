@@ -30,7 +30,7 @@ The station's device carries its name and lies in the area (move it if you like)
 | `button.kitchen_hob_1_pause_resume` | pauses or resumes the timer (available while it runs or is paused) |
 | `button.kitchen_hob_1_1_minute` | +1 minute; a ringing timer starts again with one minute |
 | `button.kitchen_hob_1_stop` | *Stop*: acknowledges a ringing timer, cancels a running or paused one (available while there is one; stations set up earlier keep `…_stop_acknowledge`, see [Reference](reference.md)) |
-| `number.kitchen_hob_1_custom_timer` | custom duration in minutes, kept for next time |
+| `number.kitchen_hob_1_custom_timer_minutes` | *Custom timer minutes*: custom duration in minutes, kept for next time |
 | `button.kitchen_hob_1_start_custom_timer` | starts a timer "Timer" with the custom duration (replacing the station's timer) |
 | `text.kitchen_hob_1_save_as_preset` | enter a name: saves the custom timer as a preset (see below) |
 
@@ -40,7 +40,7 @@ Renaming a preset keeps its button (its entity id stays); deleting a preset remo
 
 ## Creating presets while cooking
 
-Presets do not have to be set up beforehand: set *Custom timer* (e.g. 9 minutes), press *Start custom timer*, and while it runs enter "Pasta" in *Save as preset*. The station gets a preset *Pasta* (9 min) with its button *Start Pasta*, and its timer is renamed "Pasta". A preset of the same name gets the new duration; if the custom timer is gone (acknowledged, cancelled, replaced or moved), the custom duration is saved. Saved presets show up in the station in the [panel](panel.md), where they can be changed or deleted. Saving reloads the area; the timer goes on.
+Presets do not have to be set up beforehand: set *Custom timer minutes* (e.g. 9 minutes), press *Start custom timer*, and while it runs enter "Pasta" in *Save as preset*. The station gets a preset *Pasta* (9 min) with its button *Start Pasta*, and its timer is renamed "Pasta". A preset of the same name gets the new duration; if the custom timer is gone (acknowledged, cancelled, replaced or moved), the custom duration is saved. Saved presets show up in the station in the [panel](panel.md), where they can be changed or deleted. Saving reloads the area; the timer goes on.
 
 ## One timer per station
 
