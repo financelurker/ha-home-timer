@@ -62,14 +62,14 @@ On the station's device.
 | `sensor.<area>_<station>` | the station's timer: `idle`, `active`, `paused`, `ringing` |
 | `binary_sensor.<area>_<station>_ringing` | *Ringing* while the station's timer rings, else *Quiet* – shown red while it rings (device class *problem*). With *Ring until acknowledged* off a timer never rings, so it stays *Quiet* |
 | `sensor.<area>_<station>_timer_end` | when the timer runs out (timestamp, while active); for an open timer the expected end |
-| `button.<area>_<station>_start_<preset>` | starts the preset (one per preset) |
+| `switch.<area>_<station>_<preset>` | one per preset: on while the station's timer is this preset's (at most one is on); on starts it, replacing the station's timer; off stops it – or acknowledges it while it rings |
 | `button.<area>_<station>_pause_resume` | pauses or resumes the timer – available while it runs (with an end) or is paused |
 | `button.<area>_<station>_1_minute` | +1 minute (a ringing timer starts again) – available while the station has a timer that has an end |
 | `button.<area>_<station>_stop` | *Stop*: acknowledges a ringing timer, cancels a running or paused one – available while the station has a timer |
 | `button.<area>_<station>_done_now` | power stations that ring when done: marks the run going on as done (learning) – available while the appliance runs |
 
 | `number.<area>_<station>_custom_timer_minutes` | *Custom timer minutes*: custom duration in minutes (1–600); stations set up earlier keep `…_custom_timer` |
-| `button.<area>_<station>_start_custom_timer` | starts a timer "Timer" with the custom duration |
+| `switch.<area>_<station>_custom_timer` | *Custom timer*: on starts a timer "Timer" with the custom duration, off stops it |
 | `text.<area>_<station>_save_as_preset` | enter a name: saves the custom timer as a preset of the station; attributes `custom_timer`, `duration` |
 
 Buttons that act on a timer are *unavailable* while they could do nothing, so a dashboard only offers what makes sense right now. Pressing an unavailable button does nothing (Home Assistant logs a warning) – in automations, use the `home_timer.*` actions or check the state first. Stations and areas set up earlier keep their entity ids (`…_acknowledge_all`, `…_stop_acknowledge`); only the names changed.

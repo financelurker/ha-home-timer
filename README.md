@@ -18,7 +18,7 @@
 - **[Survives restarts](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#restarts):** a timer that ran out while Home Assistant restarted is reported right after the start.
 - **[For your own automations](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md):** events for every step, with the area, a note and your own data – e.g. a phone notification with "Got it" and "+2 min".
 - **[Stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md):** hob 1, rice cooker, bathtub … each a device in the area with one timer at a time, its state and end as sensors, and buttons for pause, +1 minute and stop.
-- **[Presets](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#adding-a-station):** known durations per station, one button each – no card needed; [created while cooking](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#creating-presets-while-cooking) from a custom timer.
+- **[Presets](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#adding-a-station):** known durations per station, one switch each – no card needed; [created while cooking](https://github.com/financelurker/ha-home-timer/blob/main/docs/stations.md#creating-presets-while-cooking) from a custom timer.
 - **[Dashboard controls](https://github.com/financelurker/ha-home-timer/blob/main/docs/timers.md#starting-timers-from-a-dashboard)** for timers without a station: quick timers as switches (one tap starts and stops), a custom duration, "save as preset".
 - **[Power stations](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md):** a power sensor starts the timer – it rings when the appliance is done (e.g. a moka pot), starts a preset when switched on, or warns if it runs too long. Every run is [stored with its power curve](https://github.com/financelurker/ha-home-timer/blob/main/docs/power.md#runs).
 - **[Device triggers](https://github.com/financelurker/ha-home-timer/blob/main/docs/automations.md#device-triggers)** per station and per area: started, finished, reminder, acknowledged.
@@ -26,7 +26,7 @@
 
 No custom card needed – a dashboard of plain tile cards:
 
-![A dashboard: Hob 1 with its presets, appliances on smart plugs, quick timers and the ringing timers as a to-do list](https://raw.githubusercontent.com/financelurker/ha-home-timer/main/docs/images/dashboard.png?v=3f9f9c566d)
+![A dashboard: Hob 1 with its presets, appliances on smart plugs, quick timers and the ringing timers as a to-do list](https://raw.githubusercontent.com/financelurker/ha-home-timer/main/docs/images/dashboard.png?v=66259db8dd)
 
 ## Installation
 

@@ -127,7 +127,7 @@ async def test_station_add_change_delete(hass: HomeAssistant, kitchen, hass_ws_c
     station_id = msg["result"]["station_id"]
     await hass.async_block_till_done()
     assert kitchen.subentries[station_id].title == "Hob 2"
-    assert hass.states.get("button.kitchen_hob_2_start_pasta") is not None
+    assert hass.states.get("switch.kitchen_hob_2_pasta") is not None
     device = dr.async_get(hass).async_get_device_by_identifier((DOMAIN, station_id), kitchen.entry_id)
     assert device.configuration_url == f"homeassistant://home-timer/station/{kitchen.entry_id}/{station_id}"
 

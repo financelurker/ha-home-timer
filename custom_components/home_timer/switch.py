@@ -1,8 +1,9 @@
-"""Switches: the area's quick timers and its custom timer.
+"""Switches: the area's quick timers and custom timer, a station's presets and custom timer.
 
 A switch is on while its run goes on (running, paused or ringing): turning it on starts
 it, turning it off stops a running one or acknowledges a ringing one. Each quick timer
-has one run at a time; starting it again starts it anew."""
+has one run at a time; starting it again starts it anew. A station has one timer, so at
+most one of its switches is on: turning on another replaces it."""
 
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from . import HomeTimerConfigEntry
 from .const import BY_SWITCH, DOMAIN, STATUS_RINGING
 from .engine import QUICK_CUSTOM, Timer, TimerError
-from .entity import AreaEntity, remove_orphans
+from .entity import AreaEntity, StationEntity, remove_orphans
 from .stations import Preset
 
 
@@ -29,7 +30,17 @@ async def async_setup_entry(
         *(QuickTimerSwitch(engine, p) for p in engine.presets(None)),
     ]
     async_add_entities(switches)
-    remove_orphans(hass, entry.entry_id, "switch", {s.unique_id for s in switches if s.unique_id})
+    wanted = {s.unique_id for s in switches if s.unique_id}
+    for station in engine.stations.values():
+        if not station.manual_controls:
+            continue
+        mine: list[SwitchEntity] = [
+            StationCustomSwitch(engine, station, "custom_timer"),
+            *(StationPresetSwitch(engine, station, p) for p in station.presets),
+        ]
+        wanted.update(s.unique_id for s in mine if s.unique_id)
+        async_add_entities(mine, config_subentry_id=station.id)
+    remove_orphans(hass, entry.entry_id, "switch", wanted)
 
 
 def _run(func, *args, **kwargs) -> None:
@@ -41,14 +52,15 @@ def _run(func, *args, **kwargs) -> None:
         ) from err
 
 
-class _RunSwitch(AreaEntity, SwitchEntity):
-    """On while the run (``self.key``) goes on."""
+class _RunSwitch(SwitchEntity):
+    """On while the run (``self.key``, in the area or on ``self.scope``'s station) goes on."""
 
     key: str
+    scope: str | None = None
 
     @property
     def run(self) -> Timer | None:
-        return self.engine.quick_timer(self.key)
+        return self.engine.quick_timer(self.key, self.scope)
 
     @property
     def is_on(self) -> bool:
@@ -74,7 +86,7 @@ class _RunSwitch(AreaEntity, SwitchEntity):
             _run(self.engine.cancel, run.id)
 
 
-class QuickTimerSwitch(_RunSwitch):
+class QuickTimerSwitch(_RunSwitch, AreaEntity):
     """A quick timer of the area (a timer without a station)."""
 
     def __init__(self, engine, preset: Preset) -> None:
@@ -89,7 +101,7 @@ class QuickTimerSwitch(_RunSwitch):
             _run(self.engine.start_preset, None, self.preset.id)
 
 
-class CustomTimerSwitch(_RunSwitch):
+class CustomTimerSwitch(_RunSwitch, AreaEntity):
     """The area's custom timer: a timer "Timer" with the custom duration."""
 
     key = QUICK_CUSTOM
@@ -97,3 +109,33 @@ class CustomTimerSwitch(_RunSwitch):
     async def async_turn_on(self, **kwargs: Any) -> None:
         if not self.is_on:
             _run(self.engine.start_custom, None)
+
+
+class StationPresetSwitch(_RunSwitch, StationEntity):
+    """A preset of the station: on starts it (replacing the station's timer)."""
+
+    def __init__(self, engine, station, preset: Preset) -> None:
+        super().__init__(engine, station, "station_preset")
+        self.preset = preset
+        self.key = preset.id
+        self.scope = station.id
+        self._attr_unique_id = f"{station.id}_preset_{preset.id}"
+        self._attr_translation_placeholders = {"preset": preset.name}
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        if not self.is_on:
+            _run(self.engine.start_preset, self.station.id, self.preset.id)
+
+
+class StationCustomSwitch(_RunSwitch, StationEntity):
+    """The station's custom timer: a timer "Timer" with its custom duration (replacing its timer)."""
+
+    key = QUICK_CUSTOM
+
+    def __init__(self, engine, station, key: str) -> None:
+        super().__init__(engine, station, key)
+        self.scope = station.id
+
+    async def async_turn_on(self, **kwargs: Any) -> None:
+        if not self.is_on:
+            _run(self.engine.start_custom, self.station.id)

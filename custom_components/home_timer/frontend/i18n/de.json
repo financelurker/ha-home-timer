@@ -39,7 +39,7 @@
   "mode.power": "Über Leistung",
   "mode.manual_hint": "Vorlagen und Buttons; du startest die Timer.",
   "mode.power_hint": "Ein Leistungssensor zeigt, wann das Gerät läuft; der Timer folgt ihm.",
-  "presets.hint": "je ein Start-Button, in dieser Reihenfolge",
+  "presets.hint": "je ein Schalter, in dieser Reihenfolge",
   "preset.name": "Name",
   "preset.duration": "Dauer",
   "preset.note": "Notiz",

@@ -104,9 +104,11 @@ async def checks(ha: Instance, s: aiohttp.ClientSession, ctx: dict) -> None:
 
     # ------------------------------------------------------------ a timer, its events and the to-do list
     events = await ha.subscribe({"type": "subscribe_events"})
-    await ha.service("button", "press", {"entity_id": "button.kitchen_hob_1_start_rice"})
+    await ha.service("switch", "turn_on", {"entity_id": "switch.kitchen_hob_1_pasta"})  # Rice may run: a new one
     started = await next_event(events, "home_timer_started", station_name="Hob 1")
-    check("preset button starts a timer", started is not None and started["data"]["name"] == "Rice", started)
+    check("a preset's switch starts a timer", started is not None and started["data"]["name"] == "Pasta", started)
+    rice = await ha.state("switch.kitchen_hob_1_rice")
+    check("… and the station's other switches are off", rice and rice["state"] == "off", rice)
     state = await ha.state(hob["entities"]["timer"])
     check("station sensor active", state and state["state"] == "active", state)
     await ha.service("home_timer", "start", {"area_id": kitchen["area_id"], "name": "E2E", "duration": "00:00:03"})

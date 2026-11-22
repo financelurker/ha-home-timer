@@ -22,7 +22,7 @@ The area's *Home Timer* device has controls for timers without a station, so a d
 
 Timers started otherwise (by an action with a name and duration) have no switch; they show in the area's [list of timers](#to-do-lists).
 
-*The quick timers and the custom timer are switches now; the buttons* Start <quick timer> *and* Start custom timer *are gone. Running timers are taken over by their switch on the update.*
+*Quick timers, stations' presets and custom timers are switches now; the buttons* Start <…> *and* Start custom timer *are gone. Running timers are taken over by their switch on the update.*
 
 Quick timers are kept per area ([panel](panel.md) → **Quick timers**), where saved ones can be changed, sorted or deleted like any other. Saving reloads the area; running timers go on. Stations have the same controls for their own presets, see [Stations](stations.md#creating-presets-while-cooking).
 

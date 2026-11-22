@@ -38,7 +38,7 @@ The ⋮ menu at the top right holds the panel settings, a link to this documenta
 **A station by hand:**
 
 - **Overview:** what it does right now (with *+1 min* and *Acknowledge* while it rings, *Pause*, *Resume* and *Stop* while it runs), links to its device, entities and history, and a start button per preset.
-- **Presets:** name, duration (`9` = 9 minutes, `9:30`, `1:05:00`), optional note. Sort them by dragging or with the arrows (on a phone, note and delete are behind ⋯); the buttons follow. Renaming a preset keeps its button.
+- **Presets:** name, duration (`9` = 9 minutes, `9:30`, `1:05:00`), optional note. Sort them by dragging or with the arrows (on a phone, note and delete are behind ⋯); the switches follow. Renaming a preset keeps its switch.
 - **Settings:** the area it is in, name, icon (Home Assistant's icon picker) and how it **starts**: *By hand* – presets and buttons, see [Stations and presets](stations.md) – or *By power* – a power sensor drives the timer, see [Power stations](power.md) and [below](#a-station-by-power). Names are unique within the area. **Delete** removes the station; a timer running on it is cancelled (`reason: station_removed`).
 
 ![A station by hand: its presets, sortable](images/panel-station.png)

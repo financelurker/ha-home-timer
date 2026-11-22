@@ -39,7 +39,7 @@
   "mode.power": "By power",
   "mode.manual_hint": "Presets and buttons; you start the timers.",
   "mode.power_hint": "A power sensor tells when the appliance runs; the timer follows it.",
-  "presets.hint": "one start button each, in this order",
+  "presets.hint": "one switch each, in this order",
   "preset.name": "Name",
   "preset.duration": "Duration",
   "preset.note": "Note",
