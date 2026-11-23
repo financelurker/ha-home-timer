@@ -170,7 +170,7 @@
         "name": "Home Timer: Klingelnde Timer"
       },
       "area_timers": {
-        "name": "{area} Timer"
+        "name": "Home Timer: {area}"
       }
     },
     "number": {

@@ -96,7 +96,7 @@ async def test_assigned_to_a_station_it_leaves_the_switch(hass: HomeAssistant, k
 async def test_the_area_list_of_timers(hass: HomeAssistant, kitchen, freezer) -> None:
     await quick(hass, kitchen, ("Tea", 60))
     hob = await add_station(hass, kitchen, "Hob 1", [("Rice", 600)])
-    assert hass.states.get(LIST).attributes["friendly_name"] == "Home Timer: Kitchen timers"
+    assert hass.states.get(LIST).attributes["friendly_name"] == "Home Timer: Kitchen"
     from homeassistant.helpers import entity_registry as er
     assert er.async_get(hass).async_get(LIST).area_id == kitchen.data["area_id"]
     await switch(hass, TEA, True)

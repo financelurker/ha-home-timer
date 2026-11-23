@@ -163,19 +163,18 @@ class RingingTimersList(TodoListEntity):
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddConfigEntryEntitiesCallback
 ) -> None:
-    # "Home Timer: Kitchen timers", next to "Home Timer: Ringing timers" in the to-do panel; the entity id
-    # leaves the prefix out (todo.kitchen_timers)
+    # "Home Timer: Kitchen", next to "Home Timer: Ringing timers" in the to-do panel
     strings = await async_get_translations(hass, hass.config.language, "entity", {DOMAIN})
-    pattern = strings.get(f"component.{DOMAIN}.entity.todo.area_timers.name") or "{area} timers"
+    pattern = strings.get(f"component.{DOMAIN}.entity.todo.area_timers.name") or "Home Timer: {area}"
     states = {
         status: strings.get(f"component.{DOMAIN}.entity.sensor.station.state.{status}") or status
         for status in (STATUS_ACTIVE, STATUS_PAUSED, STATUS_RINGING)
     }
     engine = entry.runtime_data
     area = ar.async_get(hass).async_get_area(engine.area_id) if engine.area_id else None
-    name = pattern.replace("{area}", area.name if area else entry.title)
+    area_name = area.name if area else entry.title
     new = er.async_get(hass).async_get_entity_id("todo", DOMAIN, f"{entry.entry_id}_area_timers") is None
-    async_add_entities([AreaTimersList(engine, "area_timers", name, new, states)])
+    async_add_entities([AreaTimersList(engine, "area_timers", pattern.replace("{area}", area_name), area_name, new, states)])
 
 
 def _check_off(engine: AreaTimers, uid: str) -> None:
@@ -197,19 +196,20 @@ def _check_off(engine: AreaTimers, uid: str) -> None:
 
 class AreaTimersList(AreaEntity, TodoListEntity):
     """All timers of the area, its stations' too: due when they run out (ringing ones are
-    overdue). Named "Home Timer: <area> timers". Only checking off: stops or acknowledges."""
+    overdue). Named "Home Timer: <area>". Only checking off: stops or acknowledges."""
 
-    _attr_has_entity_name = False  # "Home Timer: Kitchen timers", not "Home Timer Kitchen timers" (the hub device)
+    _attr_has_entity_name = False  # "Home Timer: Kitchen" – the area's name as the user wrote it, in any language
     _attr_supported_features = TodoListEntityFeature.UPDATE_TODO_ITEM
 
-    def __init__(self, engine: AreaTimers, key: str, name: str, new: bool, states: dict[str, str]) -> None:
+    def __init__(self, engine: AreaTimers, key: str, name: str, area_name: str, new: bool,
+                 states: dict[str, str]) -> None:
         super().__init__(engine, key)
         self._new = new
         self._states = states  # "Running", "Paused", "Ringing" in the system language
-        self._attr_name = f"Home Timer: {name}"  # like "Home Timer: Ringing timers"
+        self._attr_name = name
         # not on the hub device: Home Assistant would put its name ("Home Timer") in front
         self._attr_device_info = None
-        self.entity_id = f"todo.{slugify(name)}"  # todo.kitchen_timers
+        self.entity_id = f"todo.{slugify(area_name)}_timers"  # todo.kitchen_timers (kept once registered)
 
     async def async_added_to_hass(self) -> None:
         await super().async_added_to_hass()
