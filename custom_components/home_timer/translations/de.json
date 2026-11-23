@@ -167,7 +167,7 @@
     },
     "todo": {
       "ringing_timers": {
-        "name": "Home Timer: klingelnde Timer"
+        "name": "Home Timer: Klingelnde Timer"
       },
       "area_timers": {
         "name": "{area} Timer"
