@@ -167,10 +167,10 @@
     },
     "todo": {
       "ringing_timers": {
-        "name": "Home Timer: ringing timers"
+        "name": "Home Timer: Ringing timers"
       },
       "area_timers": {
-        "name": "{area} timers"
+        "name": "Home Timer: {area}"
       }
     },
     "number": {

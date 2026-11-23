@@ -20,7 +20,7 @@ On the area's *Home Timer* device.
 | `sensor.<area>_home_timer_custom_timer_ends` | when that timer runs out – or ran out, while it rings |
 | `text.<area>_home_timer_save_as_preset` | enter a name: saves the last custom timer (or the custom duration) as a quick timer; attributes `custom_timer`, `duration` |
 
-Also per area, but not on its device: `todo.<area>_timers` (*Kitchen timers*) – all timers of the area, see [Timers › To-do lists](timers.md#to-do-lists). Areas set up earlier keep `number.<area>_home_timer_custom_timer` (only its name changed to *Custom timer minutes*).
+Also per area, but not on its device: `todo.<area>_timers` (*Home Timer: Kitchen*) – all timers of the area, see [Timers › To-do lists](timers.md#to-do-lists). Areas set up earlier keep `number.<area>_home_timer_custom_timer` (only its name changed to *Custom timer minutes*).
 
 ## Attributes of *Timers*
 
